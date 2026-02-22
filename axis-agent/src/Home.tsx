@@ -3,7 +3,7 @@
  * Main entry with floating navigation and tactical interface
  */
 import { useState, useEffect, useCallback } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useWallet, useConnection } from './hooks/useWallet';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { FloatingNav, type ViewState } from './components/common/FloatingNav';
@@ -133,12 +133,20 @@ export default function Home() {
         </div>
       )}
 
-      {/* STRATEGY DETAIL */}
-      {view === 'STRATEGY_DETAIL' && selectedStrategy && (
-        <div className="fixed inset-0 z-[200] bg-[#030303]">
-          <StrategyDetailView initialData={selectedStrategy} onBack={handleBackFromDetail} />
-        </div>
-      )}
+      {/* STRATEGY DETAIL — slide up with spring bounce */}
+      <AnimatePresence>
+        {view === 'STRATEGY_DETAIL' && selectedStrategy && (
+          <motion.div
+            className="fixed inset-0 z-[200] bg-[#030303]"
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%', transition: { type: 'spring', stiffness: 380, damping: 38 } }}
+            transition={{ type: 'spring', stiffness: 260, damping: 24, mass: 0.85 }}
+          >
+            <StrategyDetailView initialData={selectedStrategy} onBack={handleBackFromDetail} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Floating Navigation (Tutorial targets this) */}
       {view !== 'STRATEGY_DETAIL' && !hideNavInCreate && !isOverlayActive && (

@@ -56,19 +56,44 @@ interface SwipeDiscoverViewProps {
 // --- Components ---
 
 /**
- * ★追加: リアルなカード型のスケルトンローダー
+ * ★追加: リアルなカード型のスケルトンローダー（ポーカーディール風アニメーション付き）
  */
-const SwipeCardSkeleton = memo(({ index }: { index: number }) => (
-  <div
-    className="absolute inset-0 w-full h-full bg-[#121212] border border-[rgba(184,134,63,0.15)] rounded-[32px] overflow-hidden shadow-2xl flex flex-col p-5 select-none pointer-events-none"
-    style={{
-      // スタック表示のシミュレーション
-      transform: `scale(${1 - index * 0.05}) translateY(${index * 10}px)`,
-      zIndex: 100 - index,
-      opacity: Math.max(0, 1 - index * 0.3),
-      filter: 'grayscale(100%) brightness(0.8)',
-    }}
-  >
+const SwipeCardSkeleton = memo(({ index }: { index: number }) => {
+  const finalScale = 1 - index * 0.05;
+  const finalY = index * 10;
+  // デッキ感のための微妙な回転（後ろのカードが少しずれる）
+  const finalRotate = index === 1 ? -2 : index === 2 ? 3 : 0;
+  // 後ろのカードから順に配られる（ポーカーディール順）
+  const dealDelay = (2 - index) * 0.18;
+
+  return (
+    <motion.div
+      className="absolute inset-0 w-full h-full bg-[#121212] border border-[rgba(184,134,63,0.15)] rounded-[32px] overflow-hidden shadow-2xl flex flex-col p-5 select-none pointer-events-none"
+      initial={{
+        x: '115%',
+        rotate: 22,
+        opacity: 0,
+        scale: finalScale,
+        y: finalY,
+      }}
+      animate={{
+        x: 0,
+        rotate: finalRotate,
+        opacity: Math.max(0, 1 - index * 0.3),
+        scale: finalScale,
+        y: finalY,
+      }}
+      transition={{
+        type: 'spring',
+        damping: 22,
+        stiffness: 160,
+        delay: dealDelay,
+      }}
+      style={{
+        zIndex: 100 - index,
+        filter: 'grayscale(100%) brightness(0.8)',
+      }}
+    >
     {/* Header Skeleton */}
     <div className="flex justify-between items-start mb-4">
       <div className="space-y-2">
@@ -115,8 +140,9 @@ const SwipeCardSkeleton = memo(({ index }: { index: number }) => (
         </div>
       ))}
     </div>
-  </div>
-));
+    </motion.div>
+  );
+});
 
 /**
  * CosmicLaunchEffect

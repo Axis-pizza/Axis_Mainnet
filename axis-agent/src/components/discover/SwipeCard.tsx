@@ -450,13 +450,16 @@ export const SwipeCard = ({
     if (!isDragging.current && !swiped.current && isTop) onTap();
   };
 
+  // デッキの後ろのカードに微妙な回転を加えてバンドル感を演出
+  const deckRotate = index === 1 ? -2 : index === 2 ? 3 : 0;
+
   return (
     <motion.div
       className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing"
       style={{
         x: isTop ? x : 0,
-        y: isTop ? y : index * 12,
-        rotate: isTop ? rotate : 0,
+        y: isTop ? y : index * 14,
+        rotate: isTop ? rotate : deckRotate,
         opacity: isTop ? cardOpacity : 1,
         scale: isTop ? downScale : 1 - index * 0.05,
         zIndex: 100 - index,
@@ -469,7 +472,7 @@ export const SwipeCard = ({
       onDragEnd={isTop ? handleDragEnd : undefined}
       onClick={handleClick}
       initial={false}
-      animate={isTop ? undefined : { scale: 1 - index * 0.05, y: index * 12 }}
+      animate={isTop ? undefined : { scale: 1 - index * 0.05, y: index * 14, rotate: deckRotate }}
       exit={{ opacity: 0, transition: { duration: 0.1 } }}
       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
     >
