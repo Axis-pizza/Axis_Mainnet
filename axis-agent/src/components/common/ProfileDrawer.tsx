@@ -109,6 +109,8 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const { showToast } = useToast();
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [checkedIn, setCheckedIn] = useState(false);
+  const [xpFlash, setXpFlash] = useState(false);
   const [faucetLoading, setFaucetLoading] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
@@ -137,6 +139,14 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
       // エラー処理は適宜
     }
   }, [publicKey, resetUserData]);
+
+  // 今日のチェックイン済み状態をlocalStorageから復元
+  useEffect(() => {
+    if (!publicKey) { setCheckedIn(false); return; }
+    const today = new Date().toISOString().split('T')[0];
+    const stored = localStorage.getItem(`axis_checkin_${publicKey.toBase58()}_${today}`);
+    setCheckedIn(!!stored);
+  }, [publicKey]);
 
   useEffect(() => {
     if (!publicKey || !connected) {
@@ -180,22 +190,34 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
   };
 
   const handleCheckIn = async () => {
-    if (!publicKey) return;
+    if (!publicKey || checkedIn) return;
     setLoading(true);
     try {
       const res = await api.dailyCheckIn(publicKey.toBase58());
       if (res.success) {
-        const newXp = res.user?.total_xp ?? res.user?.xp ?? res.total_xp ?? res.xp;
-        if (newXp !== undefined) {
-          setUserData((prev: any) => ({
-            ...prev,
-            total_xp: newXp,
-            ...(res.user || {}),
-          }));
-        }
-        await fetchUser();
+        // 楽観的更新: APIを待たず即座に+10 XP表示
+        setUserData((prev: any) => ({
+          ...prev,
+          total_xp: (prev?.total_xp || 0) + 10,
+        }));
+        // XPフラッシュアニメーション
+        setXpFlash(true);
+        setTimeout(() => setXpFlash(false), 1200);
+        // チェックイン済み状態をセット & localStorage保存
+        setCheckedIn(true);
+        const today = new Date().toISOString().split('T')[0];
+        localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
         showToast('✅ +10 XP Claimed!', 'success');
+        // バックグラウンドでサーバーと同期（awaitしない）
+        fetchUser();
       } else {
+        const errorMsg = (res.error || res.message || '').toLowerCase();
+        // 「すでにチェックイン済み」エラーの場合も済み状態に
+        if (errorMsg.includes('already') || errorMsg.includes('today') || errorMsg.includes('済')) {
+          setCheckedIn(true);
+          const today = new Date().toISOString().split('T')[0];
+          localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
+        }
         showToast(res.error || res.message || 'Check-in failed', 'error');
       }
     } catch (e: any) {
@@ -330,9 +352,24 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                         <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#B8863F]">
                           Season 0 Rank
                         </p>
-                        <h3 className="mb-1 font-serif text-5xl font-bold tracking-tight text-[#F2E0C8] drop-shadow-sm">
-                          {userData?.total_xp?.toLocaleString() || 0}
-                        </h3>
+                        <div className="relative inline-block">
+                          <h3 className={`mb-1 font-serif text-5xl font-bold tracking-tight drop-shadow-sm transition-colors duration-300 ${xpFlash ? 'text-emerald-400' : 'text-[#F2E0C8]'}`}>
+                            {userData?.total_xp?.toLocaleString() || 0}
+                          </h3>
+                          <AnimatePresence>
+                            {xpFlash && (
+                              <motion.span
+                                initial={{ opacity: 0, y: 4, scale: 0.8 }}
+                                animate={{ opacity: 1, y: -16, scale: 1 }}
+                                exit={{ opacity: 0, y: -32, scale: 0.8 }}
+                                transition={{ duration: 0.9, ease: 'easeOut' }}
+                                className="absolute -top-1 -right-14 text-emerald-400 font-bold text-sm whitespace-nowrap pointer-events-none"
+                              >
+                                +10 XP
+                              </motion.span>
+                            )}
+                          </AnimatePresence>
+                        </div>
                         <div className="flex items-center justify-center gap-2">
                           <p className="text-sm text-[#7A5A30]">Current XP</p>
                           <span className="rounded border border-[rgba(184,134,63,0.08)] bg-white/5 px-1.5 py-0.5 text-[10px] text-[#F2E0C8]/50">
@@ -346,16 +383,22 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                       {/* Daily Check-in Button */}
                       <button
                         onClick={handleCheckIn}
-                        disabled={loading}
-                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#B8863F] py-3.5 font-bold text-black shadow-lg shadow-[#6B4420]/20 transition-all active:scale-95 hover:brightness-110 disabled:opacity-50"
+                        disabled={loading || checkedIn}
+                        className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 font-bold shadow-lg transition-all ${
+                          checkedIn
+                            ? 'bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 cursor-default'
+                            : 'bg-[#B8863F] text-black shadow-[#6B4420]/20 active:scale-95 hover:brightness-110 disabled:opacity-50'
+                        }`}
                       >
                         {loading ? (
                           <Sparkles className="h-5 w-5 animate-spin" />
                         ) : (
                           <CheckCircle className="h-5 w-5" />
                         )}
-                        <span>Daily Check-in</span>
-                        <span className="rounded bg-black/20 px-1.5 py-0.5 text-xs">+10 XP</span>
+                        <span>{checkedIn ? "Today's Check-in Done" : 'Daily Check-in'}</span>
+                        {!checkedIn && (
+                          <span className="rounded bg-black/20 px-1.5 py-0.5 text-xs">+10 XP</span>
+                        )}
                       </button>
 
                       {/* Faucet Button */}
