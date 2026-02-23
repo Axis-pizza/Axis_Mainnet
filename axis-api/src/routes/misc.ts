@@ -58,14 +58,26 @@ app.post("/claim", async (c) => {
     if (!wallet_address) return c.json({ error: "Wallet address required" }, 400);
 
     try {
+      // 未登録ウォレットでも rate limit を適用するため、レコードがなければ自動作成
+      let user = await UserModel.findUserByWallet(c.env.axis_db, wallet_address);
 
-      const user = await UserModel.findUserByWallet(c.env.axis_db, wallet_address);
+      if (!user) {
+          const newId = crypto.randomUUID();
+          const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+          try {
+              await c.env.axis_db.prepare(
+                  'INSERT INTO users (id, wallet_address, invite_code, total_xp, rank_tier, last_checkin, last_faucet_at) VALUES (?, ?, ?, 0, "Novice", 0, 0)'
+              ).bind(newId, wallet_address, inviteCode).run();
+          } catch {
+              // INSERT 競合（並列リクエスト等）の場合は無視して再取得
+          }
+          user = await UserModel.findUserByWallet(c.env.axis_db, wallet_address);
+      }
 
+      // 日本時間(UTC+9)基準で同じ日かチェック（登録済み・未登録問わず）
       if (user) {
           const now = Math.floor(Date.now() / 1000);
           const lastFaucet = user.last_faucet_at || 0;
-
-          // 日本時間(UTC+9)基準で同じ日かチェック
           const JST_OFFSET = 9 * 3600;
           const todayJST = Math.floor((now + JST_OFFSET) / 86400);
           const lastClaimDayJST = Math.floor((lastFaucet + JST_OFFSET) / 86400);
@@ -78,17 +90,16 @@ app.post("/claim", async (c) => {
           }
       }
 
+      // rate limit 記録を先に更新してから送金（二重クレーム防止）
+      await c.env.axis_db.prepare(
+          "UPDATE users SET last_faucet_at = ? WHERE wallet_address = ?"
+      ).bind(Math.floor(Date.now() / 1000), wallet_address).run();
+
       const { signature, latestBlockhash, connection } = await SolanaService.claimFaucet(c.env.FAUCET_PRIVATE_KEY, wallet_address, c.env.HELIUS_RPC_URL);
-  
+
       c.executionCtx.waitUntil(
           SolanaService.confirmTransaction(connection, signature, latestBlockhash)
       );
-      
-      if (user) {
-          await c.env.axis_db.prepare(
-              "UPDATE users SET last_faucet_at = ? WHERE wallet_address = ?"
-          ).bind(Math.floor(Date.now() / 1000), wallet_address).run();
-      }
 
       return c.json({ success: true, signature, message: "💰 Sent 1,000 USDC (Devnet)" });
 
