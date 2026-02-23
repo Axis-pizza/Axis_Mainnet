@@ -397,6 +397,19 @@ export const SwipeCard = ({
 
   const isDragging = useRef(false);
   const swiped = useRef(false);
+  const prevIndexRef = useRef(index);
+
+  // スタックからトップに昇格したとき、前の位置から滑らかにスプリングアニメーションする
+  useEffect(() => {
+    const prevIdx = prevIndexRef.current;
+    prevIndexRef.current = index;
+
+    if (index === 0 && prevIdx > 0) {
+      // 前のスタック位置（y: prevIdx * 14）からトップ位置（y: 0）へスプリング
+      y.set(prevIdx * 14);
+      animate(y, 0, { type: 'spring', stiffness: 400, damping: 30 });
+    }
+  }, [index, y]);
 
   const handleDragStart = () => {
     isDragging.current = true;
@@ -466,7 +479,6 @@ export const SwipeCard = ({
         willChange: 'transform',
       }}
       drag={isTop ? true : false}
-      dragDirectionLock
       dragMomentum={false}
       onDragStart={isTop ? handleDragStart : undefined}
       onDragEnd={isTop ? handleDragEnd : undefined}

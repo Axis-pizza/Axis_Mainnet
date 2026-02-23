@@ -736,7 +736,7 @@ export const SwipeDiscoverView = ({
       setLoading(true);
       try {
         const [publicRes, myRes, tokensRes] = await Promise.all([
-          api.discoverStrategies(50).catch((e) => ({ strategies: [] })),
+          api.discoverStrategies(50).catch(() => ({ strategies: [] })),
           publicKey
             ? api.getUserStrategies(publicKey.toBase58()).catch(() => ({ strategies: [] }))
             : Promise.resolve({ strategies: [] }),
@@ -941,7 +941,7 @@ export const SwipeDiscoverView = ({
         setMatchedStrategy(strategy);
       }
       // Brief cooldown to prevent double-swipe
-      setTimeout(() => setIsSwiping(false), 100);
+      setTimeout(() => setIsSwiping(false), 300);
     },
     [isSwiping, matchedStrategy]
   );
