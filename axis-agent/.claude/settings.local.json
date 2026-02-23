@@ -23,7 +23,8 @@
       "Bash(node -e:*)",
       "Bash(node test-sim.mjs:*)",
       "Bash(find:*)",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(pnpm tsc:*)"
     ]
   }
 }

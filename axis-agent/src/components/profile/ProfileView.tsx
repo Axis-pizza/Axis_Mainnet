@@ -175,7 +175,9 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
 
   // --- Action State ---
   const [checkedIn, setCheckedIn] = useState(false);
+  const [faucetClaimed, setFaucetClaimed] = useState(false);
   const [xpFlash, setXpFlash] = useState(false);
+  const [earnedXp, setEarnedXp] = useState(10);
   const [checkInLoading, setCheckInLoading] = useState(false);
   const [faucetLoading, setFaucetLoading] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -214,13 +216,23 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
     };
   }, [publicKey, connection]);
 
-  // --- 2. Check-in state from localStorage ---
+  // --- 2. Check-in / Faucet state: localStorage を初期値とし loadProfile で上書き ---
   useEffect(() => {
-    if (!publicKey) { setCheckedIn(false); return; }
+    if (!publicKey) { setCheckedIn(false); setFaucetClaimed(false); return; }
     const today = new Date().toISOString().split('T')[0];
     const stored = localStorage.getItem(`axis_checkin_${publicKey.toBase58()}_${today}`);
     setCheckedIn(!!stored);
   }, [publicKey]);
+
+  // JST (UTC+9) 基準で「今日」かどうかを判定するユーティリティ
+  const isToday = (unixTs: number): boolean => {
+    if (!unixTs) return false;
+    const JST_OFFSET = 9 * 3600;
+    const now = Math.floor(Date.now() / 1000);
+    const todayJST = Math.floor((now + JST_OFFSET) / 86400);
+    const thatDayJST = Math.floor((unixTs + JST_OFFSET) / 86400);
+    return todayJST === thatDayJST;
+  };
 
   // --- 3. Load User Profile & Portfolio ---
   const loadProfile = async () => {
@@ -249,6 +261,16 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           bio: u.bio,
           avatar_url: u.avatar_url || u.pfpUrl,
         });
+
+        // サーバーの last_checkin / last_faucet_at で状態を上書き（localStorage 改ざん対策）
+        if (isToday(u.last_checkin)) {
+          setCheckedIn(true);
+          const today = new Date().toISOString().split('T')[0];
+          localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
+        }
+        if (isToday(u.last_faucet_at)) {
+          setFaucetClaimed(true);
+        }
       }
 
       if (stratsRes.success && stratsRes.strategies) {
@@ -347,47 +369,70 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
     setCheckInLoading(true);
     try {
       const res = await api.dailyCheckIn(publicKey.toBase58());
+
       if (res.success) {
+        const earned: number = res.earnedPoints ?? 10;
+        const isVip: boolean = res.isVip ?? false;
+
+        setEarnedXp(earned);
         setUserProfile((prev) =>
-          prev ? { ...prev, totalPoints: (prev.totalPoints || 0) + 10 } : prev
+          prev ? { ...prev, totalPoints: (prev.totalPoints || 0) + earned } : prev
         );
         setXpFlash(true);
         setTimeout(() => setXpFlash(false), 1200);
         setCheckedIn(true);
         const today = new Date().toISOString().split('T')[0];
         localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
-        showToast('✅ +10 XP Claimed!', 'success');
+        showToast(
+          isVip ? `⭐ +${earned} XP Claimed! (VIP Bonus)` : `✅ +${earned} XP Claimed!`,
+          'success'
+        );
         loadProfile();
       } else {
         const errorMsg = (res.error || res.message || '').toLowerCase();
+
         if (errorMsg.includes('already') || errorMsg.includes('today') || errorMsg.includes('済')) {
+          // 正常なケース（今日すでに実施済み）— error ではなく info で表示
           setCheckedIn(true);
           const today = new Date().toISOString().split('T')[0];
           localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
+          showToast("Already checked in today. Come back tomorrow!", 'info');
+        } else if (errorMsg.includes('not found') || errorMsg.includes('404')) {
+          // ユーザーレコードが存在しない
+          showToast('Profile not found. Please set up your profile first.', 'error');
+        } else {
+          // その他のサーバーエラー
+          showToast('Check-in failed. Please try again later.', 'error');
         }
-        showToast(res.error || res.message || 'Check-in failed', 'error');
       }
-    } catch (e: any) {
-      showToast(`Error: ${e.message}`, 'error');
+    } catch {
+      showToast('Network error. Check your connection and try again.', 'error');
     }
     setCheckInLoading(false);
   };
 
   const handleFaucet = async () => {
-    if (!publicKey) {
-      showToast('Please connect your wallet first', 'error');
-      return;
-    }
+    if (!publicKey || faucetClaimed) return;
     setFaucetLoading(true);
     try {
       const result = await api.requestFaucet(publicKey.toBase58());
       if (result.success) {
-        showToast(result.message || '1,000 USDC received!', 'success');
+        setFaucetClaimed(true);
+        showToast('💰 1,000 USDC received! Check your wallet.', 'success');
       } else {
-        showToast(result.error || result.message || 'Faucet failed. Try again later.', 'error');
+        const msg = (result.error || result.message || '').toLowerCase();
+        if (msg.includes('already') || msg.includes('claimed')) {
+          // 今日すでに受け取り済み — info で表示
+          setFaucetClaimed(true);
+          showToast('Already claimed today. Resets at midnight (JST).', 'info');
+        } else if (msg.includes('network') || msg.includes('timeout')) {
+          showToast('Network error. Check your connection and try again.', 'error');
+        } else {
+          showToast('Faucet unavailable. Please try again later.', 'error');
+        }
       }
     } catch {
-      showToast('Faucet failed. Try again later.', 'error');
+      showToast('Network error. Check your connection and try again.', 'error');
     } finally {
       setFaucetLoading(false);
     }
@@ -500,7 +545,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                       transition={{ duration: 0.9, ease: 'easeOut' }}
                       className="absolute -top-1 left-full ml-2 text-emerald-400 font-bold text-xs whitespace-nowrap pointer-events-none"
                     >
-                      +10 XP
+                      +{earnedXp} XP
                     </motion.span>
                   )}
                 </AnimatePresence>
@@ -588,7 +633,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           )}
           <span>{checkedIn ? "Today's Check-in Done" : 'Daily Check-in'}</span>
           {!checkedIn && (
-            <span className="rounded bg-black/20 px-1.5 py-0.5 text-xs">+10 XP</span>
+            <span className="rounded bg-black/20 px-1.5 py-0.5 text-xs">+{earnedXp} XP</span>
           )}
         </button>
 
@@ -596,13 +641,22 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={handleFaucet}
-            disabled={faucetLoading}
-            className={`bg-[#1C1C1E] border border-[rgba(184,134,63,0.3)] text-[#B8863F] py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
-              faucetLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#B8863F]/10 active:scale-95'
+            disabled={faucetLoading || faucetClaimed}
+            className={`py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
+              faucetClaimed
+                ? 'bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 cursor-default'
+                : faucetLoading
+                  ? 'bg-[#1C1C1E] border border-[rgba(184,134,63,0.3)] text-[#B8863F] opacity-50 cursor-not-allowed'
+                  : 'bg-[#1C1C1E] border border-[rgba(184,134,63,0.3)] text-[#B8863F] hover:bg-[#B8863F]/10 active:scale-95'
             }`}
           >
-            <Coins className="w-4 h-4" />
-            <span className="text-sm">{faucetLoading ? 'Processing...' : 'Get Demo USDC'}</span>
+            {faucetClaimed
+              ? <CheckCircle className="w-4 h-4" />
+              : <Coins className="w-4 h-4" />
+            }
+            <span className="text-sm">
+              {faucetClaimed ? 'Claimed Today' : faucetLoading ? 'Processing...' : 'Get Demo USDC'}
+            </span>
           </button>
 
           <button

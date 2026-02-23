@@ -168,7 +168,9 @@ app.get('/user', async (c) => {
           rank_tier: 'Novice',
           pnl_percent: 0,
           total_invested: 0,
-          is_vip: false
+          is_vip: false,
+          last_checkin: 0,
+          last_faucet_at: 0,
         }
       });
     }
@@ -184,7 +186,9 @@ app.get('/user', async (c) => {
         rank_tier: user.rank_tier,
         pnl_percent: user.pnl_percent,
         total_invested: user.total_invested_usd,
-        is_vip: isVip
+        is_vip: isVip,
+        last_checkin: user.last_checkin ?? 0,
+        last_faucet_at: user.last_faucet_at ?? 0,
       }
     });
 
