@@ -6,7 +6,7 @@ import { formatCompactUSD, abbreviateAddress } from '../../../utils/formatNumber
 import type { JupiterToken } from '../../../services/jupiter';
 import type { AssetItem } from './types';
 
-const STEP_AMOUNT = 5;
+const STEP_AMOUNT = 1;
 
 // --- Mobile Weight Control (Memoized) ---
 export const MobileWeightControl = memo(

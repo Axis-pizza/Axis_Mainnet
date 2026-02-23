@@ -8,13 +8,27 @@ import {
   TrendingUp,
   Star,
   LayoutGrid,
+  Trophy,
+  Edit,
+  User,
+  QrCode,
+  CheckCircle,
+  Sparkles,
+  Coins,
+  LogOut,
+  Copy,
+  Share2,
+  X,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useWallet, useConnection } from '../../hooks/useWallet';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { api } from '../../services/api';
 import { getUsdcBalance } from '../../services/usdc';
 import { TokenImage } from '../common/TokenImage';
 import { OGBadge } from '../common/OGBadge';
+import { ProfileEditModal } from '../common/ProfileEditModal';
+import { useToast } from '../../context/ToastContext';
 
 // --- Types & Styles ---
 const FIXED_BG_STYLE = {
@@ -41,6 +55,8 @@ interface UserProfile {
   pnlPercent: number;
   referralCount: number;
   is_vip?: boolean;
+  bio?: string;
+  avatar_url?: string;
 }
 
 // --- Helper Functions ---
@@ -51,8 +67,90 @@ const formatCurrency = (val: number, currency: 'USD' | 'USDC') => {
 };
 
 const formatAddress = (address: string | null | undefined) => {
-  if (!address) return 'Unknown'; // または '' (空文字)
+  if (!address) return 'Unknown';
   return `${address.slice(0, 4)}...${address.slice(-4)}`;
+};
+
+// --- Invite Modal ---
+const InviteModal = ({
+  isOpen,
+  onClose,
+  pubkey,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  pubkey: string;
+}) => {
+  const { showToast } = useToast();
+  const inviteLink = `${window.location.origin}/?ref=${pubkey}`;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(inviteLink)}&color=C9975B&bgcolor=0F0B07&margin=10`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(inviteLink);
+    showToast('✅ Invite Link Copied!', 'success');
+  };
+
+  const handleShareX = () => {
+    const text = `Join me on Axis! 🚀\nCreating my own crypto ETF on Solana.\n\n#Axis #Solana #DeFi`;
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(inviteLink)}`;
+    window.open(url, '_blank');
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/90 backdrop-blur-md"
+      />
+
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        className="relative w-full max-w-sm overflow-hidden rounded-3xl border border-[#B8863F]/15 bg-gradient-to-b from-[#140E08] to-[#080503] p-8 text-center shadow-2xl shadow-[#6B4420]/20"
+      >
+        <div className="absolute -top-24 -left-24 h-48 w-48 rounded-full bg-[#B8863F]/8 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 h-48 w-48 rounded-full bg-[#B8863F]/8 blur-3xl pointer-events-none" />
+
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-[#F2E0C8]/30 hover:text-[#F2E0C8] transition-colors"
+        >
+          <X className="w-6 h-6" />
+        </button>
+
+        <h3 className="mb-2 text-2xl font-serif font-bold text-[#F2E0C8] tracking-tight">
+          Invite & Earn
+        </h3>
+        <p className="mb-8 text-sm text-[#7A5A30]">Share your link to earn referral XP.</p>
+
+        <div className="mx-auto mb-8 w-fit rounded-2xl border border-[#B8863F]/15 bg-[#080503] p-4 shadow-inner">
+          <img src={qrUrl} alt="Invite QR" className="h-48 w-48 rounded-lg opacity-90" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={handleCopy}
+            className="flex items-center justify-center gap-2 rounded-xl bg-[#221509] py-3.5 text-sm font-bold text-[#F2E0C8] transition-all hover:bg-[#221509] active:scale-95 border border-[rgba(184,134,63,0.08)]"
+          >
+            <Copy className="w-4 h-4" /> Copy Link
+          </button>
+
+          <button
+            onClick={handleShareX}
+            className="group flex items-center justify-center gap-2 rounded-xl bg-black py-3.5 text-sm font-bold text-[#F2E0C8] transition-all hover:border-[#B8863F]/35 border border-[#B8863F]/15 active:scale-95"
+          >
+            <Share2 className="w-4 h-4 group-hover:text-[#B8863F] transition-colors" /> Post on X
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
 };
 
 interface ProfileViewProps {
@@ -60,22 +158,33 @@ interface ProfileViewProps {
 }
 
 export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
-  const { publicKey } = useWallet();
+  const { publicKey, disconnect } = useWallet();
   const { connection } = useConnection();
+  const { showToast } = useToast();
 
   // --- UI State ---
   const [activeTab, setActiveTab] = useState<'portfolio' | 'leaderboard'>('portfolio');
   const [portfolioSubTab, setPortfolioSubTab] = useState<'created' | 'invested' | 'watchlist'>(
     'created'
   );
-  const [leaderboardTab] = useState<'points'>('points'); // pointsに固定
+  const [leaderboardTab, setLeaderboardTab] = useState<'points' | 'created'>('points');
 
   const [currencyMode, setCurrencyMode] = useState<'USD' | 'USDC'>('USD');
   const [isHidden, setIsHidden] = useState(false);
   const [usdcBalance, setUsdcBalance] = useState<number>(0);
 
+  // --- Action State ---
+  const [checkedIn, setCheckedIn] = useState(false);
+  const [xpFlash, setXpFlash] = useState(false);
+  const [checkInLoading, setCheckInLoading] = useState(false);
+  const [faucetLoading, setFaucetLoading] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+
   // --- Data State ---
   const [isLoading, setIsLoading] = useState(false);
+  const [isLeaderboardLoading, setIsLeaderboardLoading] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [myStrategies, setMyStrategies] = useState<Strategy[]>([]);
   const [investedStrategies, setInvestedStrategies] = useState<Strategy[]>([]);
@@ -83,7 +192,6 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
   const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
 
   // --- 1. Init (USDC Balance) ---
-  // USDC ≈ $1 fixed, no price fetching needed
   useEffect(() => {
     if (!publicKey || !connection) return;
     const fetchBalance = async () => {
@@ -106,84 +214,199 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
     };
   }, [publicKey, connection]);
 
-  // --- 2. Load User Profile & Portfolio ---
+  // --- 2. Check-in state from localStorage ---
+  useEffect(() => {
+    if (!publicKey) { setCheckedIn(false); return; }
+    const today = new Date().toISOString().split('T')[0];
+    const stored = localStorage.getItem(`axis_checkin_${publicKey.toBase58()}_${today}`);
+    setCheckedIn(!!stored);
+  }, [publicKey]);
+
+  // --- 3. Load User Profile & Portfolio ---
+  const loadProfile = async () => {
+    if (!publicKey) return;
+    setIsLoading(true);
+    try {
+      const [userRes, stratsRes, watchlistRes, investedRes] = await Promise.all([
+        api.getUser(publicKey.toBase58()),
+        api.getUserStrategies(publicKey.toBase58()),
+        api.getUserWatchlist(publicKey.toBase58()),
+        api.getInvestedStrategies(publicKey.toBase58()),
+      ]);
+
+      if (userRes.success && userRes.user) {
+        const u = userRes.user;
+        setUserProfile({
+          username: u.username || 'Anonymous',
+          referralCode:
+            u.referralCode || `AXIS-${publicKey.toBase58().slice(0, 4).toUpperCase()}`,
+          totalPoints: u.total_xp || 0,
+          totalVolume: u.total_invested || 0,
+          rankTier: u.rank_tier || 'Novice',
+          pnlPercent: u.pnl_percent || 0,
+          referralCount: u.referralCount || 0,
+          is_vip: u.is_vip || false,
+          bio: u.bio,
+          avatar_url: u.avatar_url || u.pfpUrl,
+        });
+      }
+
+      if (stratsRes.success && stratsRes.strategies) {
+        const seen = new Map();
+        const unique = stratsRes.strategies
+          .filter((s: any) => {
+            const key = s.id;
+            return seen.has(key) ? false : seen.set(key, true);
+          })
+          .sort((a: any, b: any) => b.createdAt - a.createdAt);
+        setMyStrategies(unique);
+      }
+
+      if (watchlistRes.success && watchlistRes.strategies) {
+        setWatchlist(watchlistRes.strategies);
+      }
+
+      if (investedRes.success && investedRes.strategies) {
+        setInvestedStrategies(investedRes.strategies);
+      }
+    } catch {
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!publicKey) return;
-
-    const loadProfile = async () => {
-      setIsLoading(true);
-      try {
-        const [userRes, stratsRes, watchlistRes, investedRes] = await Promise.all([
-          api.getUser(publicKey.toBase58()),
-          api.getUserStrategies(publicKey.toBase58()),
-          api.getUserWatchlist(publicKey.toBase58()),
-          api.getInvestedStrategies(publicKey.toBase58()),
-        ]);
-
-        if (userRes.success && userRes.user) {
-          const u = userRes.user;
-          setUserProfile({
-            username: u.username || 'Anonymous',
-            referralCode:
-              u.referralCode || `AXIS-${publicKey.toBase58().slice(0, 4).toUpperCase()}`,
-            totalPoints: u.total_xp || 0,
-            totalVolume: u.total_invested || 0,
-            rankTier: u.rank_tier || 'Novice',
-            pnlPercent: u.pnl_percent || 0,
-            referralCount: u.referralCount || 0,
-            is_vip: u.is_vip || false,
-          });
-        }
-
-        if (stratsRes.success && stratsRes.strategies) {
-          const seen = new Map();
-          const unique = stratsRes.strategies
-            .filter((s: any) => {
-              const key = s.id;
-              return seen.has(key) ? false : seen.set(key, true);
-            })
-            .sort((a: any, b: any) => b.createdAt - a.createdAt);
-          setMyStrategies(unique);
-        }
-
-        if (watchlistRes.success && watchlistRes.strategies) {
-          setWatchlist(watchlistRes.strategies);
-        }
-
-        if (investedRes.success && investedRes.strategies) {
-          setInvestedStrategies(investedRes.strategies);
-        }
-      } catch {
-      } finally {
-        setIsLoading(false);
-      }
-    };
     loadProfile();
   }, [publicKey]);
 
-  // --- 3. Load Leaderboard (POINTS only) ---
+  // --- 4. Load Leaderboard ---
   useEffect(() => {
     if (activeTab !== 'leaderboard') return;
 
     const loadLeaderboard = async () => {
+      setLeaderboardData([]);
+      setIsLeaderboardLoading(true);
       try {
-        const res = await api.getLeaderboard('points');
-        if (res.success && res.leaderboard) {
-          setLeaderboardData(
-            res.leaderboard.map((u: any, i: number) => ({
-              ...u,
-              rank: i + 1,
-              isMe: u.pubkey === publicKey?.toBase58(),
-            }))
+        if (leaderboardTab === 'created') {
+          const discoverRes = await api.discoverStrategies(200, 0);
+          const strategies: any[] = discoverRes.strategies || discoverRes || [];
+
+          const countMap: Record<string, { count: number; pfpUrl?: string | null }> = {};
+          for (const s of strategies) {
+            const pk = s.ownerPubkey || s.owner_pubkey;
+            if (!pk) continue;
+            if (!countMap[pk]) countMap[pk] = { count: 0, pfpUrl: s.creatorPfpUrl ?? null };
+            countMap[pk].count++;
+          }
+
+          const sorted = Object.entries(countMap)
+            .sort((a, b) => b[1].count - a[1].count)
+            .slice(0, 20);
+
+          const userInfos = await Promise.all(
+            sorted.map(([pk]) => api.getUser(pk).catch(() => null))
           );
+
+          setLeaderboardData(
+            sorted.map(([pk, data], i) => {
+              const u = userInfos[i]?.user;
+              return {
+                pubkey: pk,
+                username: u?.username || `${pk.slice(0, 4)}...${pk.slice(-4)}`,
+                avatar_url: u?.avatar_url || u?.pfpUrl || data.pfpUrl || null,
+                value: data.count,
+                rank: i + 1,
+                isMe: pk === publicKey?.toBase58(),
+              };
+            })
+          );
+        } else {
+          const res = await api.getLeaderboard('points');
+          if (res.success && res.leaderboard) {
+            setLeaderboardData(
+              res.leaderboard.map((u: any, i: number) => ({
+                ...u,
+                rank: i + 1,
+                isMe: u.pubkey === publicKey?.toBase58(),
+              }))
+            );
+          }
         }
-      } catch {}
+      } catch {
+      } finally {
+        setIsLeaderboardLoading(false);
+      }
     };
     loadLeaderboard();
-  }, [activeTab, publicKey]);
+  }, [activeTab, leaderboardTab, publicKey]);
+
+  // --- Handlers ---
+  const handleCheckIn = async () => {
+    if (!publicKey || checkedIn) return;
+    setCheckInLoading(true);
+    try {
+      const res = await api.dailyCheckIn(publicKey.toBase58());
+      if (res.success) {
+        setUserProfile((prev) =>
+          prev ? { ...prev, totalPoints: (prev.totalPoints || 0) + 10 } : prev
+        );
+        setXpFlash(true);
+        setTimeout(() => setXpFlash(false), 1200);
+        setCheckedIn(true);
+        const today = new Date().toISOString().split('T')[0];
+        localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
+        showToast('✅ +10 XP Claimed!', 'success');
+        loadProfile();
+      } else {
+        const errorMsg = (res.error || res.message || '').toLowerCase();
+        if (errorMsg.includes('already') || errorMsg.includes('today') || errorMsg.includes('済')) {
+          setCheckedIn(true);
+          const today = new Date().toISOString().split('T')[0];
+          localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
+        }
+        showToast(res.error || res.message || 'Check-in failed', 'error');
+      }
+    } catch (e: any) {
+      showToast(`Error: ${e.message}`, 'error');
+    }
+    setCheckInLoading(false);
+  };
+
+  const handleFaucet = async () => {
+    if (!publicKey) {
+      showToast('Please connect your wallet first', 'error');
+      return;
+    }
+    setFaucetLoading(true);
+    try {
+      const result = await api.requestFaucet(publicKey.toBase58());
+      if (result.success) {
+        showToast(result.message || '1,000 USDC received!', 'success');
+      } else {
+        showToast(result.error || result.message || 'Faucet failed. Try again later.', 'error');
+      }
+    } catch {
+      showToast('Faucet failed. Try again later.', 'error');
+    } finally {
+      setFaucetLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      setIsDisconnecting(true);
+      await disconnect();
+      showToast('Wallet disconnected', 'info');
+    } catch (error) {
+      console.error('Disconnect error:', error);
+      showToast('Failed to disconnect wallet', 'error');
+    } finally {
+      setIsDisconnecting(false);
+    }
+  };
 
   // --- Logic & Display Values ---
-  // USDC ≈ $1, so USD value = USDC value
   const investedAmountUSD = useMemo(
     () => myStrategies.reduce((sum, s) => sum + (s.tvl || 0), 0),
     [myStrategies]
@@ -223,76 +446,172 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
 
   return (
     <div className="max-w-md mx-auto h-full flex flex-col pt-4 md:pt-28 px-4 pb-32 safe-area-top relative">
-      {/* Net Worth Card */}
-      <div className="mb-8 relative group perspective-1000">
-        <div
-          className="relative overflow-hidden rounded-[24px] border border-[rgba(184,134,63,0.15)] bg-[#080503] shadow-2xl"
-          style={{ aspectRatio: '1.58/1' }}
-        >
-          <div className="absolute inset-0 z-0" style={FIXED_BG_STYLE} />
-          <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 mix-blend-overlay" />
-          <div className="relative z-10 h-full p-6 flex flex-col justify-between bg-black/10 backdrop-blur-[1px]">
-            <div className="flex justify-between items-start">
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-[rgba(184,134,63,0.08)] w-fit">
-                  <Wallet className="w-3 h-3 text-[#B8863F]" />
-                  <span className="font-bold text-white text-sm font-serif">
-                    {formatAddress(publicKey.toBase58())}
-                  </span>
+
+      {/* Hero Section */}
+      <div className="mb-6 relative overflow-hidden rounded-[24px] border border-[rgba(184,134,63,0.15)] bg-[#080503] shadow-2xl">
+        <div className="absolute inset-0 z-0" style={FIXED_BG_STYLE} />
+        <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 mix-blend-overlay" />
+        <div className="relative z-10 p-5">
+          {/* Top row: Avatar + Info + Edit */}
+          <div className="flex items-start gap-4">
+            {/* Avatar */}
+            <div
+              className="relative group cursor-pointer flex-shrink-0"
+              onClick={() => setIsEditOpen(true)}
+            >
+              <div className="w-20 h-20 rounded-full border-2 border-[#B8863F]/30 p-1">
+                <div className="w-full h-full rounded-full bg-[#140E08] overflow-hidden flex items-center justify-center">
+                  {userProfile?.avatar_url ? (
+                    <img
+                      src={api.getProxyUrl(userProfile.avatar_url)}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-8 h-8 text-[#F2E0C8]/20" />
+                  )}
                 </div>
-                {userProfile?.is_vip && (
-                  <div className="ml-1">
-                    <OGBadge size="sm" />
-                  </div>
-                )}
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setCurrencyMode((m) => (m === 'USD' ? 'USDC' : 'USD'))}
-                  className="text-[10px] font-bold bg-black/40 px-2 py-1 rounded text-white/70 border border-[rgba(184,134,63,0.15)]"
-                >
-                  {currencyMode}
-                </button>
-                <button onClick={() => setIsHidden(!isHidden)} className="text-white/50">
-                  {isHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+              <div className="absolute bottom-1 right-1 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#140D07] p-1 rounded-full border border-black shadow-lg group-hover:scale-110 transition-transform">
+                <Edit className="w-3 h-3" />
               </div>
             </div>
-            <div className="py-2">
-              <p className="text-white/50 text-[10px] font-bold uppercase tracking-widest mb-1">
-                Total Net Worth
+
+            {/* Info */}
+            <div className="flex-1 min-w-0 pt-1">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-lg font-bold text-[#F2E0C8] truncate">
+                  {userProfile?.username || formatAddress(publicKey.toBase58())}
+                </h2>
+                {userProfile?.is_vip && <OGBadge size="sm" />}
+              </div>
+
+              {/* XP with flash animation */}
+              <div className="relative inline-block mt-0.5">
+                <p className={`text-sm font-serif font-bold transition-colors duration-300 ${xpFlash ? 'text-emerald-400' : 'text-[#B8863F]'}`}>
+                  XP: {userProfile?.totalPoints.toLocaleString() || 0}
+                </p>
+                <AnimatePresence>
+                  {xpFlash && (
+                    <motion.span
+                      initial={{ opacity: 0, y: 4, scale: 0.8 }}
+                      animate={{ opacity: 1, y: -16, scale: 1 }}
+                      exit={{ opacity: 0, y: -32, scale: 0.8 }}
+                      transition={{ duration: 0.9, ease: 'easeOut' }}
+                      className="absolute -top-1 left-full ml-2 text-emerald-400 font-bold text-xs whitespace-nowrap pointer-events-none"
+                    >
+                      +10 XP
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <p className="text-xs text-white/40 mt-0.5">
+                Rank: <span className="text-white/70 font-bold">{userProfile?.rankTier || 'Novice'}</span>
               </p>
-              <h2 className="text-4xl sm:text-5xl font-bold text-white tracking-tight font-serif">
+
+              {/* Wallet Address */}
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <Wallet className="w-3 h-3 text-white/30 flex-shrink-0" />
+                <span className="text-[11px] font-mono text-white/40 tracking-wide">
+                  {formatAddress(publicKey.toBase58())}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Bio */}
+          <div className="mt-3">
+            {userProfile?.bio ? (
+              <p className="text-sm text-[#7A5A30] leading-relaxed">{userProfile.bio}</p>
+            ) : (
+              <button
+                onClick={() => setIsEditOpen(true)}
+                className="text-xs text-[#7A5A30]/50 hover:text-[#B8863F] transition-colors"
+              >
+                + Add Bio
+              </button>
+            )}
+          </div>
+
+          {/* Net Worth separator */}
+          <div className="mt-4 pt-4 border-t border-[rgba(184,134,63,0.1)] flex items-center justify-between">
+            <div>
+              <p className="text-[10px] text-white/40 uppercase font-bold tracking-widest mb-1">
+                Net Worth
+              </p>
+              <h3 className="text-2xl font-bold text-white font-serif">
                 {isHidden ? '••••••' : formatCurrency(displayValue, currencyMode)}
-              </h2>
+              </h3>
               {pnlVal !== 0 && (
                 <div
-                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold mt-2 border border-[rgba(184,134,63,0.15)] ${isPos ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold mt-1 border border-[rgba(184,134,63,0.15)] ${isPos ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}
                 >
-                  {isPos ? (
-                    <ArrowUpRight className="w-3 h-3" />
-                  ) : (
-                    <ArrowDownRight className="w-3 h-3" />
-                  )}
+                  {isPos ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                   <span className="font-mono">
                     {isHidden ? '••••' : `${isPos ? '+' : ''}${pnlVal.toFixed(2)}%`}
                   </span>
                 </div>
               )}
             </div>
-            <div className="flex justify-between items-end">
-              <div>
-                <p className="text-[10px] text-white/40 uppercase font-bold mb-0.5">Points</p>
-                <p className="text-sm text-[#B8863F] font-bold font-mono">
-                  {userProfile?.totalPoints.toLocaleString() || 0}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] text-white/40 uppercase font-bold mb-0.5">Rank</p>
-                <p className="text-sm text-white font-bold">{userProfile?.rankTier || 'Novice'}</p>
-              </div>
+            <div className="flex gap-2 items-center">
+              <button
+                onClick={() => setCurrencyMode((m) => (m === 'USD' ? 'USDC' : 'USD'))}
+                className="text-[10px] font-bold bg-black/40 px-2 py-1 rounded text-white/70 border border-[rgba(184,134,63,0.15)]"
+              >
+                {currencyMode}
+              </button>
+              <button onClick={() => setIsHidden(!isHidden)} className="text-white/50">
+                {isHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="mb-6 space-y-3">
+        {/* Daily Check-in */}
+        <button
+          onClick={handleCheckIn}
+          disabled={checkInLoading || checkedIn}
+          className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 font-bold shadow-lg transition-all ${
+            checkedIn
+              ? 'bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 cursor-default'
+              : 'bg-[#B8863F] text-black shadow-[#6B4420]/20 active:scale-95 hover:brightness-110 disabled:opacity-50'
+          }`}
+        >
+          {checkInLoading ? (
+            <Sparkles className="h-5 w-5 animate-spin" />
+          ) : (
+            <CheckCircle className="h-5 w-5" />
+          )}
+          <span>{checkedIn ? "Today's Check-in Done" : 'Daily Check-in'}</span>
+          {!checkedIn && (
+            <span className="rounded bg-black/20 px-1.5 py-0.5 text-xs">+10 XP</span>
+          )}
+        </button>
+
+        {/* Faucet + Invite row */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={handleFaucet}
+            disabled={faucetLoading}
+            className={`bg-[#1C1C1E] border border-[rgba(184,134,63,0.3)] text-[#B8863F] py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
+              faucetLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#B8863F]/10 active:scale-95'
+            }`}
+          >
+            <Coins className="w-4 h-4" />
+            <span className="text-sm">{faucetLoading ? 'Processing...' : 'Get Demo USDC'}</span>
+          </button>
+
+          <button
+            onClick={() => setIsInviteOpen(true)}
+            className="group flex items-center justify-center gap-2 rounded-2xl border border-[rgba(184,134,63,0.15)] bg-[#140E08] py-3 font-bold text-[#F2E0C8] text-sm transition-all active:scale-95 hover:bg-[#221509]"
+          >
+            <QrCode className="h-4 w-4 text-[#7A5A30] transition-colors group-hover:text-[#F2E0C8]" />
+            Invite & Earn
+          </button>
         </div>
       </div>
 
@@ -331,7 +650,12 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
             />
           </div>
           <div className="space-y-3 pb-20">
-            {portfolioSubTab === 'created' &&
+            {isLoading && (
+              <div className="py-12 flex justify-center">
+                <div className="w-6 h-6 border-2 border-t-[#B8863F] border-white/10 rounded-full animate-spin" />
+              </div>
+            )}
+            {!isLoading && portfolioSubTab === 'created' &&
               (myStrategies.length > 0 ? (
                 myStrategies.map((s) => (
                   <StrategyCard key={s.id} strategy={s} onSelect={onStrategySelect} />
@@ -343,7 +667,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                   sub="Create your first index fund."
                 />
               ))}
-            {portfolioSubTab === 'invested' &&
+            {!isLoading && portfolioSubTab === 'invested' &&
               (investedStrategies.length > 0 ? (
                 investedStrategies.map((s) => (
                   <StrategyCard key={s.id} strategy={s} onSelect={onStrategySelect} />
@@ -355,7 +679,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                   sub="Explore strategies to grow wealth."
                 />
               ))}
-            {portfolioSubTab === 'watchlist' &&
+            {!isLoading && portfolioSubTab === 'watchlist' &&
               (watchlist.length > 0 ? (
                 watchlist.map((s) => (
                   <StrategyCard key={s.id} strategy={s} onSelect={onStrategySelect} />
@@ -373,61 +697,202 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
 
       {activeTab === 'leaderboard' && (
         <div className="space-y-4 pb-20 animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="flex items-center px-4 pb-2 text-[10px] text-white/30 font-bold uppercase tracking-wider">
-            <div className="w-8 text-center">#</div>
-            <div className="flex-1 pl-2">User</div>
-            <div className="w-24 text-right">XP</div>
+          {/* Leaderboard sub-tabs */}
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+            <FilterChip
+              label="Points"
+              active={leaderboardTab === 'points'}
+              onClick={() => setLeaderboardTab('points')}
+              icon={<Star className="w-3 h-3" />}
+            />
+            <FilterChip
+              label="ETFs Created"
+              active={leaderboardTab === 'created'}
+              onClick={() => setLeaderboardTab('created')}
+              icon={<Trophy className="w-3 h-3" />}
+            />
           </div>
-          <div className="space-y-2">
-            {leaderboardData.length === 0 ? (
-              <div className="py-20 text-center text-white/30 text-xs">
-                {isLoading ? 'Loading...' : 'No data available.'}
-              </div>
-            ) : (
-              leaderboardData.map((user, i) => (
-                <div
-                  key={i}
-                  className={`flex items-center p-3 rounded-xl border transition-colors ${user.isMe ? 'bg-[#B8863F]/10 border-[#B8863F]/30' : 'bg-[#140E08] border-[rgba(184,134,63,0.08)]'}`}
+          {leaderboardData.length === 0 ? (
+            <div className="py-20 flex flex-col items-center justify-center text-white/30 text-xs">
+              {isLeaderboardLoading ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-6 h-6 border-2 border-t-[#B8863F] border-white/10 rounded-full animate-spin"></div>
+                  <span className="font-mono tracking-widest uppercase">Loading...</span>
+                </div>
+              ) : (
+                'No ranking data available.'
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Top 1 (Gold) */}
+              {leaderboardData[0] && (
+                <div className={`relative flex flex-col items-center p-6 rounded-2xl border ${
+                  leaderboardData[0].isMe
+                    ? 'bg-gradient-to-b from-[#D4AF37]/10 to-[#140E08] border-[#D4AF37]/50'
+                    : 'bg-[#140E08] border-[rgba(212,175,55,0.2)]'
+                  } overflow-hidden`}
                 >
-                  <div
-                    className={`w-8 text-center font-mono font-bold text-lg ${user.rank <= 3 ? 'text-[#FFD700]' : 'text-[#7A5A30]'}`}
-                  >
-                    {user.rank}
-                  </div>
-                  <div className="flex-1 flex items-center gap-3 pl-2 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-xs font-bold text-white/50 border border-[rgba(184,134,63,0.08)] overflow-hidden">
-                      {user.avatar_url ? (
-                        <img
-                          src={api.getProxyUrl(user.avatar_url)}
-                          className="w-full h-full object-cover"
-                        />
+                  <span className="absolute top-4 left-5 font-black italic text-2xl bg-gradient-to-br from-[#FFF5C3] via-[#D4AF37] to-[#996515] text-transparent bg-clip-text drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                    #1
+                  </span>
+
+                  <div className="relative mb-3">
+                    <div className="w-22 h-22 sm:w-24 sm:h-24 rounded-full border-2 border-[#D4AF37] shadow-[0_0_20px_rgba(212,175,55,0.4)] overflow-hidden bg-white/5 flex items-center justify-center z-10 relative">
+                      {leaderboardData[0].avatar_url ? (
+                        <img src={api.getProxyUrl(leaderboardData[0].avatar_url)} className="w-full h-full object-cover" alt="Rank 1" />
                       ) : (
-                        user.username.charAt(0)
+                        <span className="text-2xl font-bold text-white/50">{leaderboardData[0].username.charAt(0).toUpperCase()}</span>
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <p
-                        className={`font-bold text-sm truncate ${user.isMe ? 'text-[#B8863F]' : 'text-white'}`}
-                      >
-                        {user.username}
-                      </p>
-                      <p className="text-[10px] text-white/30 font-mono">
-                        {formatAddress(user.pubkey)}
-                      </p>
-                    </div>
                   </div>
-                  <div className="w-24 text-right font-mono font-bold text-white">
-                    {user.value.toLocaleString()}
+
+                  <p className="font-bold text-white text-lg mb-1">{leaderboardData[0].username}</p>
+                  <div className="flex items-center gap-1.5 text-[#D4AF37] font-bold">
+                    {leaderboardTab === 'created' ? (
+                      <><Trophy className="w-4 h-4" />{leaderboardData[0].value.toLocaleString()} ETFs</>
+                    ) : (
+                      <><Star className="w-4 h-4 fill-[#D4AF37]" />{leaderboardData[0].value.toLocaleString()}</>
+                    )}
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+              )}
+
+              {/* Top 2 (Silver) & 3 (Bronze) */}
+              <div className="grid grid-cols-2 gap-3">
+                {[leaderboardData[1], leaderboardData[2]].map((user, idx) => {
+                  if (!user) return null;
+                  const rank = idx + 2;
+                  const isSilver = rank === 2;
+
+                  const badgeGradient = isSilver
+                    ? 'from-[#FFFFFF] via-[#C0C0C0] to-[#707070]'
+                    : 'from-[#FFDAB9] via-[#CD7F32] to-[#8B4513]';
+                  const borderColor = isSilver ? 'border-[#C0C0C0]' : 'border-[#CD7F32]';
+                  const shadowColor = isSilver ? 'shadow-[0_0_15px_rgba(192,192,192,0.25)]' : 'shadow-[0_0_15px_rgba(205,127,50,0.25)]';
+                  const textColor = isSilver ? 'text-[#C0C0C0]' : 'text-[#CD7F32]';
+
+                  return (
+                    <div key={user.pubkey} className={`relative flex flex-col items-center p-5 rounded-2xl border ${
+                      user.isMe
+                        ? `bg-gradient-to-b ${isSilver ? 'from-[#C0C0C0]/10' : 'from-[#CD7F32]/10'} to-[#140E08] ${borderColor}`
+                        : 'bg-[#140E08] border-[rgba(255,255,255,0.05)]'
+                      }`}
+                    >
+                      <span className={`absolute top-3 left-4 font-black italic text-xl bg-gradient-to-br ${badgeGradient} text-transparent bg-clip-text drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)]`}>
+                        #{rank}
+                      </span>
+
+                      <div className={`w-16 h-16 rounded-full border-[1.5px] ${borderColor} ${shadowColor} mb-2 overflow-hidden bg-white/5 flex items-center justify-center`}>
+                        {user.avatar_url ? (
+                          <img src={api.getProxyUrl(user.avatar_url)} className="w-full h-full object-cover" alt={`Rank ${rank}`} />
+                        ) : (
+                          <span className="text-xl font-bold text-white/50">{user.username.charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
+
+                      <p className="font-bold text-white text-sm mb-1 w-full text-center truncate">{user.username}</p>
+                      <div className={`flex items-center gap-1 font-bold text-sm ${textColor}`}>
+                        {leaderboardTab === 'created' ? (
+                          <><Trophy className="w-3.5 h-3.5" />{user.value.toLocaleString()} ETFs</>
+                        ) : (
+                          <><Star className="w-3.5 h-3.5 fill-current" />{user.value.toLocaleString()}</>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 4th and beyond */}
+              <div className="flex flex-col gap-2 pt-2">
+                {leaderboardData.slice(3).map((user) => (
+                  <div key={user.pubkey} className={`flex items-center p-3 sm:p-4 rounded-2xl border transition-colors ${
+                    user.isMe
+                      ? 'bg-[#B8863F]/10 border-[#B8863F]/30'
+                      : 'bg-[#140E08] border-[rgba(255,255,255,0.03)] hover:border-[rgba(184,134,63,0.15)]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-4 w-full">
+                      <div className="w-10 h-10 rounded-full overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center flex-shrink-0">
+                        {user.avatar_url ? (
+                          <img src={api.getProxyUrl(user.avatar_url)} className="w-full h-full object-cover" alt="Player" />
+                        ) : (
+                          <span className="text-sm font-bold text-white/50">{user.username.charAt(0).toUpperCase()}</span>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0 flex flex-col justify-center">
+                        <p className="text-[11px] text-white/40 mb-0.5 font-mono font-bold">#{user.rank}</p>
+                        <div className="flex items-center gap-2">
+                          <p className={`font-bold text-sm truncate ${user.isMe ? 'text-[#B8863F]' : 'text-white/90'}`}>
+                            {user.username}
+                          </p>
+                          {user.isMe && (
+                            <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#B8863F]/20 text-[#B8863F] uppercase tracking-wider font-bold">You</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-white/70 font-bold">
+                        {leaderboardTab === 'created' ? (
+                          <><Trophy className="w-3.5 h-3.5" />{user.value.toLocaleString()} ETFs</>
+                        ) : (
+                          <><Star className="w-3.5 h-3.5 fill-white/20" />{user.value.toLocaleString()}</>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* Disconnect Button */}
+      <div className="mt-6 pb-4">
+        <button
+          onClick={handleDisconnect}
+          disabled={isDisconnecting}
+          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2 text-sm font-bold text-red-500/80 transition-colors hover:bg-red-500/5 hover:text-red-500 disabled:opacity-50"
+        >
+          {isDisconnecting ? (
+            <Sparkles className="h-4 w-4 animate-spin" />
+          ) : (
+            <LogOut className="h-4 w-4" />
+          )}
+          {isDisconnecting ? 'Disconnecting...' : 'Disconnect Wallet'}
+        </button>
+      </div>
+
+      {/* Modals */}
+      {publicKey && (
+        <ProfileEditModal
+          isOpen={isEditOpen}
+          onClose={() => setIsEditOpen(false)}
+          currentProfile={{
+            pubkey: publicKey.toBase58(),
+            username: userProfile?.username,
+            bio: userProfile?.bio,
+            avatar_url: userProfile?.avatar_url,
+          }}
+          onUpdate={loadProfile}
+        />
+      )}
+
+      <AnimatePresence>
+        {isInviteOpen && publicKey && (
+          <InviteModal
+            isOpen={isInviteOpen}
+            onClose={() => setIsInviteOpen(false)}
+            pubkey={publicKey.toBase58()}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
-};
+}
 
 // --- Sub Components ---
 
@@ -450,7 +915,7 @@ const EmptyState = memo(({ icon: Icon, title, sub }: any) => (
 
 const StrategyCard = memo(
   ({ strategy, onSelect }: { strategy: Strategy; onSelect?: (strategy: any) => void }) => {
-    const tvlUSD = strategy.tvl || 0; // USDC ≈ $1
+    const tvlUSD = strategy.tvl || 0;
     const tokens = Array.isArray(strategy.tokens) ? strategy.tokens : [];
     const displayTokens = tokens.slice(0, 5);
     const extraCount = tokens.length - 5;
