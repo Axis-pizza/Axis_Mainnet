@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWallet } from '../../hooks/useWallet';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Search, X as XIcon } from 'lucide-react';
 import { api } from '../../services/api';
 import { JupiterService } from '../../services/jupiter';
 import { DexScreenerService } from '../../services/dexscreener';
@@ -78,6 +78,8 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
   const [userMap, setUserMap] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [filter] = useState<'all' | 'trending' | 'new' | 'top'>('top');
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 1024);
 
   useEffect(() => {
@@ -247,24 +249,74 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
     });
   }, [rawStrategies, tokenDataMap, userMap]);
 
-  const filteredStrategies = strategies
-    .slice()
-    .sort((a, b) => {
-      if (publicKey) {
-        const isMineA = a.ownerPubkey === publicKey.toBase58();
-        const isMineB = b.ownerPubkey === publicKey.toBase58();
-        if (isMineA && !isMineB) return -1;
-        if (!isMineA && isMineB) return 1;
-      }
-      if (filter === 'new') return b.createdAt - a.createdAt;
-      if (filter === 'top') return (b.tvl || 0) - (a.tvl || 0);
-      return 0;
-    });
+  const filteredStrategies = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return strategies
+      .slice()
+      .sort((a, b) => {
+        if (publicKey) {
+          const isMineA = a.ownerPubkey === publicKey.toBase58();
+          const isMineB = b.ownerPubkey === publicKey.toBase58();
+          if (isMineA && !isMineB) return -1;
+          if (!isMineA && isMineB) return 1;
+        }
+        if (filter === 'new') return b.createdAt - a.createdAt;
+        if (filter === 'top') return (b.tvl || 0) - (a.tvl || 0);
+        return 0;
+      })
+      .filter((s) => {
+        if (!q) return true;
+        if (s.name.toLowerCase().includes(q)) return true;
+        if (s.type.toLowerCase().includes(q)) return true;
+        if (s.tokens.some((t) => t.symbol.toLowerCase().includes(q))) return true;
+        return false;
+      });
+  }, [strategies, searchQuery, filter, publicKey]);
 
   return (
     <div className="min-h-screen bg-[#030303] text-white px-4 md:px-8 lg:px-12 py-6 pb-24">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-6 pt-12 md:pt-20" />
+        <div className="pt-12 md:pt-20" />
+
+        {/* Search Bar */}
+        {!loading && strategies.length > 0 && (
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name or token symbol..."
+                className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder-white/25 focus:outline-none focus:border-[#B8863F]/50 focus:bg-white/[0.07] transition-all"
+              />
+              <AnimatePresence>
+                {searchQuery && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ duration: 0.1 }}
+                    onClick={() => {
+                      setSearchQuery('');
+                      searchInputRef.current?.focus();
+                    }}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors"
+                  >
+                    <XIcon className="w-4 h-4" />
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </div>
+            {searchQuery && (
+              <p className="mt-2 px-1 text-xs text-white/30">
+                {filteredStrategies.length} result{filteredStrategies.length !== 1 ? 's' : ''} for{' '}
+                <span className="text-[#B8863F]">"{searchQuery}"</span>
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Content */}
         {loading ? (
@@ -274,32 +326,43 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
           </div>
         ) : strategies.length === 0 ? (
           <EmptyState />
-        ) : (
-          <>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
-              <AnimatePresence mode="popLayout">
-                {filteredStrategies.map((strategy, i) => (
-                  <motion.div
-                    key={strategy.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ delay: i * 0.04 }}
-                    className={`cursor-pointer ${isDesktop ? 'h-[520px]' : 'h-[360px]'}`}
-                    onClick={() =>
-                      onOpenInSwipe ? onOpenInSwipe(strategy.id) : onStrategySelect(strategy)
-                    }
-                  >
-                    <SwipeCardBody strategy={toCardData(strategy)} compact={!isDesktop} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+        ) : filteredStrategies.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center py-20 text-center"
+          >
+            <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4 border border-white/10">
+              <Search className="w-6 h-6 text-white/20" />
             </div>
-
-            {filteredStrategies.length === 0 && (
-              <div className="text-center py-12 text-white/40">No strategies found.</div>
-            )}
-          </>
+            <p className="text-white/40 text-sm mb-3">No strategies matched</p>
+            <button
+              onClick={() => setSearchQuery('')}
+              className="text-xs text-[#B8863F] hover:text-[#D4A261] transition-colors"
+            >
+              Clear search
+            </button>
+          </motion.div>
+        ) : (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+            <AnimatePresence mode="popLayout">
+              {filteredStrategies.map((strategy, i) => (
+                <motion.div
+                  key={strategy.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ delay: searchQuery ? 0 : i * 0.04 }}
+                  className={`cursor-pointer ${isDesktop ? 'h-[520px]' : 'h-[360px]'}`}
+                  onClick={() =>
+                    onOpenInSwipe ? onOpenInSwipe(strategy.id) : onStrategySelect(strategy)
+                  }
+                >
+                  <SwipeCardBody strategy={toCardData(strategy)} compact={!isDesktop} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
         )}
       </div>
     </div>

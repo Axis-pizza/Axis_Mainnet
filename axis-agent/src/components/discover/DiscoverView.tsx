@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
-import { User, Menu, X, BookOpen, FileText } from 'lucide-react';
+import { Menu, X, BookOpen, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SwipeDiscoverView } from './SwipeDiscoverView';
 import { ListDiscoverView } from './ListDiscoverView';
-import { ProfileDrawer } from '../common/ProfileDrawer';
 import type { Strategy } from '../../types';
 
 const XLogo = ({ size = 16 }: { size?: number }) => (
@@ -27,7 +26,6 @@ interface DiscoverViewProps {
 }
 
 export const DiscoverView = ({ onStrategySelect, onOverlayChange, viewMode, onViewModeChange }: DiscoverViewProps) => {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [focusedStrategyId, setFocusedStrategyId] = useState<string | null>(null);
 
@@ -117,14 +115,6 @@ export const DiscoverView = ({ onStrategySelect, onOverlayChange, viewMode, onVi
             </AnimatePresence>
           </div>
 
-          {/* Profile button */}
-          <button
-            onClick={() => setIsDrawerOpen(true)}
-            className="p-2 rounded-full bg-black/40 backdrop-blur-md border border-white/10 hover:bg-white/10 active:scale-95 transition-all relative group"
-          >
-            <User className="w-5 h-5 text-[#F2E0C8] group-hover:text-[#F2E0C8] transition-colors" />
-            <div className="absolute top-1 right-1 w-2.5 h-2.5 bg-[#B8863F] rounded-full border-2 border-[#080503]" />
-          </button>
         </div>
       </div>
 
@@ -164,7 +154,6 @@ export const DiscoverView = ({ onStrategySelect, onOverlayChange, viewMode, onVi
         </AnimatePresence>
       </div>
 
-      <ProfileDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
     </div>
   );
 };
