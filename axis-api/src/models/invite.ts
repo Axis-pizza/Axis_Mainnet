@@ -36,38 +36,46 @@ export async function findInviteByCode(db: D1Database, code: string): Promise<In
   }
 }
 
+// 以下の関数におけるinvitesは元々invite_codesテーブルを使用していたため、該当部分をコメントアウト
+
 export async function findInvitesByCreator(db: D1Database, creatorId: string): Promise<Invite[]> {
-  const drizzledb = drizzle(db);
-  const results = await drizzledb.select().from(invitesTable).where(eq(invitesTable.creator_id, creatorId));
-  return results as unknown as Invite[];
+  // 元: SELECT * FROM invite_codes WHERE creator_id = ?
+  // const drizzledb = drizzle(db);
+  // const results = await drizzledb.select().from(invitesTable).where(eq(invitesTable.creator_id, creatorId));
+  // return results as unknown as Invite[];
+  return [];
 }
 
 export async function markInviteUsed(db: D1Database, code: string, userId: string): Promise<void> {
-  if (!code || ADMIN_CODES.includes(code.toUpperCase())) return;
-  const drizzledb = drizzle(db);
-  await drizzledb.update(invitesTable)
-    .set({ used_by_user_id: userId })
-    .where(eq(invitesTable.code, code));
+  // 元: UPDATE invite_codes SET is_used = 1, used_by = ? WHERE code = ?
+  // if (!code || ADMIN_CODES.includes(code.toUpperCase())) return;
+  // const drizzledb = drizzle(db);
+  // await drizzledb.update(invitesTable)
+  //   .set({ used_by_user_id: userId })
+  //   .where(eq(invitesTable.code, code));
 }
 
 // ★警告が出ていた関数を明示的にエクスポート
 export async function createInvites(db: D1Database, userId: string, count: number = 5): Promise<void> {
-  const drizzledb = drizzle(db);
-  const values = Array.from({ length: count }, () => ({
-    code: generateInviteCode(),
-    creator_id: userId,
-    created_at: Math.floor(Date.now() / 1000),
-  }));
-  await drizzledb.insert(invitesTable).values(values);
+  // 元: INSERT INTO invite_codes (code, creator_id, email) VALUES (?, ?, ?)
+  // const drizzledb = drizzle(db);
+  // const values = Array.from({ length: count }, () => ({
+  //   code: generateInviteCode(),
+  //   creator_id: userId,
+  //   created_at: Math.floor(Date.now() / 1000),
+  // }));
+  // await drizzledb.insert(invitesTable).values(values);
 }
 
 export async function createOneInvite(db: D1Database, creatorId: string, _email?: string): Promise<string> {
-  const code = generateInviteCode();
-  const drizzledb = drizzle(db);
-  await drizzledb.insert(invitesTable).values({
-    code,
-    creator_id: creatorId ?? 'system',
-    created_at: Math.floor(Date.now() / 1000),
-  });
-  return code;
+  // 元: INSERT INTO invite_codes (code, creator_id, email) VALUES (?, ?, ?)
+  // const code = generateInviteCode();
+  // const drizzledb = drizzle(db);
+  // await drizzledb.insert(invitesTable).values({
+  //   code,
+  //   creator_id: creatorId ?? 'system',
+  //   created_at: Math.floor(Date.now() / 1000),
+  // });
+  // return code;
+  return '';
 }
