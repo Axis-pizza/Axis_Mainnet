@@ -13,6 +13,8 @@
     "arctic": "^3.7.0",
     "bs58": "^6.0.0",
     "buffer": "^6.0.3",
+    "dotenv": "^17.2.4",
+    "drizzle-orm": "^0.45.1",
     "hono": "^4.11.9",
     "mimetext": "^3.0.27",
     "react": "^19.2.3",
@@ -20,6 +22,8 @@
     "satori": "^0.19.1"
   },
   "devDependencies": {
+    "drizzle-kit": "^0.31.9",
+    "tsx": "^4.21.0",
     "wrangler": "^4.60.0"
   },
   "packageManager": "pnpm@10.10.0+sha512.d615db246fe70f25dcfea6d8d73dee782ce23e2245e3c4f6f888249fb568149318637dca73c2c5c8ef2a4ca0d5657fb9567188bfab47f566d1ee6ce987815c39"
