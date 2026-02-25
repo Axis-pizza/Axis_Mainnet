@@ -1,3 +1,9 @@
+import { drizzle } from "drizzle-orm/d1";
+import { desc } from "drizzle-orm";
+import { vaultsTable } from "../db/schema";
+
+// Re-export for drizzle-kit (schema: 'src/models' configuration)
+export { vaultsTable };
 
 export interface Vault {
   id: string;
@@ -14,31 +20,27 @@ export interface Vault {
 }
 
 export async function getAllVaults(db: D1Database): Promise<Vault[]> {
-    const { results } = await db.prepare("SELECT * FROM vaults ORDER BY created_at DESC").all();
-    
-    return results.map((v: any) => ({
-      ...v,
-      composition: v.composition ? JSON.parse(v.composition) : []
-    })) as Vault[];
+  const drizzledb = drizzle(db);
+  const results = await drizzledb.select().from(vaultsTable).orderBy(desc(vaultsTable.created_at));
+
+  return results.map((v: any) => ({
+    ...v,
+    composition: v.composition ? JSON.parse(v.composition) : []
+  })) as Vault[];
 }
 
 export async function createVault(db: D1Database, vault: Omit<Vault, 'created_at'>): Promise<void> {
-     await db.prepare(`
-      INSERT INTO vaults (
-        id, name, symbol, description, creator, 
-        strategy_type, management_fee, min_liquidity, composition, image_url
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      vault.id, 
-      vault.name, 
-      vault.symbol, 
-      vault.description, 
-      vault.creator, 
-      vault.strategy_type, 
-      vault.management_fee, 
-      vault.min_liquidity, 
-      JSON.stringify(vault.composition), 
-      vault.image_url || null
-    ).run();
+  const drizzledb = drizzle(db);
+  await drizzledb.insert(vaultsTable).values({
+    id: vault.id,
+    name: vault.name,
+    symbol: vault.symbol,
+    description: vault.description,
+    creator: vault.creator,
+    strategy_type: vault.strategy_type,
+    management_fee: vault.management_fee,
+    min_liquidity: vault.min_liquidity,
+    composition: JSON.stringify(vault.composition),
+    image_url: vault.image_url || null,
+  });
 }

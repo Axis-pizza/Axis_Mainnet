@@ -1,4 +1,9 @@
-import { Bindings } from "../config/env";
+import { drizzle } from "drizzle-orm/d1";
+import { eq, sql, SQL } from "drizzle-orm";
+import { usersTable } from "../db/schema";
+
+// Re-export for drizzle-kit (schema: 'src/models' configuration)
+export { usersTable };
 
 export interface User {
   id: string;
@@ -10,7 +15,7 @@ export interface User {
   avatar_url?: string;
   invite_code: string;
   referred_by?: string;
-  badges?: string; 
+  badges?: string;
   otp_code?: string;
   otp_expires?: number;
   invite_code_used?: string;
@@ -27,18 +32,21 @@ export interface User {
 // --- Read Functions ---
 
 export async function findUserByTwitterId(db: D1Database, twitterId: string): Promise<User | null> {
-  const user = await db.prepare("SELECT * FROM users WHERE twitter_id = ?").bind(twitterId ?? null).first();
-  return user as User | null;
+  const drizzledb = drizzle(db);
+  const [result] = await drizzledb.select().from(usersTable).where(eq(usersTable.twitter_id, twitterId ?? null)).limit(1);
+  return (result as unknown as User) ?? null;
 }
 
 export async function findUserByEmail(db: D1Database, email: string): Promise<User | null> {
-  const user = await db.prepare("SELECT * FROM users WHERE email = ?").bind(email ?? null).first();
-  return user as User | null;
+  const drizzledb = drizzle(db);
+  const [result] = await drizzledb.select().from(usersTable).where(eq(usersTable.email, email ?? null)).limit(1);
+  return (result as unknown as User) ?? null;
 }
 
 export async function findUserByWallet(db: D1Database, wallet: string): Promise<User | null> {
-    const user = await db.prepare("SELECT * FROM users WHERE wallet_address = ?").bind(wallet ?? null).first();
-    return user as User | null;
+  const drizzledb = drizzle(db);
+  const [result] = await drizzledb.select().from(usersTable).where(eq(usersTable.wallet_address, wallet ?? null)).limit(1);
+  return (result as unknown as User) ?? null;
 }
 
 // --- Twitter Functions ---
@@ -46,17 +54,23 @@ export async function findUserByWallet(db: D1Database, wallet: string): Promise<
 export async function linkTwitterToUser(
   db: D1Database, wallet: string, twitterId: string, avatarUrl: string
 ): Promise<void> {
-  await db.prepare(
-    "UPDATE users SET twitter_id = ?, avatar_url = ? WHERE wallet_address = ?"
-  ).bind(twitterId, avatarUrl, wallet).run();
+  const drizzledb = drizzle(db);
+  await drizzledb.update(usersTable)
+    .set({ twitter_id: twitterId, avatar_url: avatarUrl })
+    .where(eq(usersTable.wallet_address, wallet));
 }
 
 export async function createTwitterUser(
   db: D1Database, id: string, twitterId: string, name: string, avatarUrl: string, inviteCode: string
 ): Promise<void> {
-  await db.prepare(
-    'INSERT INTO users (id, twitter_id, name, avatar_url, invite_code, total_xp, rank_tier, last_checkin) VALUES (?, ?, ?, ?, ?, 500, "Novice", 0)'
-  ).bind(id, twitterId, name, avatarUrl, inviteCode).run();
+  const drizzledb = drizzle(db);
+  await drizzledb.insert(usersTable).values({
+    id,
+    twitter_id: twitterId,
+    name,
+    avatar_url: avatarUrl,
+    invite_code: inviteCode,
+  } as any);
 }
 
 // --- Create Functions ---
@@ -70,90 +84,79 @@ export async function createRegisteredUser(
     inviteCodeUsed: string | null,
     avatarUrl?: string,
     name?: string,
-    bio?: string
+    _bio?: string // スキーマ未定義のため未使用
 ): Promise<void> {
-    await db.prepare(
-        'INSERT INTO users (id, email, wallet_address, invite_code, invite_code_used, avatar_url, name, bio, total_xp, rank_tier, last_checkin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 500, "Novice", 0)'
-      ).bind(
-        id ?? null, 
-        email ?? null, 
-        wallet ?? null, 
-        inviteCode ?? null, 
-        inviteCodeUsed ?? null, 
-        avatarUrl ?? null, 
-        name ?? null, 
-        bio ?? null
-      ).run();
+  const drizzledb = drizzle(db);
+  await drizzledb.insert(usersTable).values({
+    id: id ?? null,
+    email: email ?? null,
+    wallet_address: wallet ?? null,
+    invite_code: inviteCode ?? null,
+    invite_code_used: inviteCodeUsed ?? null,
+    avatar_url: avatarUrl ?? null,
+    name: name ?? null,
+  } as any);
 }
 
 export async function createOtpUser(db: D1Database, id: string, email: string, code: string, expires: number): Promise<void> {
-    await db.prepare("INSERT INTO users (id, email, otp_code, otp_expires) VALUES (?, ?, ?, ?)")
-      .bind(id ?? null, email ?? null, code ?? null, expires ?? null).run();
+  const drizzledb = drizzle(db);
+  await drizzledb.insert(usersTable).values({
+    id: id ?? null,
+    email: email ?? null,
+    otp_code: code ?? null,
+    otp_expires: expires ?? null,
+  } as any);
 }
 
 // --- Update Functions ---
 
 export async function updateUser(db: D1Database, wallet: string, updates: { name?: string, bio?: string, avatar_url?: string, badges?: string }): Promise<void> {
-  const setClauses: string[] = [];
-  const values: any[] = [];
+  const drizzledb = drizzle(db);
+  const chunks: SQL[] = [];
 
-  if (updates.name !== undefined) {
-      setClauses.push("name = ?");
-      values.push(updates.name ?? null);
-  }
-  if (updates.bio !== undefined) {
-      setClauses.push("bio = ?");
-      values.push(updates.bio ?? null);
-  }
-  if (updates.avatar_url !== undefined) {
-      setClauses.push("avatar_url = ?");
-      values.push(updates.avatar_url ?? null);
-  }
-  if (updates.badges !== undefined) {
-      setClauses.push("badges = ?");
-      values.push(updates.badges ?? null);
-  }
+  if (updates.name !== undefined) chunks.push(sql`name = ${updates.name ?? null}`);
+  if (updates.bio !== undefined) chunks.push(sql`bio = ${updates.bio ?? null}`);
+  if (updates.avatar_url !== undefined) chunks.push(sql`avatar_url = ${updates.avatar_url ?? null}`);
+  if (updates.badges !== undefined) chunks.push(sql`badges = ${updates.badges ?? null}`);
 
-  if (setClauses.length === 0) return;
+  if (chunks.length === 0) return;
 
-  values.push(wallet);
-
-  const query = `UPDATE users SET ${setClauses.join(", ")} WHERE wallet_address = ?`;
-  await db.prepare(query).bind(...values).run();
+  await drizzledb.run(sql`UPDATE users SET ${sql.join(chunks, sql`, `)} WHERE wallet_address = ${wallet}`);
 }
 
 export async function updateUserXp(db: D1Database, wallet: string, xp: number, lastCheckin: number): Promise<void> {
-    await db.prepare("UPDATE users SET total_xp = ?, last_checkin = ? WHERE wallet_address = ?")
-        .bind(xp, lastCheckin, wallet).run();
+  const drizzledb = drizzle(db);
+  await drizzledb.run(sql`UPDATE users SET total_xp = ${xp}, last_checkin = ${lastCheckin} WHERE wallet_address = ${wallet}`);
 }
 
 // ★前回不足していた関数を追加
 export async function updateUserWalletAndInvite(db: D1Database, email: string, wallet: string | null, inviteCode: string): Promise<void> {
-     await db.prepare(
-    "UPDATE users SET otp_code = NULL, wallet_address = ?, invite_code_used = ? WHERE email = ?"
-  ).bind(wallet ?? null, inviteCode ?? null, email ?? null).run();
+  const drizzledb = drizzle(db);
+  await drizzledb.update(usersTable)
+    .set({
+      otp_code: null,
+      wallet_address: wallet ?? null,
+      invite_code_used: inviteCode ?? null,
+    } as any)
+    .where(eq(usersTable.email, email ?? null));
 }
 
 export async function updateUserOtp(db: D1Database, email: string, code: string, expires: number): Promise<void> {
-    await db.prepare("UPDATE users SET otp_code = ?, otp_expires = ? WHERE email = ?")
-      .bind(code ?? null, expires ?? null, email ?? null).run();
+  const drizzledb = drizzle(db);
+  await drizzledb.update(usersTable)
+    .set({ otp_code: code ?? null, otp_expires: expires ?? null })
+    .where(eq(usersTable.email, email ?? null));
 }
 
 export async function updateUserStats(db: D1Database, wallet: string, pnl: number, invested: number): Promise<void> {
   const now = Math.floor(Date.now() / 1000); // Unix Timestamp
-  
+
   // ランク判定ロジック (簡易版)
   let rank = 'Novice';
   if (invested > 10000) rank = 'Whale';
   else if (pnl > 50) rank = 'Alpha';
   else if (invested > 1000) rank = 'Degen';
 
-  await db.prepare(
-    `UPDATE users SET 
-       pnl_percent = ?, 
-       total_invested_usd = ?, 
-       rank_tier = ?,
-       last_snapshot_at = ? 
-     WHERE wallet_address = ?`
-  ).bind(pnl, invested, rank, now, wallet).run();
+  const drizzledb = drizzle(db);
+  await drizzledb.run(sql`UPDATE users SET pnl_percent = ${pnl}, total_invested_usd = ${invested}, rank_tier = ${rank}, last_snapshot_at = ${now} WHERE wallet_address = ${wallet}`);
 }
