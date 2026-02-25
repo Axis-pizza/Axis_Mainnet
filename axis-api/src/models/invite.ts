@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/d1";
-import { eq } from "drizzle-orm";
+import {and, eq, isNull } from "drizzle-orm";
 import { invitesTable } from "../db/schema";
 
 // Re-export for drizzle-kit (schema: 'src/models' configuration)
@@ -26,13 +26,15 @@ export async function findInviteByCode(db: D1Database, code: string): Promise<In
   }
 
   const drizzledb = drizzle(db);
-  const [result] = await drizzledb.select().from(invitesTable).where(eq(invitesTable.code, code)).limit(1);
-
-  if (result && result.used_by_user_id == null) {
-    return result as unknown as Invite;
+  try {
+    const [result] = await drizzledb.select().from(invitesTable)
+      .where(and(eq(invitesTable.code, code), isNull(invitesTable.used_by_user_id)))
+      .limit(1);
+    return (result as unknown as Invite) ?? null;
+  } catch (e) {
+    return null;
   }
-  return null;
-}
+
 
 export async function findInvitesByCreator(db: D1Database, creatorId: string): Promise<Invite[]> {
   const drizzledb = drizzle(db);
