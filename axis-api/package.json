@@ -22,6 +22,8 @@
     "satori": "^0.19.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.6.2",
     "drizzle-kit": "^0.31.9",
     "tsx": "^4.21.0",
     "wrangler": "^4.60.0"
