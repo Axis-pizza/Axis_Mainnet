@@ -10,13 +10,15 @@
 		{
 			"binding": "axis_db",
 			"database_name": "axis-db",
-			"database_id": "30e73485-4507-447b-a4a0-6f1b7a10812b"
+			"database_id": "30e73485-4507-447b-a4a0-6f1b7a10812b",
+			"migrations_dir": "./migrations"
 		},
 		{
 			// ★追加: VIPリスト管理用DB
 			"binding": "whitelist_db",
 			"database_name": "axis-wlv2",
-			"database_id": "ae62cf10-e8b1-4cfb-8823-91da78d51220"
+			"database_id": "ae62cf10-e8b1-4cfb-8823-91da78d51220",
+			"migrations_dir": "./migrations"
 		}
 	],
 	// AIバインディングも必要なら追加

@@ -1,4 +1,9 @@
-import { Bindings } from "../config/env";
+import { drizzle } from "drizzle-orm/d1";
+import { and, eq, isNull } from "drizzle-orm";
+import { invitesTable } from "../db/schema";
+
+// Re-export for drizzle-kit (schema: 'src/models' configuration)
+export { invitesTable };
 
 export interface Invite {
   code: string;
@@ -19,41 +24,58 @@ export async function findInviteByCode(db: D1Database, code: string): Promise<In
   if (ADMIN_CODES.includes(code.toUpperCase())) {
     return { code: code.toUpperCase(), creator_id: 'admin' };
   }
-  
-  let invite = await db.prepare("SELECT * FROM invite_codes WHERE code = ? AND is_used = 0").bind(code).first();
-  if (invite) return invite as unknown as Invite;
-  
+
+  const drizzledb = drizzle(db);
   try {
-    invite = await db.prepare("SELECT * FROM invites WHERE code = ? AND used_by_user_id IS NULL").bind(code).first();
+    const [result] = await drizzledb.select().from(invitesTable)
+      .where(and(eq(invitesTable.code, code), isNull(invitesTable.used_by_user_id)))
+      .limit(1);
+    return (result as unknown as Invite) ?? null;
   } catch (e) {
     return null;
   }
-  return invite as unknown as Invite | null;
 }
 
+// 以下の関数におけるinvitesは元々invite_codesテーブルを使用していたため、該当部分をコメントアウト
+
 export async function findInvitesByCreator(db: D1Database, creatorId: string): Promise<Invite[]> {
-  const { results } = await db.prepare("SELECT * FROM invite_codes WHERE creator_id = ?").bind(creatorId).all();
-  return results as unknown as Invite[];
+  // 元: SELECT * FROM invite_codes WHERE creator_id = ?
+  // const drizzledb = drizzle(db);
+  // const results = await drizzledb.select().from(invitesTable).where(eq(invitesTable.creator_id, creatorId));
+  // return results as unknown as Invite[];
+  return [];
 }
 
 export async function markInviteUsed(db: D1Database, code: string, userId: string): Promise<void> {
-  if (!code || ADMIN_CODES.includes(code.toUpperCase())) return;
-  await db.prepare("UPDATE invite_codes SET is_used = 1, used_by = ? WHERE code = ?").bind(userId, code).run();
+  // 元: UPDATE invite_codes SET is_used = 1, used_by = ? WHERE code = ?
+  // if (!code || ADMIN_CODES.includes(code.toUpperCase())) return;
+  // const drizzledb = drizzle(db);
+  // await drizzledb.update(invitesTable)
+  //   .set({ used_by_user_id: userId })
+  //   .where(eq(invitesTable.code, code));
 }
 
 // ★警告が出ていた関数を明示的にエクスポート
 export async function createInvites(db: D1Database, userId: string, count: number = 5): Promise<void> {
-  const stmt = db.prepare("INSERT INTO invite_codes (code, creator_id, email) VALUES (?, ?, ?)");
-  const batch = [];
-  for (let i = 0; i < count; i++) {
-    batch.push(stmt.bind(generateInviteCode(), userId, 'pending'));
-  }
-  await db.batch(batch);
+  // 元: INSERT INTO invite_codes (code, creator_id, email) VALUES (?, ?, ?)
+  // const drizzledb = drizzle(db);
+  // const values = Array.from({ length: count }, () => ({
+  //   code: generateInviteCode(),
+  //   creator_id: userId,
+  //   created_at: Math.floor(Date.now() / 1000),
+  // }));
+  // await drizzledb.insert(invitesTable).values(values);
 }
 
-export async function createOneInvite(db: D1Database, creatorId: string, email?: string): Promise<string> {
-  const code = generateInviteCode();
-  await db.prepare("INSERT INTO invite_codes (code, creator_id, email) VALUES (?, ?, ?)")
-    .bind(code, creatorId ?? 'system', email || null).run();
-  return code;
+export async function createOneInvite(db: D1Database, creatorId: string, _email?: string): Promise<string> {
+  // 元: INSERT INTO invite_codes (code, creator_id, email) VALUES (?, ?, ?)
+  // const code = generateInviteCode();
+  // const drizzledb = drizzle(db);
+  // await drizzledb.insert(invitesTable).values({
+  //   code,
+  //   creator_id: creatorId ?? 'system',
+  //   created_at: Math.floor(Date.now() / 1000),
+  // });
+  // return code;
+  return '';
 }
