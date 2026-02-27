@@ -424,12 +424,14 @@ export const SwipeCard = ({
     // 下スワイプ判定（縦方向が支配的 & 下方向）
     if (isVertical && (offset.y > DOWN_THRESHOLD || (offset.y > 50 && velocity.y > 400))) {
       swiped.current = true;
+      // Fire callback immediately so next card becomes interactive
+      onSwipeDown?.();
       animate(y, window.innerHeight * 0.8, {
         type: 'spring',
         stiffness: 200,
         damping: 25,
         velocity: velocity.y,
-      }).then(() => onSwipeDown?.());
+      });
       return;
     }
 
@@ -441,16 +443,16 @@ export const SwipeCard = ({
 
     if (swipeRight) {
       swiped.current = true;
+      // Fire callback immediately, then animate fly-off visually
+      onSwipeRight();
       const flyTo = Math.max(window.innerWidth, 500);
-      animate(x, flyTo, { type: 'spring', stiffness: 600, damping: 40, velocity: velocity.x }).then(
-        () => onSwipeRight()
-      );
+      animate(x, flyTo, { type: 'spring', stiffness: 600, damping: 40, velocity: velocity.x });
     } else if (swipeLeft) {
       swiped.current = true;
+      // Fire callback immediately, then animate fly-off visually
+      onSwipeLeft();
       const flyTo = -Math.max(window.innerWidth, 500);
-      animate(x, flyTo, { type: 'spring', stiffness: 600, damping: 40, velocity: velocity.x }).then(
-        () => onSwipeLeft()
-      );
+      animate(x, flyTo, { type: 'spring', stiffness: 600, damping: 40, velocity: velocity.x });
     } else {
       animate(x, 0, { type: 'spring', stiffness: 500, damping: 28 });
     }
@@ -485,7 +487,7 @@ export const SwipeCard = ({
       onClick={handleClick}
       initial={false}
       animate={isTop ? undefined : { scale: 1 - index * 0.05, y: index * 14, rotate: deckRotate }}
-      exit={{ opacity: 0, transition: { duration: 0.1 } }}
+      exit={{ opacity: 0, transition: { duration: 0.3 } }}
       transition={{ type: 'spring', stiffness: 400, damping: 30 }}
     >
       {/* Card Body */}
