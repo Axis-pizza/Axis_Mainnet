@@ -311,11 +311,20 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
       setIsLeaderboardLoading(true);
       try {
         if (leaderboardTab === 'created') {
-          const discoverRes = await api.discoverStrategies(200, 0);
-          const strategies: any[] = discoverRes.strategies || discoverRes || [];
+          // Paginate through all strategies to get accurate counts.
+          // 200 per page, stop when a page returns fewer than 200 (last page).
+          const PAGE = 200;
+          const MAX_PAGES = 10; // safety cap: at most 2000 strategies
+          const allStrategies: any[] = [];
+          for (let page = 0; page < MAX_PAGES; page++) {
+            const res = await api.discoverStrategies(PAGE, page * PAGE);
+            const items: any[] = res.strategies || res || [];
+            allStrategies.push(...items);
+            if (items.length < PAGE) break; // reached last page
+          }
 
           const countMap: Record<string, { count: number; pfpUrl?: string | null }> = {};
-          for (const s of strategies) {
+          for (const s of allStrategies) {
             const pk = s.ownerPubkey || s.owner_pubkey;
             if (!pk) continue;
             if (!countMap[pk]) countMap[pk] = { count: 0, pfpUrl: s.creatorPfpUrl ?? null };
