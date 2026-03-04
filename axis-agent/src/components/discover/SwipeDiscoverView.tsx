@@ -736,7 +736,8 @@ export const SwipeDiscoverView = ({
       setLoading(true);
       try {
         const [publicRes, myRes, tokensRes] = await Promise.all([
-          api.discoverStrategies(50).catch(() => ({ strategies: [] })),
+          // 変更点: 引数を50から1000に変更して上限を撤廃
+          api.discoverStrategies(1000).catch(() => ({ strategies: [] })),
           publicKey
             ? api.getUserStrategies(publicKey.toBase58()).catch(() => ({ strategies: [] }))
             : Promise.resolve({ strategies: [] }),
