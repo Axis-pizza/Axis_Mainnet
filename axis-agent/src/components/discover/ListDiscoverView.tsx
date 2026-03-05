@@ -78,7 +78,7 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Card-stack loading animation — 3×3 skeleton cards deal in one by one
+// Mobile loading: 3×3 skeleton cards that deal in with stagger
 // ─────────────────────────────────────────────────────────────────────────────
 const SkeletonCard = ({ delay }: { delay: number }) => (
   <motion.div
@@ -92,7 +92,6 @@ const SkeletonCard = ({ delay }: { delay: number }) => (
       boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
     }}
   >
-    {/* shimmer wave */}
     <motion.div
       className="absolute inset-0"
       initial={{ x: '-100%' }}
@@ -103,7 +102,6 @@ const SkeletonCard = ({ delay }: { delay: number }) => (
           'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.04) 60%, transparent 100%)',
       }}
     />
-    {/* inner skeleton lines */}
     <div className="p-3 flex flex-col gap-2 h-full">
       <div className="flex justify-between items-start">
         <div className="h-4 w-12 rounded-full bg-white/[0.06]" />
@@ -124,7 +122,7 @@ const SkeletonCard = ({ delay }: { delay: number }) => (
   </motion.div>
 );
 
-const CardStackLoader = () => (
+const MobileLoader = () => (
   <div className="flex flex-col gap-5">
     {[0, 1, 2].map((row) => (
       <div key={row} className="flex gap-2">
@@ -150,15 +148,63 @@ const CardStackLoader = () => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ScrollRow
+// PC loading: grid skeleton that matches the desktop card grid
+// ─────────────────────────────────────────────────────────────────────────────
+const DesktopSkeletonCard = ({ delay }: { delay: number }) => (
+  <motion.div
+    className="h-[480px] rounded-[20px] overflow-hidden relative"
+    initial={{ opacity: 0, y: 20, scale: 0.97 }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    transition={{ delay, duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+    style={{
+      background: 'linear-gradient(145deg, #111111 0%, #0a0a0a 100%)',
+      border: '1px solid rgba(255,255,255,0.06)',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+    }}
+  >
+    <motion.div
+      className="absolute inset-0"
+      initial={{ x: '-100%' }}
+      animate={{ x: '100%' }}
+      transition={{ delay: delay + 0.35, duration: 1.2, repeat: Infinity, repeatDelay: 1.6, ease: 'easeInOut' }}
+      style={{
+        background:
+          'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.04) 60%, transparent 100%)',
+      }}
+    />
+    <div className="p-4 flex flex-col gap-3 h-full">
+      <div className="flex justify-between items-start">
+        <div className="h-5 w-16 rounded-full bg-white/[0.06]" />
+        <div className="h-8 w-8 rounded-full bg-white/[0.06]" />
+      </div>
+      <div className="h-5 w-4/5 rounded bg-white/[0.05] mt-1" />
+      <div className="h-4 w-2/3 rounded bg-white/[0.04]" />
+      <div className="flex-1 rounded-xl bg-white/[0.03] mt-2" />
+      <div className="grid grid-cols-2 gap-2">
+        {[0, 1, 2, 3].map((k) => (
+          <div key={k} className="h-8 rounded-lg bg-white/[0.04]" />
+        ))}
+      </div>
+    </div>
+  </motion.div>
+);
+
+const DesktopLoader = () => (
+  <div className="grid grid-cols-3 gap-6">
+    {Array.from({ length: 9 }).map((_, i) => (
+      <DesktopSkeletonCard key={i} delay={i * 0.06} />
+    ))}
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ScrollRow (mobile only)
 //   • Auto-scroll  : RAF drives el.scrollLeft via virtual position (s.pos)
 //   • Manual scroll: overflow-x scroll — RAF does NOT touch scrollLeft while
 //                    paused, so native touch inertia runs freely
 //   • Seamless loop: halfW = N × (cardWidth + gap); when pos ≥ halfW, wrap
 //   • Resume sync  : on unpause, normalizes pos from actual scrollLeft so
 //                    auto-scroll continues from wherever the user left off
-//                    without any visual jump (content at pos and pos+halfW
-//                    is identical because items are doubled)
 // ─────────────────────────────────────────────────────────────────────────────
 interface ScrollRowProps {
   strategies: DiscoveredStrategy[];
@@ -174,13 +220,13 @@ const ScrollRow = ({ strategies, pxPerSec, onSelect }: ScrollRowProps) => {
 
   // All mutable scroll state in one ref — never triggers re-renders
   const s = useRef({ pos: 0, paused: false, speed: pxPerSec, halfW: 0 });
-  s.current.speed = pxPerSec; // keep in sync with prop each render
+  s.current.speed = pxPerSec;
 
   const [cardWidth, setCardWidth] = useState(() =>
     typeof window !== 'undefined' ? Math.floor((window.innerWidth - 16) / 3) : 120
   );
   const cardWidthRef = useRef(cardWidth);
-  cardWidthRef.current = cardWidth; // always fresh inside RAF closure
+  cardWidthRef.current = cardWidth;
 
   // Measure container → exactly 3 cards per screen
   useEffect(() => {
@@ -196,7 +242,7 @@ const ScrollRow = ({ strategies, pxPerSec, onSelect }: ScrollRowProps) => {
     return () => ro.disconnect();
   }, []);
 
-  // Pad to ≥ 6 cards so the seamless loop always has enough content
+  // Pad to ≥ 6 cards for a smooth seamless loop
   const items = useMemo(() => {
     if (strategies.length === 0) return [];
     const arr = [...strategies];
@@ -206,28 +252,25 @@ const ScrollRow = ({ strategies, pxPerSec, onSelect }: ScrollRowProps) => {
 
   const doubled = useMemo(() => [...items, ...items], [items]);
 
-  // RAF loop — starts fresh whenever items count changes (0→N on first load,
-  // or on search filter change). Resets scroll to 0 for clean state.
+  // RAF loop — starts fresh when items count changes, runs until unmount
   useEffect(() => {
     if (items.length === 0) return;
     const N = items.length;
 
-    // Reset position for clean start
     s.current.pos = 0;
     s.current.halfW = 0;
     if (scrollRef.current) scrollRef.current.scrollLeft = 0;
 
-    // Short delay so React can paint the cards before we start measuring
     const startTimer = setTimeout(() => {
       let lastMs = performance.now();
 
       const tick = (ms: number) => {
-        const dt = Math.min((ms - lastMs) / 1000, 0.05); // cap at 50 ms
+        const dt = Math.min((ms - lastMs) / 1000, 0.05);
         lastMs = ms;
 
         const el = scrollRef.current;
         if (el) {
-          // halfW = exact width of one copy: N cards + N gaps (gap after each card)
+          // halfW = exact width of one copy: N × (cardWidth + gap)
           const halfW = N * (cardWidthRef.current + 8);
           s.current.halfW = halfW;
 
@@ -236,8 +279,7 @@ const ScrollRow = ({ strategies, pxPerSec, onSelect }: ScrollRowProps) => {
             if (s.current.pos >= halfW) s.current.pos -= halfW;
             el.scrollLeft = s.current.pos;
           }
-          // When paused we do NOT touch el.scrollLeft.
-          // The browser (inertia scroll / user drag) owns it.
+          // When paused: do NOT touch el.scrollLeft — browser owns it
         }
 
         rafRef.current = requestAnimationFrame(tick);
@@ -252,14 +294,11 @@ const ScrollRow = ({ strategies, pxPerSec, onSelect }: ScrollRowProps) => {
     };
   }, [items.length]);
 
-  // pause(): stop auto-scroll immediately
   const pause = useCallback(() => {
     if (resumeTimer.current) clearTimeout(resumeTimer.current);
     s.current.paused = true;
   }, []);
 
-  // resume(delay): after delay ms, sync pos from current scrollLeft and
-  // restart auto-scroll. Syncing prevents a visual jump.
   const resume = useCallback((delayMs = 0) => {
     if (resumeTimer.current) clearTimeout(resumeTimer.current);
 
@@ -267,31 +306,25 @@ const ScrollRow = ({ strategies, pxPerSec, onSelect }: ScrollRowProps) => {
       const el = scrollRef.current;
       if (el && s.current.halfW > 0) {
         const cur = el.scrollLeft;
-        // Normalize into [0, halfW) — content is identical at cur and cur-halfW
+        // Normalize into [0, halfW) — visually identical at cur and cur-halfW
         const normalized = cur >= s.current.halfW ? cur - s.current.halfW : cur;
         s.current.pos = normalized;
-        // One-time teleport to normalized position (visually seamless)
         if (Math.abs(cur - normalized) > 0.5) el.scrollLeft = normalized;
       }
       s.current.paused = false;
       resumeTimer.current = null;
     };
 
-    if (delayMs === 0) {
-      doResume();
-    } else {
-      resumeTimer.current = setTimeout(doResume, delayMs);
-    }
+    if (delayMs === 0) doResume();
+    else resumeTimer.current = setTimeout(doResume, delayMs);
   }, []);
 
   if (items.length === 0) return null;
 
   return (
     <div ref={containerRef} className="relative">
-      {/* Edge fade — pointer-events-none so clicks pass through to cards */}
       <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-r from-[#030303] to-transparent" />
       <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-l from-[#030303] to-transparent" />
-
       <div
         ref={scrollRef}
         className="flex gap-2 pb-2"
@@ -318,10 +351,7 @@ const ScrollRow = ({ strategies, pxPerSec, onSelect }: ScrollRowProps) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
-export const ListDiscoverView = ({
-  onStrategySelect,
-  onOpenInSwipe,
-}: ListDiscoverViewProps) => {
+export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscoverViewProps) => {
   const { publicKey } = useWallet();
 
   const [rawStrategies, setRawStrategies] = useState<any[]>([]);
@@ -333,6 +363,18 @@ export const ListDiscoverView = ({
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // Responsive layout: PC uses grid, mobile uses horizontal scroll rows
+  const [isDesktop, setIsDesktop] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : false
+  );
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 1024px)');
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+
+  // ── Data loading ──────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
@@ -340,9 +382,7 @@ export const ListDiscoverView = ({
       setLoading(true);
 
       try {
-        // ── Phase 1: fast path — show cards immediately ──────────────────────
-        // Limit to 100 strategies (enough for 3 looping rows).
-        // Use backend token prices only; no external calls yet.
+        // Phase 1: fast — fetch strategies + backend token data, show UI
         const [publicRes, myRes, tokensRes] = await Promise.all([
           api.discoverStrategies(100).catch(() => ({ strategies: [] })),
           publicKey
@@ -353,7 +393,6 @@ export const ListDiscoverView = ({
 
         if (cancelled) return;
 
-        // Build token map from backend data (single fast call)
         const tokenMap: Record<
           string,
           { price: number; change24h: number; logoURI?: string; symbol: string }
@@ -369,7 +408,6 @@ export const ListDiscoverView = ({
           }
         });
 
-        // Also seed token map with per-strategy token metadata
         const myStrats = myRes.strategies || myRes || [];
         const combined = [
           ...(Array.isArray(myStrats) ? myStrats : []),
@@ -399,13 +437,11 @@ export const ListDiscoverView = ({
           });
         });
 
-        // Render cards now — prices may be 0 but cards are visible
         setRawStrategies(uniqueStrategies);
         setTokenDataMap({ ...tokenMap });
-        setLoading(false); // ← UI unblocked here
+        setLoading(false); // ← UI unblocked
 
-        // ── Phase 2 (background): live prices for mints missing data ────────
-        // Only fetch mints where price === 0, cap at 30 to stay light.
+        // Phase 2 (background): live prices for mints with no price yet
         const missingMints = Object.entries(tokenMap)
           .filter(([, v]) => v.price === 0)
           .map(([mint]) => mint)
@@ -434,7 +470,7 @@ export const ListDiscoverView = ({
           }
         }
 
-        // ── Phase 3 (background): creator profiles — first 20 only ──────────
+        // Phase 3 (background): creator profiles for first 20 creators
         const creatorSet = new Set<string>();
         uniqueStrategies.slice(0, 60).forEach((s: any) => {
           const p = s.ownerPubkey || s.creator;
@@ -468,6 +504,7 @@ export const ListDiscoverView = ({
     return () => { cancelled = true; };
   }, [publicKey]);
 
+  // Enrich strategies with token prices and creator profiles
   const strategies = useMemo<DiscoveredStrategy[]>(() => {
     return rawStrategies.map((s: any) => {
       let tokens = s.tokens || s.composition || [];
@@ -517,8 +554,7 @@ export const ListDiscoverView = ({
     });
   }, [rawStrategies, tokenDataMap, userMap]);
 
-  // Shuffle order is fixed when rawStrategies IDs change (not on every price update).
-  // This prevents cards from reordering every time Phase 2/3 updates enrich the data.
+  // Shuffle order fixed on rawStrategies change — stable across price updates
   const shuffledIds = useMemo(
     () => shuffleArray(rawStrategies.map((s) => s.id || s.address || '')),
     [rawStrategies]
@@ -539,7 +575,7 @@ export const ListDiscoverView = ({
     });
   }, [shuffledStrategies, searchQuery]);
 
-  // Distribute round-robin into 3 rows
+  // Distribute round-robin into 3 rows for mobile ScrollRow
   const [row1, row2, row3] = useMemo(() => {
     const r0: DiscoveredStrategy[] = [];
     const r1: DiscoveredStrategy[] = [];
@@ -606,9 +642,9 @@ export const ListDiscoverView = ({
           </div>
         )}
 
-        {/* Content */}
+        {/* ── Loading ─────────────────────────────────────────────────────── */}
         {loading ? (
-          <CardStackLoader />
+          isDesktop ? <DesktopLoader /> : <MobileLoader />
         ) : strategies.length === 0 ? (
           <EmptyState />
         ) : filteredStrategies.length === 0 ? (
@@ -628,13 +664,32 @@ export const ListDiscoverView = ({
               Clear search
             </button>
           </motion.div>
+        ) : isDesktop ? (
+          /* ── PC: vertical grid, all strategies, no limit ───────────────── */
+          <div className="grid grid-cols-3 gap-6">
+            <AnimatePresence mode="popLayout">
+              {filteredStrategies.map((strategy, i) => (
+                <motion.div
+                  key={strategy.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ delay: searchQuery ? 0 : Math.min(i * 0.04, 0.4) }}
+                  className="h-[480px] cursor-pointer"
+                  onClick={() => handleSelect(strategy)}
+                >
+                  <SwipeCardBody strategy={toCardData(strategy)} compact={false} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
         ) : (
-          /* 3 rows — each independent auto-scroll + manual scroll */
+          /* ── Mobile: 3 horizontal auto-scroll rows ─────────────────────── */
           <div className="flex flex-col gap-5">
             <ScrollRow strategies={row1} pxPerSec={35} onSelect={handleSelect} />
             <ScrollRow strategies={row2} pxPerSec={25} onSelect={handleSelect} />
             <ScrollRow strategies={row3} pxPerSec={45} onSelect={handleSelect} />
-            <p className="text-right text-xs text-white/20">
+            <p className="text-right text-xs text-white/20 pr-2">
               {filteredStrategies.length} strategies
             </p>
           </div>

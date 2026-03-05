@@ -140,10 +140,16 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
     }
   }, [publicKey, resetUserData]);
 
+  // JST (UTC+9) 基準で今日の日付文字列 (YYYY-MM-DD) を返す
+  const getJSTDate = (): string => {
+    const jst = new Date(Date.now() + 9 * 3600 * 1000);
+    return jst.toISOString().split('T')[0];
+  };
+
   // 今日のチェックイン済み状態をlocalStorageから復元
   useEffect(() => {
     if (!publicKey) { setCheckedIn(false); return; }
-    const today = new Date().toISOString().split('T')[0];
+    const today = getJSTDate();
     const stored = localStorage.getItem(`axis_checkin_${publicKey.toBase58()}_${today}`);
     setCheckedIn(!!stored);
   }, [publicKey]);
@@ -205,7 +211,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
         setTimeout(() => setXpFlash(false), 1200);
         // チェックイン済み状態をセット & localStorage保存
         setCheckedIn(true);
-        const today = new Date().toISOString().split('T')[0];
+        const today = getJSTDate();
         localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
         showToast('✅ +10 XP Claimed!', 'success');
         // バックグラウンドでサーバーと同期（awaitしない）
@@ -215,7 +221,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
         // 「すでにチェックイン済み」エラーの場合も済み状態に
         if (errorMsg.includes('already') || errorMsg.includes('today') || errorMsg.includes('済')) {
           setCheckedIn(true);
-          const today = new Date().toISOString().split('T')[0];
+          const today = getJSTDate();
           localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
         }
         showToast(res.error || res.message || 'Check-in failed', 'error');
