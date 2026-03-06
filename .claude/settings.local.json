@@ -4,7 +4,11 @@
       "mcp__ide__getDiagnostics",
       "Bash(grep:*)",
       "Bash(echo:*)",
-      "Bash(pnpm build:*)"
+      "Bash(pnpm build:*)",
+      "Bash(pnpm tsc:*)",
+      "Bash(python3:*)",
+      "Bash(lsof:*)",
+      "Bash(kill 17016:*)"
     ]
   }
 }

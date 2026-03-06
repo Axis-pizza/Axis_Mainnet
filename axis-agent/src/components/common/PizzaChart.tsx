@@ -19,16 +19,9 @@ interface PizzaChartProps {
   animated?: boolean;
 }
 
-const SLICE_COLORS = [
-  '#B8863F', // Bronze (Amber 600)
-  '#8B5E28', // Deep Bronze (Amber 700)
-  '#9F1239', // Wine / Cured Meat (Rose 700)
-  '#15803D', // Deep Basil (Green 700)
-  '#854D0E', // Old Gold (Yellow 800)
-  '#221509', // Truffle / Mushroom (Amber 900)
-  '#BE123C', // Raspberry / Rare Meat (Rose 700)
-  '#0F766E', // Deep Teal (Emerald 700)
-];
+import { pizzaSliceColors } from '../../theme/colors';
+
+const SLICE_COLORS = pizzaSliceColors;
 
 export const PizzaChart = ({
   slices,

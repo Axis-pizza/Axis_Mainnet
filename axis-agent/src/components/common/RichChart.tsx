@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { chartColors } from '../../theme/colors';
 import {
   createChart,
   ColorType,
@@ -77,7 +78,7 @@ export const RichChart = ({ data, isPositive, height = 300, colors }: RichChartP
     const chart: IChartApi = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#78716C',
+        textColor: chartColors.textMuted,
         fontFamily: "'Times New Roman', Times, serif",
       },
       grid: {
@@ -98,9 +99,10 @@ export const RichChart = ({ data, isPositive, height = 300, colors }: RichChartP
       rightPriceScale: { borderColor: 'rgba(255, 255, 255, 0.12)' },
     });
 
-    const mainColor = colors?.lineColor || (isPositive ? '#10B981' : '#EF4444');
+    const mainColor = colors?.lineColor || (isPositive ? chartColors.positive : chartColors.negative);
     const topColor =
-      colors?.areaTopColor || (isPositive ? 'rgba(16, 185, 129, 0.38)' : 'rgba(239, 68, 68, 0.38)');
+      colors?.areaTopColor ||
+      (isPositive ? 'rgba(48, 164, 108, 0.38)' : 'rgba(229, 77, 46, 0.38)');
     const bottomColor = colors?.areaBottomColor || 'rgba(0,0,0,0)';
 
     const areaUnder = chart.addAreaSeries({
@@ -112,7 +114,7 @@ export const RichChart = ({ data, isPositive, height = 300, colors }: RichChartP
 
     const areaMain = chart.addAreaSeries({
       lineColor: mainColor,
-      topColor: isPositive ? 'rgba(16, 185, 129, 0.22)' : 'rgba(239, 68, 68, 0.22)',
+      topColor: isPositive ? 'rgba(48, 164, 108, 0.22)' : 'rgba(229, 77, 46, 0.22)',
       bottomColor: 'rgba(0,0,0,0)',
       lineWidth: 2,
     });

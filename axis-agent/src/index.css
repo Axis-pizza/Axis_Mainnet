@@ -2,39 +2,208 @@
 
 @import './mobile-styles.css';
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   AXIS BRAND SYSTEM — Cinematic Heavy: Void Black × Reddish Copper-Gold
+   ─────────────────────────────────────────────────────────────────────────
+   @theme   → Tailwind color tokens (flat hex only — no gradients)
+   :root    → Gradient vars, glass vars, glow vars
+   classes  → .glass  .glass-gold  .glass-panel  .gradient-text  .btn-gold
+   ─────────────────────────────────────────────────────────────────────────
+   Core accent: #C77D36 = rgb(199, 125, 54)
+   This is 18K rose-gold / forge-bronze — warm orange-red, NOT yellow.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Tailwind v4 @theme
+   VS Code flags @theme as "unknown at rule" — suppress via:
+   .vscode/settings.json → "css.lint.unknownAtRules": "ignore"
+   ─────────────────────────────────────────────────────────────────────────── */
 @theme {
-  /* * Times New Roman serif font */
   --font-sans: 'Times New Roman', Times, serif;
 
-  /* ===== Metallic Gold Scale — Red-biased, high contrast ===== */
-  --color-orange-400: #d4a261; /* gold-300: warm satin gold */
-  --color-orange-500: #b8863f; /* gold-500: primary metallic accent */
-  --color-orange-600: #8b5e28; /* gold-700: deep bronze */
+  /* ── Void Backgrounds ───────────────────────────────────────────────── */
+  --color-black:    #020201;    /* cinema void — warm absolute black */
+  --color-zinc-950: #090705;    /* base surface — faint warm tint */
+  --color-zinc-900: #100d0a;    /* elevated surface */
+  --color-zinc-800: #1a1410;    /* interactive element bg */
+  --color-zinc-700: #251d17;    /* hover bg */
+  --color-zinc-600: #302520;    /* active / border */
+  --color-zinc-500: #554540;    /* disabled / placeholder */
+  --color-zinc-400: #a09488;    /* secondary text — warm grey */
+  --color-zinc-300: #e8ddd4;    /* primary text — warm cream */
 
-  --color-amber-400: #e8c890; /* gold-100: bright metallic highlight */
-  --color-amber-500: #d4a261; /* gold-300 */
+  /* ── Axis Gold Scale: 18K Rose-Gold / Copper-Bronze ─────────────────────
+     Hue family: warm orange-red (NOT yellow, NOT green-gold).
+     Core midtone: #C77D36 — think of a freshly poured copper ingot.
+     Specular peak: #F4DFBE — pale champagne rim light at top edge.
+     Deep shadow: #6B3716 — dark reddish-brown, like aged mahogany.
+     Use amber-300 for readable text on black; amber-400 for fills/icons.
+  ─────────────────────────────────────────────────────────────────────────── */
+  --color-amber-50:  #FCF6EC;   /* bright champagne specular peak */
+  --color-amber-100: #F4DFBE;   /* highlight edge — pale warm cream */
+  --color-amber-200: #E8C28A;   /* bright midtone — use for text */
+  --color-amber-300: #D9A05B;   /* satin copper — secondary text */
+  --color-amber-400: #C77D36;   /* AXIS GOLD — 18K Rose-Bronze ★ */
+  --color-amber-500: #B0652B;   /* heavy, rich bronze */
+  --color-amber-600: #8E4D1F;   /* pressed / deep fill */
+  --color-amber-700: #6B3716;   /* shadow edge / border */
+  --color-amber-800: #4A230F;   /* deep reddish-brown shadow */
+  --color-amber-900: #2D1408;   /* near-void warm dark */
+  --color-amber-950: #1A0A04;   /* void with a hint of warm copper */
 
-  /* ===== Core Backgrounds — ultra-deep warm black ===== */
-  --color-zinc-900: #140e08; /* bg-secondary */
-  --color-black: #080503; /* bg-primary — near-void black */
+  /* ── Orange → same Axis Gold family ────────────────────────────────── */
+  --color-orange-200: #E8C28A;
+  --color-orange-300: #D9A05B;
+  --color-orange-400: #C77D36;
+  --color-orange-500: #C77D36;
+  --color-orange-600: #8E4D1F;
+  --color-orange-700: #6B3716;
+  --color-orange-900: #2D1408;
 
-  /* ===== Brand Tokens ===== */
-  --color-brand-primary: #b8863f;
-  --color-brand-secondary: #d4a261;
-  --color-bg-dark: #080503;
-  --color-bg-secondary: #140e08;
-  --color-bg-tertiary: #221509;
-  --color-gold-900: #6b4420;
-  --color-gold-700: #8b5e28;
-  --color-gold-500: #b8863f;
-  --color-gold-300: #d4a261;
-  --color-gold-100: #e8c890;
-  --color-text-primary: #f2e0c8;
-  --color-text-secondary: #b89860;
-  --color-text-muted: #7a5a30;
+  /* ── Dedicated axis-* scale (for explicit axis-* utility classes) ──── */
+  --color-axis-50:  #FCF6EC;
+  --color-axis-100: #F4DFBE;
+  --color-axis-200: #E8C28A;
+  --color-axis-300: #D9A05B;
+  --color-axis-400: #C77D36;
+  --color-axis-500: #B0652B;
+  --color-axis-600: #8E4D1F;
+  --color-axis-700: #6B3716;
+  --color-axis-800: #4A230F;
+  --color-axis-900: #2D1408;
+  --color-axis-950: #1A0A04;
 }
 
-/* Global reset */
+/* ═══════════════════════════════════════════════════════════════════════════
+   CSS Custom Properties — Gradients, Glass, Glows
+   These cannot live in @theme (Tailwind only stores flat hex there).
+   ─────────────────────────────────────────────────────────────────────────
+   Usage in React:
+     style={{ background: 'var(--gold-button)' }}
+     className="[background:var(--gold-text)] bg-clip-text text-transparent"
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ─────────────────────────────────────────────────────────────────────
+     METALLIC GRADIENTS
+     Real metal has a specular highlight, a lit face, and a deep shadow.
+     Never use a flat hex color for anything "metallic".
+
+     Hue key:
+       Highlight  #F4DFBE  → pale champagne — where light hits the top edge
+       Lit face   #D9A05B  → warm satin copper — primary visible surface
+       Core       #C77D36  → reddish bronze — the "face" at 45°
+       Shadow     #6B3716  → deep reddish-brown — underside, grooves
+       Void       #1A0A04  → near-black with a hint of ember warmth
+  ───────────────────────────────────────────────────────────────────────── */
+
+  /* Vertical foil: specular peak → lit face → reddish core → dark shadow → void.
+     Best for large display text and logos. Reads as heavy engraved metal. */
+  --gold-text: linear-gradient(
+    180deg,
+    #F4DFBE  0%,    /* champagne specular */
+    #E8C28A 18%,    /* bright lit face */
+    #C77D36 46%,    /* reddish core midtone */
+    #6B3716 78%,    /* deep copper shadow */
+    #1A0A04 100%    /* void */
+  );
+
+  /* Diagonal shimmer: void → shadow → core → specular → core → shadow → void.
+     Best for surface fills, panel overlays, badge backgrounds. */
+  --gold-shimmer: linear-gradient(
+    115deg,
+    #1A0A04  0%,    /* void */
+    #6B3716 14%,    /* dark reddish shadow */
+    #C77D36 30%,    /* core bronze */
+    #F4DFBE 50%,    /* specular peak — hot center */
+    #C77D36 70%,    /* core bronze */
+    #6B3716 86%,    /* dark reddish shadow */
+    #0D0401 100%    /* deep void */
+  );
+
+  /* Top-lit metallic face: for solid buttons and badge fills.
+     Simulates a copper ingot lit from directly above at noon. */
+  --gold-button: linear-gradient(
+    180deg,
+    #F4DFBE  0%,    /* bright specular rim at top */
+    #D9A05B 16%,    /* warm lit face */
+    #C77D36 44%,    /* reddish core */
+    #8E4D1F 72%,    /* pressed / shadow zone */
+    #4A230F 100%    /* deep reddish-brown foot */
+  );
+
+  /* Subtle warm surface tint: barely-there warmth on dark panels */
+  --gold-surface: linear-gradient(
+    135deg,
+    rgba(199, 125, 54, 0.09) 0%,
+    rgba(199, 125, 54, 0.03) 50%,
+    rgba(199, 125, 54, 0.07) 100%
+  );
+
+  /* ─────────────────────────────────────────────────────────────────────
+     GLASS SYSTEM
+     True glassmorphism = near-transparent bg + heavy blur + rim light.
+
+     Key numbers:
+       background: rgba(10, 5, 2, 0.20)  ← warm near-black, barely tinted
+       backdrop-filter: blur(24px+) saturate(160%+)
+       inset 0 1px 1px rgba(199,125,54, 0.40) ← copper light on top edge
+       inset 0 -1px 0 rgba(10,5,2, 0.30)      ← gravity shadow below
+  ───────────────────────────────────────────────────────────────────────── */
+
+  /* Background fills — warm dark, very low opacity */
+  --glass-bg:          rgba(10,  5,  2, 0.14);   /* base — nearly transparent */
+  --glass-bg-card:     rgba(10,  5,  2, 0.20);   /* card — as specified */
+  --glass-bg-elevated: rgba(12,  6,  2, 0.28);   /* modal / panel */
+
+  /* Borders — copper-tinted edges */
+  --glass-border:     rgba(199, 125,  54, 0.24);
+  --glass-border-dim: rgba(199, 125,  54, 0.10);
+
+  /* Rim light: top = fiery copper light; bottom = warm void shadow */
+  --glass-rim-top:    rgba(199, 125,  54, 0.40);  /* as specified */
+  --glass-rim-bottom: rgba( 10,   5,   2, 0.30);
+
+  /* ─────────────────────────────────────────────────────────────────────
+     GLOW / LIGHT EMISSION
+     Emits warm, fiery reddish-gold light — like a forge fire or ember.
+     #C77D36 = rgb(199, 125, 54)
+     Structure: tight bright core → medium halo → soft falloff → void.
+     The reddish hue shifts these away from "muddy yellow" into "embers".
+  ───────────────────────────────────────────────────────────────────────── */
+
+  /* rgb(199, 125, 54) */
+
+  --glow-xs:
+    0 0  5px  1px rgba(199, 125, 54, 0.75),
+    0 0 18px  5px rgba(199, 125, 54, 0.28),
+    0 0 42px 12px rgba(199, 125, 54, 0.08);
+
+  --glow-sm:
+    0 0  0   1px rgba(199, 125, 54, 0.22),
+    0 0  8px  2px rgba(199, 125, 54, 0.60),
+    0 0 28px  9px rgba(199, 125, 54, 0.18),
+    0 0 72px 22px rgba(199, 125, 54, 0.05);
+
+  --glow-md:
+    0 0  0   1px rgba(199, 125, 54, 0.32),
+    0 0 14px  4px rgba(199, 125, 54, 0.62),
+    0 0 48px 16px rgba(199, 125, 54, 0.20),
+    0 0 120px 40px rgba(199, 125, 54, 0.06);
+
+  --glow-lg:
+    0 0  0   1px rgba(199, 125, 54, 0.45),
+    0 0 24px  8px rgba(199, 125, 54, 0.65),
+    0 0 75px 26px rgba(199, 125, 54, 0.22),
+    0 0 200px 60px rgba(199, 125, 54, 0.07);
+
+  /* Gravity shadows — pure void beneath elements */
+  --shadow-void:      0  8px 40px rgba(0, 0, 0, 0.90), 0 2px 12px rgba(0, 0, 0, 0.70);
+  --shadow-void-deep: 0 20px 80px rgba(0, 0, 0, 0.96), 0 6px 24px rgba(0, 0, 0, 0.80);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Global Resets
+   ═══════════════════════════════════════════════════════════════════════════ */
 * {
   box-sizing: border-box;
 }
@@ -44,144 +213,317 @@ html {
 }
 
 body {
-  background-color: #080503;
-  color: #f2e0c8;
+  background-color: #020201;
+  color: #e8ddd4;
   font-family: 'Times New Roman', Times, serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: 0.02em;
 }
 
-/* Scrollbar — thin, gold-accented */
+/* Scrollbar — copper thread on void */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(184, 134, 63, 0.4);
-  border-radius: 4px;
+  background: linear-gradient(
+    180deg,
+    rgba(199, 125, 54, 0.60),
+    rgba(107,  55, 22, 0.30)
+  );
+  border-radius: 3px;
 }
 
 .wallet-adapter-modal-wrapper {
   z-index: 99999 !important;
 }
-
 .wallet-adapter-modal-overlay {
   z-index: 99998 !important;
 }
 
-/* Glass — deep luxury frosted panel */
-.glass {
-  background: rgba(20, 14, 8, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(184, 134, 63, 0.1);
+/* ═══════════════════════════════════════════════════════════════════════════
+   APPLE LIQUID GLASS BUTTONS
+   ─────────────────────────────────────────────────────────────────────────
+   .btn-glass      → neutral frosted glass (secondary / icon buttons)
+   .btn-glass-gold → copper-tinted glass (accent / gold actions)
+
+   The copper rim light is what gives these warmth — not the background.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Neutral glass — Apple visionOS / iOS 26 style */
+.btn-glass {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px) saturate(180%) brightness(1.12);
+  -webkit-backdrop-filter: blur(20px) saturate(180%) brightness(1.12);
+  border: 1px solid rgba(255, 255, 255, 0.11);
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(184, 134, 63, 0.05);
+    inset 0  1px 0  rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0  rgba(0,   0,   0,   0.20),
+    0 4px 16px      rgba(0,   0,   0,   0.50);
+  color: rgba(255, 255, 255, 0.85);
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.1s ease;
+}
+.btn-glass:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0  1px 0  rgba(255, 255, 255, 0.30),
+    inset 0 -1px 0  rgba(0,   0,   0,   0.15),
+    0 6px 22px      rgba(0,   0,   0,   0.60);
+}
+.btn-glass:active {
+  background: rgba(255, 255, 255, 0.03);
+  transform: scale(0.97);
+  box-shadow:
+    inset 0 1px 4px rgba(0, 0, 0, 0.30),
+    0 2px 8px       rgba(0, 0, 0, 0.50);
+}
+.btn-glass:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
-/* Gold gradient text — metallic luster with red undertone */
+/* Copper-tinted glass — for primary gold interactions */
+.btn-glass-gold {
+  background: rgba(199, 125, 54, 0.10);
+  backdrop-filter: blur(20px) saturate(180%) brightness(1.05);
+  -webkit-backdrop-filter: blur(20px) saturate(180%) brightness(1.05);
+  border: 1px solid rgba(199, 125, 54, 0.30);
+  box-shadow:
+    inset 0  1px 1px rgba(199, 125, 54, 0.40),   /* fiery copper rim top */
+    inset 0 -1px 0   rgba(10,   5,   2, 0.25),   /* warm void below */
+    0 4px 20px       rgba(0,    0,   0, 0.55);
+  color: #E8C28A;   /* amber-200 — warm lit face */
+  transition: all 0.18s ease;
+}
+.btn-glass-gold:hover {
+  background: rgba(199, 125, 54, 0.18);
+  border-color: rgba(199, 125, 54, 0.50);
+  box-shadow:
+    inset 0  1px 1px rgba(244, 223, 190, 0.50),
+    inset 0 -1px 0   rgba(10,   5,   2, 0.20),
+    var(--glow-xs);
+}
+.btn-glass-gold:active {
+  transform: scale(0.97);
+  background: rgba(199, 125, 54, 0.06);
+  box-shadow: inset 0 1px 5px rgba(0, 0, 0, 0.35);
+}
+.btn-glass-gold:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GLASS UTILITY CLASSES
+   ─────────────────────────────────────────────────────────────────────────
+   .glass       → general-purpose glass panel
+   .glass-gold  → copper-rimmed featured card / modal
+   .glass-panel → heavy glass for full-screen panels
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* General glass — warm near-black tint + copper rim light */
+.glass {
+  background: rgba(10, 5, 2, 0.20);          /* as specified */
+  backdrop-filter: blur(24px) saturate(160%) brightness(1.07);
+  -webkit-backdrop-filter: blur(24px) saturate(160%) brightness(1.07);
+  border: 1px solid rgba(199, 125, 54, 0.12);
+  box-shadow:
+    inset 0 1px 1px rgba(199, 125, 54, 0.40), /* copper light on top edge — as specified */
+    inset 0 -1px 0  rgba(10,   5,   2, 0.30),
+    var(--shadow-void);
+}
+
+/* Gold-accent glass — bright copper rim, for featured elements */
+.glass-gold {
+  background: rgba(10, 5, 2, 0.22);
+  backdrop-filter: blur(28px) saturate(170%) brightness(1.05);
+  -webkit-backdrop-filter: blur(28px) saturate(170%) brightness(1.05);
+  border: 1px solid rgba(199, 125, 54, 0.26);
+  box-shadow:
+    inset 0 1.5px 1px rgba(199, 125, 54, 0.50),
+    inset 0 -1px  0   rgba(10,   5,   2, 0.28),
+    0 0 0 1px rgba(199, 125, 54, 0.06),
+    var(--shadow-void);
+}
+
+/* Heavy glass — max blur, for full panels and modals */
+.glass-panel {
+  background: rgba(12, 6, 2, 0.28);
+  backdrop-filter: blur(40px) saturate(180%) brightness(1.04);
+  -webkit-backdrop-filter: blur(40px) saturate(180%) brightness(1.04);
+  border: 1px solid rgba(199, 125, 54, 0.20);
+  box-shadow:
+    inset 0 2px 2px rgba(199, 125, 54, 0.45),
+    inset 0 -1px 0  rgba(10,   5,   2, 0.32),
+    var(--shadow-void-deep);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GOLD GRADIENT TEXT
+   ─────────────────────────────────────────────────────────────────────────
+   .gradient-text       → vertical foil: champagne → copper → reddish void
+   .text-gold-metallic  → diagonal shimmer: specular peak at 50%
+   .border-gold-metallic → gradient border treatment (use with background-clip)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Descending foil — primary brand gradient (logos, headings) */
 .gradient-text {
-  background: linear-gradient(
-    135deg,
-    #e8c890 0%,
-    #d4a261 25%,
-    #b8863f 50%,
-    #8b5e28 75%,
-    #6b4420 100%
-  );
+  background: var(--gold-text);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
   text-shadow: none;
 }
 
-/* Crust pattern — ultra-deep warm gradient */
-.crust-pattern {
-  background-image: radial-gradient(circle at 50% 50%, #221509 0%, #080503 100%);
-  opacity: 0.8;
+/* Diagonal shimmer — secondary use (spans, labels, subheadings) */
+.text-gold-metallic {
+  background: var(--gold-shimmer);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: none;
 }
 
-/* Topping colors — muted institutional palette */
+/* Metallic border — wrap element in this + a 1px-padded child.
+   Usage: <div class="border-gold-metallic p-px rounded-xl"><div class="bg-zinc-950 rounded-xl">...</div></div> */
+.border-gold-metallic {
+  background: var(--gold-shimmer);
+  padding: 1px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   METALLIC GOLD BUTTON
+   ─────────────────────────────────────────────────────────────────────────
+   .btn-gold → top-lit copper-bronze ingot appearance
+   ═══════════════════════════════════════════════════════════════════════════ */
+.btn-gold {
+  background: var(--gold-button);
+  border: 1px solid rgba(244, 223, 190, 0.16);
+  box-shadow:
+    inset 0  1px 0 rgba(244, 223, 190, 0.42),   /* bright champagne rim */
+    inset 0 -1px 0 rgba( 20,  10,   2, 0.50),   /* deep reddish void below */
+    0 2px 16px rgba(199, 125, 54, 0.38),         /* warm copper halo */
+    0 1px  5px rgba(  0,   0,   0, 0.70);        /* depth shadow */
+  color: #1A0A04;     /* deepest void — maximum contrast on copper face */
+  font-weight: 700;
+  transition: box-shadow 0.18s ease, transform 0.12s ease;
+  cursor: pointer;
+}
+.btn-gold:hover {
+  box-shadow:
+    inset 0  1px 0 rgba(255, 245, 220, 0.62),
+    inset 0 -1px 0 rgba( 20,  10,   2, 0.42),
+    var(--glow-sm);
+  transform: translateY(-1px);
+}
+.btn-gold:active {
+  transform: translateY(0);
+  box-shadow:
+    inset 0 1px 5px rgba(0, 0, 0, 0.40),
+    inset 0 -1px 0  rgba(20, 10, 2, 0.25);
+}
+.btn-gold:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DECORATIVE ELEMENTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Subtle radial warm vignette — copper warmth from center */
+.crust-pattern {
+  background-image: radial-gradient(
+    ellipse at 50% 40%,
+    rgba(199, 125, 54, 0.06) 0%,
+    rgba(199, 125, 54, 0.02) 50%,
+    transparent 75%
+  );
+}
+
+/* Topping colors — preserved for PizzaChart theming */
 .topping-pepperoni {
   background: #9f1239;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45);
 }
 .topping-cheese {
-  background: #b8863f;
+  background: var(--gold-button);
 }
 .topping-basil {
   background: #15803d;
 }
 
-/* Pulse glow — warm metallic gold glow */
+/* ═══════════════════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Pulse Glow — warm fiery ember light, not muddy yellow shadow.
+   rgb(199, 125, 54) — reddish copper at 45° makes this read as "fire". */
 @keyframes pulse-glow {
-  0%,
-  100% {
+  0%, 100% {
     box-shadow:
-      0 0 15px rgba(184, 134, 63, 0.08),
-      0 0 40px rgba(184, 134, 63, 0.03);
+      0 0  0  1px rgba(199, 125, 54, 0.20),
+      0 0 14px 4px rgba(199, 125, 54, 0.32),
+      0 0 40px 12px rgba(199, 125, 54, 0.09);
   }
   50% {
     box-shadow:
-      0 0 20px rgba(184, 134, 63, 0.2),
-      0 0 60px rgba(184, 134, 63, 0.08);
+      0 0  0   1px rgba(199, 125, 54, 0.55),
+      0 0 22px  7px rgba(199, 125, 54, 0.60),
+      0 0 65px 22px rgba(199, 125, 54, 0.20),
+      0 0 140px 45px rgba(199, 125, 54, 0.06);
   }
 }
 .pulse-glow {
   animation: pulse-glow 3s ease-in-out infinite;
 }
 
-/* Metallic shine — for CTA buttons and high-value elements */
+/* Metallic shine sweep — for CTA buttons */
 @keyframes metallic-shine {
-  0% {
-    background-position: -200% center;
-  }
-  100% {
-    background-position: 200% center;
-  }
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
 }
 
-/* Matrix rain — gold particles */
+/* Shine sweep — translateX pass for button hover */
+@keyframes shine {
+  0%   { transform: translateX(-200%); }
+  100% { transform: translateX( 200%); }
+}
+
+/* Matrix rain — copper fire particles */
 @keyframes matrix-rain {
-  0% {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-  10% {
-    opacity: 0.5;
-  }
-  90% {
-    opacity: 0.5;
-  }
-  100% {
-    transform: translateY(100vh);
-    opacity: 0;
-  }
+  0%        { transform: translateY(-100%); opacity: 0; }
+  10%, 90%  { opacity: 0.7; }
+  100%      { transform: translateY(100vh);  opacity: 0; }
 }
 .matrix-char {
   animation: matrix-rain 5s linear infinite;
-  color: #b8863f;
-  text-shadow: 0 0 6px rgba(184, 134, 63, 0.3);
+  color: #C77D36;
+  text-shadow:
+    0 0  3px rgba(244, 223, 190, 0.95),   /* bright champagne core */
+    0 0 10px rgba(199, 125,  54, 0.70),   /* copper halo */
+    0 0 30px rgba(199, 125,  54, 0.28);   /* soft ember falloff */
 }
 
-/* Floating nav shadow — deep void with subtle gold edge */
+/* Floating nav — deep void lift + copper rim from below */
 .floating-nav-shadow {
   box-shadow:
-    0 -10px 40px -10px rgba(0, 0, 0, 0.95),
-    0 0 1px 0 rgba(184, 134, 63, 0.15),
-    0 0 30px -5px rgba(184, 134, 63, 0.05);
+    0 -14px 50px -8px rgba(0,   0,   0,   0.98),
+    inset 0 1px 0  rgba(199, 125,  54, 0.16),
+    0 0 1px 0  rgba(199, 125,  54, 0.24),
+    0 0 48px -10px rgba(199, 125,  54, 0.08);
 }
 
-/* Background grid — barely visible */
+/* Background grid — copper thread, barely visible */
 .tactical-grid {
   background-image:
-    linear-gradient(rgba(184, 134, 63, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(184, 134, 63, 0.02) 1px, transparent 1px);
-  background-size: 50px 50px;
-  mask-image: radial-gradient(circle at center, black 30%, transparent 80%);
+    linear-gradient(rgba(199, 125, 54, 0.030) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(199, 125, 54, 0.030) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 25%, transparent 72%);
 }

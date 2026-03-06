@@ -1,8 +1,7 @@
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { useManualDashboard } from '../../../hooks/useManualDashboard';
 import { useTokenPreferences } from '../../../hooks/useTokenPreferences';
-import { MobileBuilder } from './MobileBuilder';
-import { DesktopBuilder } from './DesktopBuilder';
+import { MobileBuilder, DesktopBuilder } from './Builder';
 import { IdentityStep } from './IdentityStep';
 import type { ManualDashboardProps } from './types';
 
