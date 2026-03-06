@@ -24,6 +24,7 @@ interface DFlowApiToken {
   marketId: string;
   marketTitle: string;
   expiry: string;
+  price?: number;
 }
 
 // --- Stock Mock Tokens ---
