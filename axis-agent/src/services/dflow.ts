@@ -46,6 +46,8 @@ const REMORA_METALS = [
   },
 ] as const;
 
+// axis-agent/src/services/dflow.ts
+
 export async function fetchPredictionTokens(): Promise<JupiterToken[]> {
   try {
     const res = await fetch(`${AXIS_API_BASE}/api/dflow/markets`);
@@ -54,18 +56,21 @@ export async function fetchPredictionTokens(): Promise<JupiterToken[]> {
     const data = (await res.json()) as { tokens: DFlowApiToken[] };
     const apiTokens = data.tokens || [];
 
-    return apiTokens.map(
-      (t): JupiterToken => ({
+    if (apiTokens.length === 0) return [];
+
+    return apiTokens.map((t): JupiterToken => {
+      return {
         address: t.mint,
         chainId: CHAIN_ID,
         decimals: 6,
         name: `${t.eventTitle} — ${t.side}`,
         symbol: `${t.marketId}-${t.side}`,
-        logoURI: t.image,
+        logoURI: t.image, // DFlowのイベント画像をそのまま使用
         tags: ['prediction', t.side.toLowerCase()],
         isVerified: false,
         source: 'dflow',
         isMock: false,
+        price: t.price, // ★ バックエンドから渡された価格をそのままセット！
         predictionMeta: {
           eventId: t.eventId,
           eventTitle: t.eventTitle,
@@ -74,8 +79,8 @@ export async function fetchPredictionTokens(): Promise<JupiterToken[]> {
           side: t.side,
           expiry: t.expiry,
         },
-      })
-    );
+      };
+    });
   } catch (e) {
     console.warn('[dFlow] fetchPredictionTokens failed:', e);
     return [];

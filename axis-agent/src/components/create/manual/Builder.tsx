@@ -11,7 +11,6 @@ import {
   X,
   Sparkles,
   Plus,
-  Star,
   ClipboardPaste,
   Minus,
   Copy,
@@ -21,11 +20,12 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { TokenImage } from '../../common/TokenImage';
 import { WeightControl } from './WeightControl';
 import { TabSelector } from './TabSelector';
-import { PredictionEventCard } from './PredictionEventCard';
 import { StockTokenCard } from './StockTokenCard';
 import { formatCompactUSD, abbreviateAddress } from '../../../utils/formatNumber';
 import type { JupiterToken } from '../../../services/jupiter';
 import type { AssetItem, BuilderProps } from './types';
+import { PredictionSelectModal } from './PredictionSelectModal';
+import { PredictionEventCard, type PredictionGroup } from './PredictionEventCard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared sub-components
@@ -258,16 +258,12 @@ const MobileTokenListItem = memo(
     onAdd,
     onRemove,
     onDetail,
-    isFavorite,
-    onToggleFavorite,
   }: {
     token: JupiterToken;
     isSelected: boolean;
     onAdd: () => void;
     onRemove?: () => void;
     onDetail: () => void;
-    isFavorite?: boolean;
-    onToggleFavorite?: () => void;
   }) {
     const x = useMotionValue(0);
     const addOpacity = useTransform(x, [0, 56], [0, 1]);
@@ -320,17 +316,6 @@ const MobileTokenListItem = memo(
               : 'bg-[#181818]'
             }`}
         >
-          {/* fav star */}
-          {onToggleFavorite && (
-            <div
-              role="button"
-              onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
-              className="flex-none w-5 flex items-center justify-center"
-            >
-              <Star size={12} className={`transition-colors ${isFavorite ? 'text-amber-500 fill-amber-500' : 'text-white/15'}`} />
-            </div>
-          )}
-
           {/* logo */}
           <div className="relative flex-none">
             <TokenImage src={token.logoURI} className="w-9 h-9 rounded-full bg-white/10" />
@@ -370,8 +355,7 @@ const MobileTokenListItem = memo(
   },
   (prev, next) =>
     prev.token.address === next.token.address &&
-    prev.isSelected === next.isSelected &&
-    prev.isFavorite === next.isFavorite,
+    prev.isSelected === next.isSelected,
 );
 
 // ─── Mobile: Asset Card ───────────────────────────────────────────────────────
@@ -428,14 +412,10 @@ const DesktopTokenListItem = ({
   token,
   isSelected,
   onSelect,
-  isFavorite,
-  onToggleFavorite,
 }: {
   token: JupiterToken;
   isSelected: boolean;
   onSelect: () => void;
-  isFavorite?: boolean;
-  onToggleFavorite?: () => void;
 }) => (
   <button
     disabled={isSelected}
@@ -444,18 +424,6 @@ const DesktopTokenListItem = ({
       isSelected ? 'bg-amber-950/40 border border-amber-800/30 cursor-default' : 'hover:bg-white/5'
     }`}
   >
-    {onToggleFavorite && (
-      <div
-        role="button"
-        onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
-        className="flex-none w-5 flex items-center justify-center"
-      >
-        <Star
-          size={12}
-          className={`transition-colors ${isFavorite ? 'text-amber-500 fill-amber-500' : 'text-white/15 group-hover:text-white/25'}`}
-        />
-      </div>
-    )}
     <div className="relative flex-none">
       <TokenImage src={token.logoURI} className="w-9 h-9 rounded-full bg-white/10" />
       {token.isVerified && (
@@ -589,6 +557,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [selectedDetailToken, setSelectedDetailToken] = useState<JupiterToken | null>(null);
   const mobileScrollRef = useRef<HTMLDivElement>(null);
+  const [selectedPredictionGroup, setSelectedPredictionGroup] = useState<PredictionGroup | null>(null);
 
   const mobileVirtualizer = useVirtualizer({
     count: sortedVisibleTokens.length,
@@ -849,33 +818,6 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
               </div>
 
               <div ref={mobileScrollRef} className="flex-1 overflow-y-auto bg-[#121212] custom-scrollbar">
-                {!searchQuery && preferences.favorites.size > 0 && activeTab !== 'prediction' && (
-                  <div className="px-3 py-2 border-b border-white/5">
-                    <span className="text-[10px] text-white/30 uppercase tracking-wider font-bold mb-2 block">Starred</span>
-                    <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
-                      {dashboard.allTokens
-                        .filter((t) => preferences.favorites.has(t.address))
-                        .map((token) => (
-                          <button
-                            key={token.address}
-                            onClick={() => setSelectedDetailToken(token)}
-                            className="flex flex-col items-center gap-1.5 min-w-[64px]"
-                          >
-                            <div className="relative">
-                              <TokenImage src={token.logoURI} className="w-12 h-12 rounded-full bg-white/10 border border-white/5" />
-                              {selectedIds.has(token.address) && (
-                                <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center ring-2 ring-[#121212]">
-                                  <Check size={10} className="text-white" />
-                                </div>
-                              )}
-                            </div>
-                            <span className="text-xs text-white/70 font-medium truncate w-full text-center">{token.symbol}</span>
-                          </button>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center h-48 gap-3">
                     <Loader2 className="w-8 h-8 text-amber-300 animate-spin" />
@@ -883,15 +825,20 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                   </div>
                 ) : activeTab === 'prediction' ? (
                   <div className="px-1 pt-3 pb-10">
-                    {groupedPredictions.map((group) => (
+                  {groupedPredictions.map((group) => {
+                    let selectedSide: 'YES' | 'NO' | undefined = undefined;
+                    if (group.yesToken && selectedIds.has(group.yesToken.address)) selectedSide = 'YES';
+                    if (group.noToken && selectedIds.has(group.noToken.address)) selectedSide = 'NO';
+
+                    return (
                       <PredictionEventCard
                         key={`pred-${group.marketId}`}
                         group={group}
-                        isYesSelected={group.yesToken ? selectedIds.has(group.yesToken.address) : false}
-                        isNoSelected={group.noToken ? selectedIds.has(group.noToken.address) : false}
-                        onSelect={handleTokenSelect}
+                        selectedSide={selectedSide}
+                        onClick={() => setSelectedPredictionGroup(group)}
                       />
-                    ))}
+                    );
+                  })}
                     {groupedPredictions.length === 0 && (
                       <div className="text-center py-20 text-white/20 text-sm">No predictions found</div>
                     )}
@@ -918,8 +865,6 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                               onAdd={() => handleTokenSelect(token)}
                               onRemove={isSelected ? () => removeToken(token.address) : undefined}
                               onDetail={() => setSelectedDetailToken(token)}
-                              isFavorite={preferences.isFavorite(token.address)}
-                              onToggleFavorite={() => preferences.toggleFavorite(token.address)}
                             />
                           </div>
                         </div>
@@ -963,6 +908,20 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
           </motion.div>
         )}
       </AnimatePresence>
+
+      <PredictionSelectModal
+        isOpen={selectedPredictionGroup !== null}
+        group={selectedPredictionGroup}
+        onClose={() => setSelectedPredictionGroup(null)}
+        onSelect={handleTokenSelect}
+        selectedTokenAddress={
+          selectedPredictionGroup?.yesToken && selectedIds.has(selectedPredictionGroup.yesToken.address)
+            ? selectedPredictionGroup.yesToken.address
+            : selectedPredictionGroup?.noToken && selectedIds.has(selectedPredictionGroup.noToken.address)
+            ? selectedPredictionGroup.noToken.address
+            : undefined
+        }
+      />
     </div>
   );
 };
@@ -994,6 +953,8 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
   } = dashboard;
 
   const { publicKey } = useWallet();
+
+  const [selectedPredictionGroup, setSelectedPredictionGroup] = useState<PredictionGroup | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -1223,30 +1184,6 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
           </div>
 
           <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 pb-4 custom-scrollbar">
-            {!searchQuery && preferences.favorites.size > 0 && activeTab !== 'prediction' && activeTab !== 'stock' && (
-              <div className="px-2 py-2 mb-1 border-b border-white/5">
-                <span className="text-[10px] text-white/25 uppercase tracking-wider font-bold mb-1.5 block px-1">Favorites</span>
-                <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-                  {dashboard.allTokens
-                    .filter((t) => preferences.favorites.has(t.address))
-                    .map((token) => (
-                      <button
-                        key={token.address}
-                        onClick={() => handleTokenSelect(token)}
-                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0 border transition-colors ${
-                          selectedIds.has(token.address)
-                            ? 'bg-amber-900/30 border-amber-800/30 opacity-50'
-                            : 'bg-white/[0.03] border-white/5 hover:bg-white/10'
-                        }`}
-                      >
-                        <TokenImage src={token.logoURI} className="w-4 h-4 rounded-full" />
-                        <span className="text-[10px] text-amber-400 font-bold">{token.symbol}</span>
-                      </button>
-                    ))}
-                </div>
-              </div>
-            )}
-
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-40 gap-3">
                 <Loader2 className="w-8 h-8 text-amber-300 animate-spin" />
@@ -1254,15 +1191,20 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
               </div>
             ) : activeTab === 'prediction' ? (
               <div className="px-2 pt-4">
-                {groupedPredictions.map((group) => (
+                {groupedPredictions.map((group) => {
+                let selectedSide: 'YES' | 'NO' | undefined = undefined;
+                if (group.yesToken && selectedIds.has(group.yesToken.address)) selectedSide = 'YES';
+                if (group.noToken && selectedIds.has(group.noToken.address)) selectedSide = 'NO';
+
+                return (
                   <PredictionEventCard
                     key={`pred-${group.marketId}`}
                     group={group}
-                    isYesSelected={group.yesToken ? selectedIds.has(group.yesToken.address) : false}
-                    isNoSelected={group.noToken ? selectedIds.has(group.noToken.address) : false}
-                    onSelect={handleTokenSelect}
+                    selectedSide={selectedSide}
+                    onClick={() => setSelectedPredictionGroup(group)}
                   />
-                ))}
+                );
+              })}
                 {groupedPredictions.length === 0 && (
                   <div className="text-center py-20 text-white/20 text-sm">No predictions found</div>
                 )}
@@ -1315,8 +1257,6 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                           token={token}
                           isSelected={isSelected}
                           onSelect={() => handleTokenSelect(token)}
-                          isFavorite={preferences.isFavorite(token.address)}
-                          onToggleFavorite={() => preferences.toggleFavorite(token.address)}
                         />
                       </div>
                     );
@@ -1324,6 +1264,19 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 </div>
               </>
             )}
+            <PredictionSelectModal
+              isOpen={selectedPredictionGroup !== null}
+              group={selectedPredictionGroup}
+              onClose={() => setSelectedPredictionGroup(null)}
+              onSelect={handleTokenSelect}
+              selectedTokenAddress={
+                selectedPredictionGroup?.yesToken && selectedIds.has(selectedPredictionGroup.yesToken.address)
+                  ? selectedPredictionGroup.yesToken.address
+                  : selectedPredictionGroup?.noToken && selectedIds.has(selectedPredictionGroup.noToken.address)
+                  ? selectedPredictionGroup.noToken.address
+                  : undefined
+              }
+            />
           </div>
         </div>
       </div>
