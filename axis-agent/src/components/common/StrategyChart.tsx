@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { Loader2, TrendingUp, TrendingDown } from 'lucide-react';
+import { Loader2, TrendingDown } from 'lucide-react';
 import { api } from '../../services/api';
+import { chartColors } from '../../theme/colors';
 
 interface ChartData {
   time: number;
@@ -62,7 +63,7 @@ export const StrategyChart = ({ strategyId, refreshTrigger }: StrategyChartProps
       const pnl = val - 100;
 
       return (
-        <div className="bg-[#140E08]/90 backdrop-blur-md border border-[rgba(184,134,63,0.15)] p-2 rounded-lg shadow-xl text-xs">
+        <div className="bg-[#111110]/90 backdrop-blur-md border border-[rgba(255,197,61,0.15)] p-2 rounded-lg shadow-xl text-xs">
           <p className="text-white/50 mb-1">
             {date.toLocaleDateString()}{' '}
             {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -82,15 +83,15 @@ export const StrategyChart = ({ strategyId, refreshTrigger }: StrategyChartProps
 
   if (loading && data.length === 0) {
     return (
-      <div className="h-64 w-full flex items-center justify-center bg-white/5 rounded-2xl border border-[rgba(184,134,63,0.08)]">
-        <Loader2 className="w-8 h-8 text-[#B8863F] animate-spin" />
+      <div className="h-64 w-full flex items-center justify-center bg-white/5 rounded-2xl border border-[rgba(255,197,61,0.08)]">
+        <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="h-64 w-full flex flex-col items-center justify-center bg-white/5 rounded-2xl border border-[rgba(184,134,63,0.08)] text-white/30">
+      <div className="h-64 w-full flex flex-col items-center justify-center bg-white/5 rounded-2xl border border-[rgba(255,197,61,0.08)] text-white/30">
         <TrendingDown className="w-8 h-8 mb-2" />
         <p className="text-xs">Chart data unavailable</p>
       </div>
@@ -117,7 +118,7 @@ export const StrategyChart = ({ strategyId, refreshTrigger }: StrategyChartProps
           </div>
         </div>
 
-        <div className="flex bg-white/5 rounded-lg p-0.5 border border-[rgba(184,134,63,0.15)]">
+        <div className="flex bg-white/5 rounded-lg p-0.5 border border-[rgba(255,197,61,0.15)]">
           {TIMEFRAMES.map((tf) => (
             <button
               key={tf.value}
@@ -141,10 +142,10 @@ export const StrategyChart = ({ strategyId, refreshTrigger }: StrategyChartProps
               <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="5%"
-                  stopColor={isPositive ? '#10B981' : '#EF4444'}
+                  stopColor={isPositive ? chartColors.positive : chartColors.negative}
                   stopOpacity={0.3}
                 />
-                <stop offset="95%" stopColor={isPositive ? '#10B981' : '#EF4444'} stopOpacity={0} />
+                <stop offset="95%" stopColor={isPositive ? chartColors.positive : chartColors.negative} stopOpacity={0} />
               </linearGradient>
             </defs>
             <Tooltip
@@ -156,7 +157,7 @@ export const StrategyChart = ({ strategyId, refreshTrigger }: StrategyChartProps
             <Area
               type="monotone"
               dataKey="value"
-              stroke={isPositive ? '#10B981' : '#EF4444'}
+              stroke={isPositive ? chartColors.positive : chartColors.negative}
               strokeWidth={2}
               fillOpacity={1}
               fill="url(#colorValue)"

@@ -154,11 +154,11 @@ export const TokenIcon = ({
 
 const typeColors: Record<string, string> = {
   AGGRESSIVE:
-    'text-amber-200 border-amber-500/30 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.2)]',
+    'text-amber-200 border-amber-500/30 bg-amber-500/10 shadow-[0_0_15px_rgba(201,168,76,0.2)]',
   BALANCED:
     'text-blue-200 border-blue-500/30 bg-blue-500/10 shadow-[0_0_15px_rgba(59,130,246,0.2)]',
   CONSERVATIVE:
-    'text-emerald-200 border-emerald-500/30 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.2)]',
+    'text-emerald-200 border-emerald-500/30 bg-emerald-500/10 shadow-[0_0_15px_rgba(48,164,108,0.2)]',
 };
 
 // ── SwipeCardBody ──

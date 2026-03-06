@@ -22,6 +22,8 @@
     "@metaplex-foundation/umi-web3js-adapters": "^1.4.1",
     "@meteora-ag/dlmm": "1.3.0",
     "@privy-io/react-auth": "^3.12.0",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
     "@solana-program/memo": "^0.10.0",
     "@solana-program/system": "^0.10.0",
     "@solana-program/token": "^0.9.0",
@@ -54,6 +56,7 @@
     "recharts": "^3.6.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
+    "three": "^0.183.2",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
@@ -62,6 +65,7 @@
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^5.1.1",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",

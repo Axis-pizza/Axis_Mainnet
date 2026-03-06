@@ -58,19 +58,14 @@ let liteCache: JupiterToken[] | null = null;
 let pendingListPromise: Promise<JupiterToken[]> | null = null;
 
 export const JupiterService = {
-  // Fetch token list via backend (BFF)
   getLiteList: async (): Promise<JupiterToken[]> => {
     if (liteCache) return liteCache;
     if (pendingListPromise) return pendingListPromise;
 
     pendingListPromise = (async () => {
       try {
-        console.log('Fetching tokens via Axis API...');
-        // Call our own API endpoint
         const response = await api.get('/jupiter/tokens');
-
         if (response && response.tokens && Array.isArray(response.tokens)) {
-          // Derive isVerified from tags if not already set
           const tokens: JupiterToken[] = response.tokens.map((t: JupiterToken) => ({
             ...t,
             isVerified: t.isVerified ?? (Array.isArray(t.tags) && t.tags.includes('verified')),
@@ -92,12 +87,9 @@ export const JupiterService = {
     }
   },
 
-  // Fetch trending tokens via BFF (Jupiter v2 API)
   getTrendingTokens: async (): Promise<JupiterToken[]> => {
     try {
-      const response = await api.get(
-        '/jupiter/trending?category=toptrending&interval=24h&limit=50'
-      );
+      const response = await api.get('/jupiter/trending?category=toptrending&interval=24h&limit=50');
       if (response && response.tokens && Array.isArray(response.tokens)) {
         return response.tokens.map((t: JupiterToken) => ({
           ...t,
@@ -106,41 +98,17 @@ export const JupiterService = {
       }
       return [];
     } catch {
-      // DexScreener fallback
-      try {
-        const res = await fetch(`https://api.dexscreener.com/latest/dex/search?q=solana`);
-        if (!res.ok) return [];
-        const data = await res.json();
-        if (data.pairs) {
-          const mints = data.pairs
-            .filter((p: any) => p.chainId === 'solana')
-            .map((p: any) => p.baseToken.address);
-          const uniqueMints = Array.from(new Set(mints)) as string[];
-          // Convert mint addresses to JupiterToken objects using cache
-          const list = liteCache || [];
-          return uniqueMints
-            .map((m) => list.find((t) => t.address === m))
-            .filter((t): t is JupiterToken => t !== undefined);
-        }
-        return [];
-      } catch {
-        return [];
-      }
+      return [];
     }
   },
 
-  // Fetch prices via backend
   getPrices: async (mintAddresses: string[]): Promise<Record<string, number>> => {
     const validMints = mintAddresses.filter((m) => m && m.length > 30);
     if (validMints.length === 0) return {};
-
     try {
       const idsParam = validMints.join(',');
       const response = await api.get(`/jupiter/prices?ids=${idsParam}`);
-
-      if (response && response.prices) {
-        return response.prices;
-      }
+      if (response && response.prices) return response.prices;
       return {};
     } catch (e) {
       console.error('Axis API price fetch failed:', e);
@@ -148,44 +116,75 @@ export const JupiterService = {
     }
   },
 
-  // Server-side search via BFF (Jupiter v2 API)
   searchTokens: async (query: string): Promise<JupiterToken[]> => {
     const q = query.trim();
     if (!q) return [];
 
-    // CA (Contract Address) lookup: cache → fetchTokenByMint fallback
+    // 1. CA (Contract Address) lookup
     if (q.length > 30) {
       const lowerQ = q.toLowerCase();
       if (liteCache) {
-        const match = liteCache.find(
-          (t) => t.address === lowerQ || t.address.toLowerCase() === lowerQ
-        );
+        const match = liteCache.find((t) => t.address === lowerQ || t.address.toLowerCase() === lowerQ);
         if (match) return [match];
       }
       const fetched = await JupiterService.fetchTokenByMint(q);
       return fetched ? [fetched] : [];
     }
 
-    // Symbol/name search: BFF server-side search
+    let results: JupiterToken[] = [];
+    
+    // 2. Try backend BFF Search
     try {
       const response = await api.get(`/jupiter/search?q=${encodeURIComponent(q)}`);
-      if (response && response.tokens && Array.isArray(response.tokens)) {
-        return response.tokens.map((t: JupiterToken) => ({
+      if (response && response.tokens && Array.isArray(response.tokens) && response.tokens.length > 0) {
+        results = response.tokens.map((t: JupiterToken) => ({
           ...t,
           isVerified: t.isVerified ?? (Array.isArray(t.tags) && t.tags.includes('verified')),
         }));
       }
-      return [];
     } catch {
-      // Fallback to client-side filtering if BFF search fails
+      console.warn('Axis API search failed. Trying fallback...');
+    }
+
+    // 3. Fallback: DexScreener search for new meme coins (Jupiter avoids listing these initially)
+    if (results.length === 0) {
+      try {
+        const dexRes = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`);
+        if (dexRes.ok) {
+          const dexData = await dexRes.json();
+          if (dexData.pairs && dexData.pairs.length > 0) {
+            // Extract unique solana mints
+            const mints = Array.from(new Set(
+              dexData.pairs
+                .filter((p: any) => p.chainId === 'solana')
+                .map((p: any) => p.baseToken.address)
+            )) as string[];
+
+            const topMints = mints.slice(0, 5);
+            
+            // Re-use our robust RPC fetcher to get exact decimals
+            const fetchedTokens = await Promise.all(
+              topMints.map(mint => JupiterService.fetchTokenByMint(mint))
+            );
+            
+            results = fetchedTokens.filter((t): t is JupiterToken => t !== null);
+          }
+        }
+      } catch (e) {
+        console.warn('DexScreener search fallback failed:', e);
+      }
+    }
+
+    // 4. Final Fallback to client-side filtering
+    if (results.length === 0) {
       const list = await JupiterService.getLiteList();
       const lowerQ = q.toLowerCase();
-      return list
-        .filter(
-          (t) => t.symbol.toLowerCase().includes(lowerQ) || t.name.toLowerCase().includes(lowerQ)
-        )
+      results = list
+        .filter((t) => t.symbol.toLowerCase().includes(lowerQ) || t.name.toLowerCase().includes(lowerQ))
         .slice(0, 50);
     }
+
+    return results;
   },
 
   getToken: async (mint: string): Promise<JupiterToken | null> => {
@@ -196,31 +195,75 @@ export const JupiterService = {
   },
 
   /**
-   * Fetch a single token by mint address from Jupiter API.
-   * Used as fallback when token is not in the cached list.
+   * Fetch a single token by mint address without relying on dead Jupiter APIs.
+   * Combines DexScreener (for Name/Logo) and Solana Public RPC (for exact Decimals).
    */
   fetchTokenByMint: async (mint: string): Promise<JupiterToken | null> => {
     try {
-      const res = await fetch(`https://lite-api.jup.ag/tokens/v1/${mint}`);
-      if (!res.ok) return null;
-      const data = await res.json();
-      if (!data || !data.address) return null;
+      // Parallel fetch to DexScreener & Solana public RPC
+      const [dexRes, rpcRes] = await Promise.all([
+        fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`).catch(() => null),
+        fetch(`https://api.mainnet-beta.solana.com`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getTokenSupply',
+            params: [mint]
+          })
+        }).catch(() => null)
+      ]);
+
+      let name = 'Unknown Token';
+      let symbol = 'UNKNOWN';
+      let logoURI = '';
+      let decimals = 6; // Standard fallback for pump.fun
+
+      // Extract Name, Symbol, and Logo from DexScreener
+      if (dexRes && dexRes.ok) {
+        const dexData = await dexRes.json();
+        if (dexData.pairs && dexData.pairs.length > 0) {
+          const pair = dexData.pairs[0];
+          if (pair.baseToken.address === mint) {
+            name = pair.baseToken.name;
+            symbol = pair.baseToken.symbol;
+          } else if (pair.quoteToken.address === mint) {
+            name = pair.quoteToken.name;
+            symbol = pair.quoteToken.symbol;
+          }
+          if (pair.info && pair.info.imageUrl) {
+            logoURI = pair.info.imageUrl;
+          }
+        }
+      }
+
+      // Extract exact decimals directly from Solana Blockchain (Critical for ETF tx)
+      if (rpcRes && rpcRes.ok) {
+        const rpcData = await rpcRes.json();
+        if (rpcData.result && rpcData.result.value) {
+          decimals = rpcData.result.value.decimals;
+        }
+      }
+
       const token: JupiterToken = {
-        address: data.address,
+        address: mint,
         chainId: 101,
-        decimals: data.decimals ?? 9,
-        name: data.name || 'Unknown',
-        symbol: data.symbol || 'UNKNOWN',
-        logoURI: data.logoURI || '',
-        tags: data.tags || [],
-        isVerified: Array.isArray(data.tags) && data.tags.includes('verified'),
+        decimals: decimals,
+        name: name,
+        symbol: symbol,
+        logoURI: logoURI,
+        tags: ['unverified', 'dexscreener'],
+        isVerified: false,
       };
-      // Add to cache for future lookups
+
+      // Save to cache
       if (liteCache && !liteCache.find((t) => t.address === token.address)) {
         liteCache.push(token);
       }
       return token;
-    } catch {
+    } catch (e) {
+      console.warn('Fallback fetchTokenByMint failed:', e);
       return null;
     }
   },
@@ -263,7 +306,7 @@ export const WalletService = {
           return {
             address: held.mint,
             chainId: 101,
-            decimals: 0,
+            decimals: 0, // In wallet view, decimals are less critical if UI amount is parsed
             name: 'Unknown',
             symbol: 'UNKNOWN',
             logoURI: '',

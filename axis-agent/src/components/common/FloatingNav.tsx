@@ -101,7 +101,7 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
             transition-all duration-300
             
             /* Mobile Styles */
-            bg-[#0A0A0A]/90 backdrop-blur-2xl border border-amber-800/25 rounded-full pl-10 pr-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(184,134,63,0.08)] min-w-[320px]
+            bg-black/60 backdrop-blur-2xl border border-white/10 rounded-full pl-10 pr-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.7),inset_0_1px_0_rgba(255,255,255,0.08),0_0_0_1px_rgba(201,168,76,0.10)] min-w-[320px]
             
             /* Desktop Styles */
             md:w-full md:max-w-7xl md:mx-auto md:rounded-none md:border-none md:bg-transparent md:shadow-none md:py-4 md:px-8
@@ -123,7 +123,7 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
                     {isActive && (
                       <motion.div
                         layoutId="nav-active-bg"
-                        className="absolute inset-0 bg-gradient-to-br from-amber-500 to-amber-700 rounded-full shadow-[0_0_20px_rgba(184,134,63,0.4)]"
+                        className="absolute inset-0 rounded-full shadow-[0_0_20px_rgba(201,168,76,0.5),inset_0_1px_0_rgba(254,248,210,0.35),inset_0_-1px_0_rgba(10,6,0,0.3)] [background:var(--gold-button)]"
                         transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
                       />
                     )}
@@ -131,14 +131,14 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
                       <item.icon
                         className={`w-6 h-6 transition-colors duration-300 ${
                           isActive
-                            ? 'text-black fill-black/10'
-                            : 'text-amber-700/50 group-hover:text-amber-400'
+                            ? 'text-zinc-950 fill-black/10'
+                            : 'text-amber-300/55 group-hover:text-amber-200'
                         }`}
                         strokeWidth={isActive ? 2.5 : 2}
                       />
                       <span
                         className={`hidden md:block text-sm font-medium ${
-                          isActive ? 'text-black' : 'text-amber-700/60 group-hover:text-amber-400'
+                          isActive ? 'text-zinc-950' : 'text-amber-300/55 group-hover:text-amber-200'
                         }`}
                       >
                         {item.label}
@@ -188,9 +188,9 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
 
             <button
               onClick={() => setIsBugDrawerOpen(true)}
-              className="relative w-10 h-10 flex items-center justify-center rounded-full bg-amber-900/10 hover:bg-amber-900/20 border border-amber-800/15 hover:border-amber-600/30 transition-all group"
+              className="btn-glass relative w-10 h-10 flex items-center justify-center rounded-full transition-all group"
             >
-              <MessageSquareText className="w-4 h-4 text-amber-600/70 group-hover:text-amber-400 group-hover:scale-110 transition-all duration-500" />
+              <MessageSquareText className="w-4 h-4 text-amber-300/60 group-hover:text-amber-200 group-hover:scale-110 transition-all duration-500" />
             </button>
           </div>
         </div>

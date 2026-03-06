@@ -15,7 +15,7 @@ let lastTokenListFetch = 0;
 const CACHE_TTL = 1000 * 60 * 60; // 1時間
 
 const JUP_TOKEN_API_V2 = 'https://api.jup.ag/tokens/v2';
-const JUP_PRICE_API_V2 = 'https://api.jup.ag/price/v2';
+const JUP_PRICE_API_V3 = 'https://api.jup.ag/price/v3';
 const SOLANA_TOKEN_LIST_API = 'https://token-list-api.solana.cloud/v1/list';
 
 function buildHeaders(apiKey?: string): HeadersInit {
@@ -26,14 +26,14 @@ function buildHeaders(apiKey?: string): HeadersInit {
 
 function normalizeToken(t: any): JupiterToken {
   return {
-    address: t.address,
+    address: t.id || t.address,           // v2 uses "id" for mint address
     chainId: 101,
     decimals: t.decimals ?? 9,
     name: t.name || 'Unknown',
     symbol: t.symbol || 'UNKNOWN',
-    logoURI: t.logoURI || '',
+    logoURI: t.icon || t.logoURI || '',    // v2 uses "icon"
     tags: t.tags || [],
-    daily_volume: t.daily_volume,
+    daily_volume: t.stats24h?.volume ?? t.daily_volume,  // v2 uses stats24h
   };
 }
 
@@ -157,7 +157,7 @@ export const JupiterService = {
     if (ids.length === 0) return {};
 
     const idsParam = ids.join(',');
-    const url = `${JUP_PRICE_API_V2}?ids=${idsParam}`;
+    const url = `${JUP_PRICE_API_V3}?ids=${idsParam}`;
 
     try {
       const response = await fetch(url, { headers: buildHeaders(apiKey) });
@@ -173,8 +173,10 @@ export const JupiterService = {
       if (data && data.data) {
         Object.keys(data.data).forEach(key => {
           const item = data.data[key];
-          if (item && item.price) {
-            prices[key] = parseFloat(item.price);
+          // v3 uses usdPrice, v2 used price
+          const raw = item?.usdPrice ?? item?.price;
+          if (raw != null) {
+            prices[key] = parseFloat(raw);
           }
         });
       }

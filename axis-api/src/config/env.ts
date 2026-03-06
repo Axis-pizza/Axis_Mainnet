@@ -17,7 +17,7 @@ export type Bindings = {
   FAUCET_PRIVATE_KEY: string
   SOLANA_RPC_URL?: string
   JUPITER_API_KEY: string;
-
+  DFLOW_API_KEY: string;
   TWITTER_CLIENT_ID: string
   TWITTER_CLIENT_SECRET: string
   FRONTEND_URL: string
@@ -31,4 +31,6 @@ export type Bindings = {
   SERVER_PRIVATE_KEY: string // Base58形式の秘密鍵文字列
   HELIUS_RPC_URL: string     // トランザクション配信用
   WEBHOOK_AUTH_SECRET?: string // (任意) Webhookのセキュリティ用
+
+  
 }
