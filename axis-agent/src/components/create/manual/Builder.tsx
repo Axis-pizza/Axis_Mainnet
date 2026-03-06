@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, memo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import {
   Search,
   ArrowLeft,
@@ -14,6 +14,7 @@ import {
   Star,
   ClipboardPaste,
   Minus,
+  Copy,
 } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -155,107 +156,222 @@ const MobileWeightControl = memo(
   }
 );
 
-// ─── Mobile: Token List Item ──────────────────────────────────────────────────
+// ─── Mobile: Token Detail Modal ───────────────────────────────────────────────
+const TokenDetailModal = ({
+  token,
+  isSelected,
+  onAdd,
+  onClose,
+}: {
+  token: JupiterToken;
+  isSelected: boolean;
+  onAdd: () => void;
+  onClose: () => void;
+}) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(token.address).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, [token.address]);
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-end">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 32, stiffness: 300 }}
+        className="relative w-full bg-[#111] border-t border-white/8 rounded-t-3xl px-5 pt-5 pb-8 safe-area-bottom"
+      >
+        {/* drag handle */}
+        <div className="w-10 h-1 bg-white/15 rounded-full mx-auto mb-5" />
+
+        {/* header */}
+        <div className="flex items-center gap-3 mb-5">
+          <TokenImage src={token.logoURI} className="w-14 h-14 rounded-full bg-white/10 flex-none" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-black text-white">{token.symbol}</span>
+              {token.isVerified && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold">Verified</span>
+              )}
+              {token.tags?.includes('meme') && <Sparkles size={13} className="text-pink-400" />}
+            </div>
+            <div className="text-sm text-white/40 truncate">{token.name}</div>
+          </div>
+          {isSelected && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-400 text-xs font-bold flex-none">
+              <Check size={12} />Added
+            </div>
+          )}
+        </div>
+
+        {/* CA row */}
+        <button
+          onClick={handleCopy}
+          className="w-full flex items-center gap-2 bg-white/5 rounded-xl px-3 py-2.5 mb-3 active:bg-white/8 transition-colors"
+        >
+          <div className="flex-1 min-w-0 text-left">
+            <div className="text-[10px] text-white/30 uppercase tracking-wide mb-0.5">Contract Address</div>
+            <div className="font-mono text-xs text-white/60 truncate">{token.address}</div>
+          </div>
+          {copied
+            ? <Check size={14} className="text-emerald-400 flex-none" />
+            : <Copy size={14} className="text-white/25 flex-none" />}
+        </button>
+
+        {/* stats grid */}
+        <div className="grid grid-cols-3 gap-2 mb-5">
+          {[
+            { label: 'Market Cap', value: formatCompactUSD(token.marketCap) },
+            { label: '24h Volume', value: formatCompactUSD(token.dailyVolume) },
+            ...(token.price != null ? [{ label: 'Price', value: `$${token.price < 0.01 ? token.price.toFixed(6) : token.price.toLocaleString()}` }] : []),
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-white/5 rounded-xl p-3">
+              <div className="text-[9px] text-white/30 uppercase tracking-wide mb-1">{label}</div>
+              <div className="text-sm font-bold text-white">{value ?? '—'}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* add button */}
+        {!isSelected && (
+          <button
+            onClick={() => { onAdd(); onClose(); }}
+            className="w-full btn-glass-gold rounded-2xl py-4 font-black text-base"
+          >
+            Add to ETF
+          </button>
+        )}
+      </motion.div>
+    </div>
+  );
+};
+
+// ─── Mobile: Token List Item (swipe-right to add, swipe-left to remove, tap for detail) ──
 const MobileTokenListItem = memo(
-  ({
+  function MobileTokenListItem({
     token,
     isSelected,
-    hasSelection,
-    onSelect,
+    onAdd,
+    onRemove,
+    onDetail,
     isFavorite,
     onToggleFavorite,
   }: {
     token: JupiterToken;
     isSelected: boolean;
-    hasSelection: boolean;
-    onSelect: () => void;
+    onAdd: () => void;
+    onRemove?: () => void;
+    onDetail: () => void;
     isFavorite?: boolean;
     onToggleFavorite?: () => void;
-  }) => (
-    <motion.button
-      disabled={isSelected}
-      onClick={onSelect}
-      initial={{ x: 0, opacity: 1 }}
-      animate={{ x: 0, opacity: isSelected ? 1 : hasSelection ? 0.6 : 1 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      className={`w-full flex items-center gap-2.5 p-3 rounded-2xl transition-colors min-h-[64px] ${isSelected ? 'bg-gradient-to-r from-amber-950/60 to-amber-900/40 border border-amber-800/40' : 'bg-transparent active:bg-white/5'}`}
-    >
-      {onToggleFavorite && (
-        <div
-          role="button"
-          onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
-          className="flex-none w-5 flex items-center justify-center"
+  }) {
+    const x = useMotionValue(0);
+    const addOpacity = useTransform(x, [0, 56], [0, 1]);
+    const removeOpacity = useTransform(x, [-56, 0], [1, 0]);
+    const isDragging = useRef(false);
+
+    return (
+      <div className="relative overflow-hidden rounded-xl">
+        {/* right-swipe hint — add */}
+        <motion.div
+          style={{ opacity: addOpacity, background: 'rgba(199,125,54,0.12)' }}
+          className="absolute inset-0 flex items-center justify-end pr-4 pointer-events-none"
         >
-          <Star
-            size={13}
-            className={`transition-colors ${isFavorite ? 'text-amber-500 fill-amber-500' : 'text-white/15'}`}
-          />
-        </div>
-      )}
-      <div className="relative flex-none">
-        <TokenImage src={token.logoURI} className="w-10 h-10 rounded-full bg-white/10" />
-        {token.isVerified && (
-          <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center ring-2 ring-[#0a0a0a]">
-            <Check size={9} className="text-white" />
+          <div className="flex items-center gap-1.5 text-amber-400">
+            <Plus size={15} />
+            <span className="text-xs font-bold">Add</span>
           </div>
+        </motion.div>
+
+        {/* left-swipe hint — remove */}
+        {isSelected && onRemove && (
+          <motion.div
+            style={{ opacity: removeOpacity, background: 'rgba(239,68,68,0.12)' }}
+            className="absolute inset-0 flex items-center justify-start pl-4 pointer-events-none"
+          >
+            <div className="flex items-center gap-1.5 text-red-400">
+              <X size={15} />
+              <span className="text-xs font-bold">Remove</span>
+            </div>
+          </motion.div>
         )}
-      </div>
-      <div className="flex-1 min-w-0 text-left">
-        <div className="flex items-center gap-1.5">
-          <span className={`font-bold text-sm ${isSelected ? 'text-amber-400' : 'text-white'}`}>
-            {token.symbol}
-          </span>
-          {token.tags?.includes('meme') && <Sparkles size={10} className="text-pink-400" />}
-          {token.tags?.includes('stable') && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400">
-              Stable
-            </span>
+
+        {/* draggable row */}
+        <motion.div
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={{ left: isSelected && onRemove ? 0.3 : 0.03, right: 0.3 }}
+          style={{ x }}
+          onDragStart={() => { isDragging.current = true; }}
+          onDragEnd={(_, info) => {
+            if (info.offset.x > 56 && !isSelected) onAdd();
+            else if (info.offset.x < -56 && isSelected && onRemove) onRemove();
+            animate(x, 0, { type: 'spring', stiffness: 400, damping: 40 });
+            setTimeout(() => { isDragging.current = false; }, 80);
+          }}
+          onClick={() => { if (!isDragging.current) onDetail(); }}
+          className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl min-h-[58px] select-none touch-pan-y
+            ${isSelected
+              ? 'bg-gradient-to-r from-amber-950/60 to-amber-900/40 border border-amber-800/40'
+              : 'bg-[#181818]'
+            }`}
+        >
+          {/* fav star */}
+          {onToggleFavorite && (
+            <div
+              role="button"
+              onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+              className="flex-none w-5 flex items-center justify-center"
+            >
+              <Star size={12} className={`transition-colors ${isFavorite ? 'text-amber-500 fill-amber-500' : 'text-white/15'}`} />
+            </div>
           )}
-        </div>
-        <div className="text-[11px] text-white/30 truncate mt-0.5">
-          {token.name}
-          <span className="text-white/15 mx-1">·</span>
-          <span className="font-mono text-white/20">{abbreviateAddress(token.address)}</span>
-        </div>
-      </div>
-      {token.balance != null && token.balance > 0 ? (
-        <div className="text-right flex-none min-w-[60px]">
-          <div className="text-xs font-mono text-white/80">
-            {token.balance < 0.001
-              ? '<0.001'
-              : token.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+
+          {/* logo */}
+          <div className="relative flex-none">
+            <TokenImage src={token.logoURI} className="w-9 h-9 rounded-full bg-white/10" />
+            {token.isVerified && (
+              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center ring-1 ring-[#181818]">
+                <Check size={8} className="text-white" />
+              </div>
+            )}
           </div>
-          <div className="text-[10px] text-white/25">Balance</div>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 flex-none">
-          <div className="text-right w-[52px]">
+
+          {/* name */}
+          <div className="flex-1 min-w-0 text-left">
+            <div className="flex items-center gap-1.5">
+              <span className={`font-bold text-sm ${isSelected ? 'text-amber-400' : 'text-white'}`}>
+                {token.symbol}
+              </span>
+              {token.tags?.includes('meme') && <Sparkles size={9} className="text-pink-400" />}
+            </div>
+            <div className="text-[11px] text-white/30 truncate">{token.name}</div>
+          </div>
+
+          {/* mc */}
+          <div className="text-right flex-none">
             <div className="text-[9px] text-white/25 uppercase leading-none mb-0.5">MC</div>
-            <div className="text-[11px] text-white/50 font-mono leading-none">
-              {formatCompactUSD(token.marketCap)}
-            </div>
+            <div className="text-[11px] text-white/50 font-mono leading-none">{formatCompactUSD(token.marketCap)}</div>
           </div>
-          <div className="text-right w-[52px]">
-            <div className="text-[9px] text-white/25 uppercase leading-none mb-0.5">VOL</div>
-            <div className="text-[11px] text-white/50 font-mono leading-none">
-              {formatCompactUSD(token.dailyVolume)}
+
+          {/* added indicator */}
+          {isSelected && (
+            <div className="flex-none w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-700">
+              <Check size={13} className="text-zinc-950" />
             </div>
-          </div>
-        </div>
-      )}
-      <div
-        className={`flex-none w-8 h-8 rounded-full flex items-center justify-center ${isSelected ? 'bg-gradient-to-br from-amber-400 to-amber-700' : 'bg-white/5 text-white/30'}`}
-      >
-        {isSelected ? <Check size={14} className="text-zinc-950" /> : <Plus size={14} />}
+          )}
+        </motion.div>
       </div>
-    </motion.button>
-  ),
+    );
+  },
   (prev, next) =>
     prev.token.address === next.token.address &&
     prev.isSelected === next.isSelected &&
-    prev.hasSelection === next.hasSelection &&
-    prev.isFavorite === next.isFavorite
+    prev.isFavorite === next.isFavorite,
 );
 
 // ─── Mobile: Asset Card ───────────────────────────────────────────────────────
@@ -471,6 +587,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
 
   const { publicKey } = useWallet();
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const [selectedDetailToken, setSelectedDetailToken] = useState<JupiterToken | null>(null);
   const mobileScrollRef = useRef<HTMLDivElement>(null);
 
   const mobileVirtualizer = useVirtualizer({
@@ -495,14 +612,11 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
         });
         dashboard.addTokenDirect(token);
         triggerHaptic();
-        setIsSelectorOpen(false);
-        setSearchQuery('');
       } catch (e) {
         console.error('Selection Error:', e);
-        setIsSelectorOpen(false);
       }
     },
-    [dashboard, triggerHaptic, preferences, setSearchQuery]
+    [dashboard, triggerHaptic, preferences]
   );
 
   useEffect(() => {
@@ -515,6 +629,11 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [searchQuery, setSearchQuery]);
+
+  // Reset scroll to top when tab or search changes so the virtualizer renders correctly
+  useEffect(() => {
+    if (mobileScrollRef.current) mobileScrollRef.current.scrollTop = 0;
+  }, [activeTab, searchQuery]);
 
   const handlePasteCA = useCallback(async () => {
     try {
@@ -683,15 +802,22 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
             className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             onClick={() => setIsSelectorOpen(false)}
           />
-          <div className="relative w-full max-w-sm px-4 sm:px-6 pointer-events-auto safe-area-bottom safe-area-top">
-            <div className="w-full bg-[#121212] border border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[70vh]">
-              <div className="shrink-0 bg-[#121212] border-b border-white/5 p-4 pb-3">
+          <div className="relative w-full px-2 pointer-events-auto safe-area-bottom safe-area-top">
+            <div className="w-full bg-[#121212] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[82vh]">
+              <div className="shrink-0 bg-[#121212] border-b border-white/5 p-3 pb-2">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
                     <input
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
+                      onPaste={(e) => {
+                        const text = e.clipboardData.getData('text');
+                        if (text.trim().length >= 32) {
+                          e.preventDefault();
+                          setSearchQuery(text.trim());
+                        }
+                      }}
                       placeholder="Search name or address"
                       className="w-full bg-white/5 border border-white/5 rounded-xl pl-10 pr-10 py-3 text-base text-white placeholder:text-white/30 focus:border-amber-400/40 focus:bg-white/10 outline-none transition-all"
                       autoFocus
@@ -724,7 +850,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
 
               <div ref={mobileScrollRef} className="flex-1 overflow-y-auto bg-[#121212] custom-scrollbar">
                 {!searchQuery && preferences.favorites.size > 0 && activeTab !== 'prediction' && (
-                  <div className="px-4 py-3 border-b border-white/5">
+                  <div className="px-3 py-2 border-b border-white/5">
                     <span className="text-[10px] text-white/30 uppercase tracking-wider font-bold mb-2 block">Starred</span>
                     <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
                       {dashboard.allTokens
@@ -732,7 +858,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                         .map((token) => (
                           <button
                             key={token.address}
-                            onClick={() => handleTokenSelect(token)}
+                            onClick={() => setSelectedDetailToken(token)}
                             className="flex flex-col items-center gap-1.5 min-w-[64px]"
                           >
                             <div className="relative">
@@ -756,7 +882,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                     <span className="text-sm text-white/30">Loading tokens...</span>
                   </div>
                 ) : activeTab === 'prediction' ? (
-                  <div className="px-3 pt-4 pb-10">
+                  <div className="px-1 pt-3 pb-10">
                     {groupedPredictions.map((group) => (
                       <PredictionEventCard
                         key={`pred-${group.marketId}`}
@@ -768,26 +894,6 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                     ))}
                     {groupedPredictions.length === 0 && (
                       <div className="text-center py-20 text-white/20 text-sm">No predictions found</div>
-                    )}
-                  </div>
-                ) : activeTab === 'stock' ? (
-                  <div className="px-3 pt-4 pb-10">
-                    {sortedVisibleTokens.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-48 gap-3 text-white/20">
-                        <Search size={32} />
-                        <span className="text-sm">No stocks found</span>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3">
-                        {sortedVisibleTokens.map((token) => (
-                          <StockTokenCard
-                            key={token.address}
-                            token={token}
-                            isSelected={selectedIds.has(token.address)}
-                            onSelect={() => handleTokenSelect(token)}
-                          />
-                        ))}
-                      </div>
                     )}
                   </div>
                 ) : sortedVisibleTokens.length === 0 ? (
@@ -805,12 +911,13 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                           key={token.address}
                           style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
                         >
-                          <div className="px-2 py-1">
+                          <div className="px-1 py-0.5">
                             <MobileTokenListItem
                               token={token}
                               isSelected={isSelected}
-                              hasSelection={hasSelection}
-                              onSelect={() => handleTokenSelect(token)}
+                              onAdd={() => handleTokenSelect(token)}
+                              onRemove={isSelected ? () => removeToken(token.address) : undefined}
+                              onDetail={() => setSelectedDetailToken(token)}
                               isFavorite={preferences.isFavorite(token.address)}
                               onToggleFavorite={() => preferences.toggleFavorite(token.address)}
                             />
@@ -825,6 +932,18 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
           </div>
         </div>
       )}
+
+      {/* Token Detail Modal */}
+      <AnimatePresence>
+        {selectedDetailToken && (
+          <TokenDetailModal
+            token={selectedDetailToken}
+            isSelected={selectedIds.has(selectedDetailToken.address)}
+            onAdd={() => handleTokenSelect(selectedDetailToken)}
+            onClose={() => setSelectedDetailToken(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Flying Particle */}
       <AnimatePresence>
