@@ -259,9 +259,9 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           referralCode:
             u.referralCode || `AXIS-${publicKey.toBase58().slice(0, 4).toUpperCase()}`,
           totalPoints: u.total_xp || 0,
-          totalVolume: u.total_invested || 0,
+          totalVolume: Number(u.total_invested) || 0,
           rankTier: u.rank_tier || 'Novice',
-          pnlPercent: u.pnl_percent || 0,
+          pnlPercent: Number(u.pnl_percent) || 0,
           referralCount: u.referralCount || 0,
           is_vip: u.is_vip || false,
           bio: u.bio,

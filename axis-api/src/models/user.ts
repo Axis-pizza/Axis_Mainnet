@@ -70,6 +70,9 @@ export async function createTwitterUser(
     name,
     avatar_url: avatarUrl,
     invite_code: inviteCode,
+    total_xp: 500,
+    rank_tier: 'Novice',
+    last_checkin: 0,
   } as any);
 }
 
@@ -84,7 +87,7 @@ export async function createRegisteredUser(
     inviteCodeUsed: string | null,
     avatarUrl?: string,
     name?: string,
-    _bio?: string // スキーマ未定義のため未使用
+    bio?: string
 ): Promise<void> {
   const drizzledb = drizzle(db);
   await drizzledb.insert(usersTable).values({
@@ -95,6 +98,10 @@ export async function createRegisteredUser(
     invite_code_used: inviteCodeUsed ?? null,
     avatar_url: avatarUrl ?? null,
     name: name ?? null,
+    bio: bio ?? null,
+    total_xp: 500,
+    rank_tier: 'Novice',
+    last_checkin: 0,
   } as any);
 }
 
