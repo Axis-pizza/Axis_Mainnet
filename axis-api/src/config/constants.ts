@@ -7,7 +7,7 @@ export const STRICT_LIST = [
   { symbol: "SOL", name: "Wrapped SOL", address: "So11111111111111111111111111111111111111112", logoURI: "https://assets.coingecko.com/coins/images/4128/large/solana.png" },
   { symbol: "USDC", name: "USD Coin", address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", logoURI: "https://assets.coingecko.com/coins/images/6319/large/USD_Coin_icon.png" },
   { symbol: "USDT", name: "USDT", address: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", logoURI: "https://assets.coingecko.com/coins/images/325/large/Tether.png" },
-  { symbol: "WBTC", name: "Wrapped Bitcoin", address: "3NZ9JMVBmGAqocyBIC2c7LQCJScmgsAZ6vQqTDzcqmJh", logoURI: "https://assets.coingecko.com/coins/images/7598/large/wrapped_bitcoin_wbtc.png" },
+  { symbol: "WBTC", name: "Wrapped Bitcoin", address: "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh", logoURI: "https://assets.coingecko.com/coins/images/7598/large/wrapped_bitcoin_wbtc.png" },
   { symbol: "WETH", name: "Wrapped Ethereum", address: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs", logoURI: "https://assets.coingecko.com/coins/images/279/large/ethereum.png" },
   
   // --- DeFi Blue Chips ---
