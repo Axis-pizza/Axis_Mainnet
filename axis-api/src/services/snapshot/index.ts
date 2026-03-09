@@ -42,12 +42,17 @@ export async function runPriceSnapshot(db: any): Promise<void> {
   // 2. Parse tokens and collect all unique mints
   const strategyTokens = new Map<string, TokenEntry[]>();
   const allMints = new Set<string>();
+  // token_prices の token_name にsymbolを使うための逆引きマップ
+  const mintToSymbol = new Map<string, string>();
 
   for (const row of rows) {
     const tokens = parseTokens(row);
     strategyTokens.set(row.id, tokens);
     for (const t of tokens) {
-      if (t.mint) allMints.add(t.mint);
+      if (t.mint) {
+        allMints.add(t.mint);
+        mintToSymbol.set(t.mint.toLowerCase(), t.symbol);
+      }
     }
   }
 
@@ -109,13 +114,14 @@ export async function runPriceSnapshot(db: any): Promise<void> {
   // 5. token_prices への INSERT ステートメントを作成
   const tokenPriceStmts: any[] = [];
   for (const mint of allMints) {
-    const price = priceMap.get(mint);
-    if (price && price.price_usd > 0) {
+    const price = priceMap.get(mint.toLowerCase());
+    const symbol = mintToSymbol.get(mint.toLowerCase());
+    if (price && price.price_usd > 0 && symbol) {
       tokenPriceStmts.push(
         db.prepare(`
           INSERT OR REPLACE INTO token_prices (token_name, recorded_at, price_usd)
           VALUES (?, ?, ?)
-        `).bind(mint, priceFetchedAt, price.price_usd)
+        `).bind(symbol, priceFetchedAt, price.price_usd)
       );
     }
   }
