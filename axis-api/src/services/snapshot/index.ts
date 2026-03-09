@@ -53,6 +53,15 @@ export async function runPriceSnapshot(db: any): Promise<void> {
 
   // 3. Batch fetch all prices (deduplicated by mint)
   const priceMap = await fetchPrices([...allMints]);
+  // 価格取得時刻を YYYY/MM/DD HH:MM:SS 形式で記録
+  const _now = new Date();
+  const priceFetchedAt =
+    `${_now.getUTCFullYear()}/` +
+    `${String(_now.getUTCMonth() + 1).padStart(2, '0')}/` +
+    `${String(_now.getUTCDate()).padStart(2, '0')} ` +
+    `${String(_now.getUTCHours()).padStart(2, '0')}:` +
+    `${String(_now.getUTCMinutes()).padStart(2, '0')}:` +
+    `${String(_now.getUTCSeconds()).padStart(2, '0')}`;
 
   // 4. Build snapshot statements
   const snapshotStmts: any[] = [];
@@ -106,7 +115,7 @@ export async function runPriceSnapshot(db: any): Promise<void> {
         db.prepare(`
           INSERT OR REPLACE INTO token_prices (token_name, recorded_at, price_usd)
           VALUES (?, ?, ?)
-        `).bind(mint, tsBucket, price.price_usd)
+        `).bind(mint, priceFetchedAt, price.price_usd)
       );
     }
   }

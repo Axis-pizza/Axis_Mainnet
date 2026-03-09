@@ -153,7 +153,7 @@ export const strategyDeploymentBaselineTable = sqliteTable("strategy_deployment_
 // ──────────────────────────────────────────────────────────
 export const strategyTokenPricesTable = sqliteTable("token_prices", {
     token_name:   text("token_name").notNull(),
-    recorded_at:  int("recorded_at").notNull(),
+    recorded_at:  text("recorded_at").notNull(),
     price_usd:    real("price_usd"),
 }, (t) => [
     primaryKey({ columns: [t.token_name, t.recorded_at] }),
