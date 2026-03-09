@@ -10,27 +10,19 @@
 import dotenv from 'dotenv';
 dotenv.config({ path: '.dev.vars' }); // Cloudflare Workers のローカル環境変数ファイル
 import { fetchPrices } from './price-fetcher.js';
+import { STRICT_LIST } from '../../config/constants.js';
 
-// テスト対象のmintアドレス（SOL, USDC, JUP）
-const TEST_MINTS = [
-  'So11111111111111111111111111111111111111112',   // SOL
-  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
-  // JUPのmintアドレスが変更されていたため、最新のものに更新
-  'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',  // JUP
-];
+// STRICT_LIST の全トークンを対象にテスト
+const TEST_MINTS = STRICT_LIST.map(t => t.address);
 
-// JUPITER_API_KEY は Jupiter フォールバック時に x-api-key ヘッダーとして使用
-const apiKey = process.env.JUPITER_API_KEY;
-console.log(`JUPITER_API_KEY: ${apiKey ? '設定あり' : '未設定（認証なしで lite-api.jup.ag を使用）'}\n`);
-
-const results = await fetchPrices(TEST_MINTS, apiKey);
+const results = await fetchPrices(TEST_MINTS);
 
 console.log('\n=== テスト結果 ===');
-for (const [mint, result] of results) {
-  const label = `${mint.slice(0, 8)}...`;
-  if (result.price_usd > 0) {
-    console.log(`✅ ${label}: $${result.price_usd} (source: ${result.source})`);
+for (const t of STRICT_LIST) {
+  const result = results.get(t.address.toLowerCase());
+  if (result && result.price_usd > 0) {
+    console.log(`✅ ${t.symbol.padEnd(8)}: $${result.price_usd} (source: ${result.source})`);
   } else {
-    console.log(`❌ ${label}: 取得失敗 (source: ${result.source})`);
+    console.log(`❌ ${t.symbol.padEnd(8)}: 取得失敗 (source: ${result?.source ?? 'none'})`);
   }
 }
