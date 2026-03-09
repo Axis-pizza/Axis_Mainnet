@@ -11,8 +11,8 @@ export interface PriceResult {
 }
 
 const DEXSCREENER_API = 'https://api.dexscreener.com/latest/dex/tokens';
-// jupiter v2が非推奨になったため、最新のjupiter v3に変更
-const JUPITER_PRICE_API_FREE = 'https://api.jup.ag/price/v3';
+// jupiter v2が非推奨になったため、最新のjupiter v3に変更（現在は未使用）
+// const JUPITER_PRICE_API_FREE = 'https://api.jup.ag/price/v3';
 const DEXSCREENER_BATCH_SIZE = 30;
 
 /**
@@ -49,7 +49,7 @@ export function resolveMint(token: { mint?: string; address?: string; symbol?: s
  * Fetch prices for a list of unique mint addresses.
  * Returns a Map<mint, PriceResult>.
  */
-export async function fetchPrices(mints: string[], apiKey?: string): Promise<Map<string, PriceResult>> {
+export async function fetchPrices(mints: string[]): Promise<Map<string, PriceResult>> {
   console.log(`[FetchPrices] START. Total mints: ${mints.length}`);
   console.log(`[FetchPrices] Target Mints:`, mints);
 
@@ -62,35 +62,34 @@ export async function fetchPrices(mints: string[], apiKey?: string): Promise<Map
 
   if (mints.length === 0) return results;
 
-  const remaining = new Set(mints);
+  // const remaining = new Set(mints);
 
   // --- 1. DexScreener ---
   console.log(`[FetchPrices] Calling DexScreener...`);
   try {
     await fetchFromDexScreener(mints, results);
-    for (const mint of mints) {
-      if (results.get(mint)!.price_usd > 0) {
-        remaining.delete(mint);
-      }
-    }
+    // for (const mint of mints) {
+    //   if (results.get(mint)!.price_usd > 0) {
+    //     remaining.delete(mint);
+    //   }
+    // }
   } catch (e) {
     console.error('[PriceFetcher] DexScreener batch failed:', e);
   }
 
-  console.log(`[FetchPrices] After DexScreener, remaining count: ${remaining.size}`);
+  // console.log(`[FetchPrices] After DexScreener, remaining count: ${remaining.size}`);
 
-  // --- 2. Jupiter Fallback ---
-  if (remaining.size > 0) {
-    try {
-      const remainingMints = [...remaining];
-      console.log(`[FetchPrices] Calling Jupiter fallback for ${remainingMints.length} mints...`);
-      // console.log(`[FetchPrices] Jupiter Targets:`, remainingMints);
-
-      await fetchFromJupiter(remainingMints, results, apiKey);
-    } catch (e) {
-      console.error('[PriceFetcher] Jupiter fallback failed:', e);
-    }
-  }
+  // --- 2. Jupiter Fallback（現在は未使用） ---
+  // if (remaining.size > 0) {
+  //   try {
+  //     const remainingMints = [...remaining];
+  //     console.log(`[FetchPrices] Calling Jupiter fallback for ${remainingMints.length} mints...`);
+  //     // console.log(`[FetchPrices] Jupiter Targets:`, remainingMints);
+  //     await fetchFromJupiter(remainingMints, results, apiKey);
+  //   } catch (e) {
+  //     console.error('[PriceFetcher] Jupiter fallback failed:', e);
+  //   }
+  // }
 
   // --- Final Report ---
   console.log('--- [FetchPrices] FINAL RESULTS ---');
@@ -164,45 +163,45 @@ async function fetchFromDexScreener(
   }
 }
 
-/**
- * Jupiter Price API v3: batch fetch all at once.
- */
-//  Jupiterエンドポイントをv3 に変更(v2 は非推奨)
-// apiKey を x-api-key ヘッダーとして使用
-async function fetchFromJupiter(
-  mints: string[],
-  results: Map<string, PriceResult>,
-  apiKey?: string,
-): Promise<void> {
-  const url = `${JUPITER_PRICE_API_FREE}?ids=${mints.join(',')}`;
-  // console.log(`[Jupiter] URL: ${url}`);
-
-  try {
-    const headers: Record<string, string> = { 'User-Agent': 'Axis-Snapshot/1.0' };
-    if (apiKey) headers['x-api-key'] = apiKey; // [apiKeyがある場合はx-api-keyをヘッダーに設定
-    const res = await fetch(url, { headers });
-    if (!res.ok) {
-      const body = await res.text();
-      console.warn(`[Jupiter] HTTP ${res.status}: ${body}`);
-      return;
-    }
-
-    // v3のレスポンス形式に合わせて変更
-    const data: any = await res.json();
-
-    for (const mint of mints) {
-      const entry = data[mint]; // dataラップがないため、data.data[mint] を data[mint] に変更
-      if (entry && entry.usdPrice) {
-        const price = parseFloat(entry.usdPrice); // price が usdPriceに変更されている
-        if (!isNaN(price) && price > 0) {
-          results.set(mint, { price_usd: price, source: 'jupiter' });
-          console.log(`[Jupiter] Recovered price for ${mint}: ${price}`);
-        }
-      } else {
-        console.warn(`[Jupiter] Mint not found in response: ${mint}`);
-      }
-    }
-  } catch (e) {
-    console.warn('[Jupiter] Fetch error:', e);
-  }
-}
+// /**
+//  * Jupiter Price API v3: batch fetch all at once.
+//  */
+// //  Jupiterエンドポイントをv3 に変更(v2 は非推奨)
+// // apiKey を x-api-key ヘッダーとして使用
+// async function fetchFromJupiter(
+//   mints: string[],
+//   results: Map<string, PriceResult>,
+//   apiKey?: string,
+// ): Promise<void> {
+//   const url = `${JUPITER_PRICE_API_FREE}?ids=${mints.join(',')}`;
+//   // console.log(`[Jupiter] URL: ${url}`);
+//
+//   try {
+//     const headers: Record<string, string> = { 'User-Agent': 'Axis-Snapshot/1.0' };
+//     if (apiKey) headers['x-api-key'] = apiKey; // [apiKeyがある場合はx-api-keyをヘッダーに設定
+//     const res = await fetch(url, { headers });
+//     if (!res.ok) {
+//       const body = await res.text();
+//       console.warn(`[Jupiter] HTTP ${res.status}: ${body}`);
+//       return;
+//     }
+//
+//     // v3のレスポンス形式に合わせて変更
+//     const data: any = await res.json();
+//
+//     for (const mint of mints) {
+//       const entry = data[mint]; // dataラップがないため、data.data[mint] を data[mint] に変更
+//       if (entry && entry.usdPrice) {
+//         const price = parseFloat(entry.usdPrice); // price が usdPriceに変更されている
+//         if (!isNaN(price) && price > 0) {
+//           results.set(mint, { price_usd: price, source: 'jupiter' });
+//           console.log(`[Jupiter] Recovered price for ${mint}: ${price}`);
+//         }
+//       } else {
+//         console.warn(`[Jupiter] Mint not found in response: ${mint}`);
+//       }
+//     }
+//   } catch (e) {
+//     console.warn('[Jupiter] Fetch error:', e);
+//   }
+// }
