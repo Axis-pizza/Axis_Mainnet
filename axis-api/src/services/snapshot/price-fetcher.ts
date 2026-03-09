@@ -10,10 +10,17 @@ export interface PriceResult {
   source: string;
 }
 
-const DEXSCREENER_API = 'https://api.dexscreener.com/latest/dex/tokens';
+// エンドポイントをv1に変更
+const DEXSCREENER_API = 'https://api.dexscreener.com/tokens/v1/solana';
 // jupiter v2が非推奨になったため、最新のjupiter v3に変更（現在は未使用）
 // const JUPITER_PRICE_API_FREE = 'https://api.jup.ag/price/v3';
 const DEXSCREENER_BATCH_SIZE = 30;
+
+// 価格が取れないステーブルコインを$1に固定
+const STABLECOIN_MINTS = new Set([
+  'epjfwdd5aufqssqem2qn1xzybapc8g4weggkzwytdt1v', // USDC
+  'es9vmfrzacermjfrf4h2fyd4kconky11mcce8benwnyb',  // USDT
+]);
 
 /**
  * Build a symbol → mint lookup from STRICT_LIST for resolving tokens without mint addresses.
@@ -65,13 +72,29 @@ export async function fetchPrices(mints: string[]): Promise<Map<string, PriceRes
   // resultsのキーは小文字なので、小文字に正規化したリストを使う
   const lowerMints = mints.map(m => m.toLowerCase());
 
-  // --- 1. DexScreener ---
-  console.log(`[FetchPrices] Calling DexScreener...`);
-  try {
-    await fetchFromDexScreener(lowerMints, results);
-  } catch (e) {
-    console.error('[PriceFetcher] DexScreener batch failed:', e);
+  // APIに投げる前にステーブルコインを分離
+  const fetchTargetMints: string[] = [];
+
+  for (const mint of lowerMints) {
+    if (STABLECOIN_MINTS.has(mint)) {
+      results.set(mint, { price_usd: 1.0, source: 'hardcoded_stable' });
+      console.log(`[FetchPrices] 💵 Stablecoin detected: ${mint}. Fixed to $1.0`);
+    } else {
+      fetchTargetMints.push(mint);
+    }
   }
+
+  // --- 1. DexScreener ---
+  // APIに投げるのはステーブルコイン「以外」のリストに
+  if (fetchTargetMints.length > 0) {
+    console.log(`[FetchPrices] Calling DexScreener...`);
+    try {
+      await fetchFromDexScreener(fetchTargetMints, results);
+    } catch (e) {
+      console.error('[PriceFetcher] DexScreener batch failed:', e);
+    }
+  }
+
 
   // --- 2. Jupiter Fallback（現在は未使用） ---
   // if (remaining.size > 0) {
@@ -121,16 +144,18 @@ async function fetchFromDexScreener(
         continue;
       }
 
+      // v1エンドポイントはレスポンスが { pairs: [...] } ではなく配列直接で返ってくるので、対応する形に変更
       const data: any = await res.json();
-      if (!data.pairs || !Array.isArray(data.pairs)) {
-        console.warn(`[DexScreener] No 'pairs' array in response.`);
+      const pairs = Array.isArray(data) ? data : data.pairs;
+      if (!pairs || !Array.isArray(pairs)) {
+        console.warn(`[DexScreener] Unexpected response format.`);
         continue;
       }
 
       // Build mint → best-price map
       const seen = new Map<string, { price: number; liquidity: number; pairAddress: string }>();
 
-      for (const pair of data.pairs) {
+      for (const pair of pairs) {
         // アドレスを小文字に正規化してマッチングの大文字小文字不一致を防ぐ
         const mint = pair.baseToken?.address?.toLowerCase();
         if (!mint) continue;
