@@ -66,7 +66,7 @@ export async function runPriceSnapshot(db: any): Promise<void> {
       db.prepare(`
         INSERT OR REPLACE INTO strategy_price_snapshots
           (strategy_id, ts_bucket_utc, index_price, prices_json, weights_json,
-           source_json, confidence, version, metadata_json, created_at)
+          source_json, confidence, version, metadata_json, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       `).bind(
         snapshot.strategy_id,
@@ -97,8 +97,22 @@ export async function runPriceSnapshot(db: any): Promise<void> {
     );
   }
 
-  // 5. Execute in batches (D1 batch limit)
-  await batchExecute(db, [...snapshotStmts, ...baselineStmts]);
+  // 5. token_prices への INSERT ステートメントを作成
+  const tokenPriceStmts: any[] = [];
+  for (const mint of allMints) {
+    const price = priceMap.get(mint);
+    if (price && price.price_usd > 0) {
+      tokenPriceStmts.push(
+        db.prepare(`
+          INSERT OR REPLACE INTO token_prices (token_name, recorded_at, price_usd)
+          VALUES (?, ?, ?)
+        `).bind(mint, tsBucket, price.price_usd)
+      );
+    }
+  }
+
+  // 6. Execute in batches (D1 batch limit)
+  await batchExecute(db, [...snapshotStmts, ...baselineStmts, ...tokenPriceStmts]);
 
   const elapsed = Date.now() - startMs;
   console.log(
