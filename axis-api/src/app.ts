@@ -202,7 +202,7 @@ async function distributeHoldingXP(env: Bindings) {
 
     for (const [pubkey, totalUsd] of Object.entries(userHoldings)) {
       const cappedUsd = Math.min(totalUsd, CAP_USD);
-      const earnedXp = cappedUsd * XP_RATE;
+      const earnedXp = Math.floor(cappedUsd * XP_RATE);
 
       if (earnedXp > 0) {
         await db.prepare(
@@ -211,21 +211,21 @@ async function distributeHoldingXP(env: Bindings) {
         ).bind(pubkey, earnedXp, `Daily Holding XP ($${cappedUsd} capped)`).run();
 
         await db.prepare(
-          "UPDATE users SET total_xp = total_xp + ? WHERE pubkey = ?"
+          "UPDATE users SET total_xp = total_xp + ? WHERE wallet_address = ?"
         ).bind(earnedXp, pubkey).run();
-        
-        const user = await db.prepare("SELECT referrer_id FROM users WHERE pubkey = ?").bind(pubkey).first();
-        if (user && user.referrer_id) {
+
+        const user = await db.prepare("SELECT referred_by FROM users WHERE wallet_address = ?").bind(pubkey).first();
+        if (user && user.referred_by) {
           const bonus = Math.floor(earnedXp * 0.1);
           if (bonus >= 1) {
              await db.prepare(
-              `INSERT INTO xp_ledger (user_pubkey, amount, action_type, description, related_id) 
+              `INSERT INTO xp_ledger (user_pubkey, amount, action_type, description, related_id)
                VALUES (?, ?, 'REFERRAL_BONUS', ?, ?)`
-            ).bind(user.referrer_id, bonus, `Referral bonus from ${pubkey.slice(0,4)}...`, pubkey).run();
+            ).bind(user.referred_by, bonus, `Referral bonus from ${pubkey.slice(0,4)}...`, pubkey).run();
 
             await db.prepare(
-              "UPDATE users SET total_xp = total_xp + ? WHERE pubkey = ?"
-            ).bind(bonus, user.referrer_id).run();
+              "UPDATE users SET total_xp = total_xp + ? WHERE wallet_address = ?"
+            ).bind(bonus, user.referred_by).run();
           }
         }
       }

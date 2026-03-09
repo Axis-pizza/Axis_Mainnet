@@ -58,7 +58,7 @@ export const api = {
         url += `&ref=${ref}`;
       }
 
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
 
       if (!res.ok) {
         return { success: false, user: null };
@@ -283,6 +283,10 @@ export const api = {
 
       try {
         const data = JSON.parse(text);
+        // check-in後はキャッシュを無効化して次のgetUserで最新値を取得する
+        if (data.success) {
+          _invalidate(`user_${pubkey}`);
+        }
         return data;
       } catch (e) {
         return { success: false, error: `Server Error: ${text}` };

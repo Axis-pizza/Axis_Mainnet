@@ -306,8 +306,8 @@ app.post('/deploy', async (c) => {
         adminPubkeyStr
     ).run();
 
-    // XP付与
-    await addXP(c.env.axis_db, ownerPubkey, 500, 'STRATEGY_DEPLOY', 'Deployed Strategy');
+    // XP付与 (Phase 2: 50 XP per deploy)
+    await addXP(c.env.axis_db, ownerPubkey, 50, 'STRATEGY_DEPLOY', 'Deployed Strategy');
 
     return c.json({ 
         success: true, 
@@ -399,11 +399,40 @@ app.post('/trade', async (c) => {
 
       // DB更新 (TVL等)
       if (strategyId) {
-           // 簡易的なTVL更新 (BUYなら増える、SELLなら減る)
-           const change = mode === 'BUY' ? amount : -amount;
-           await c.env.axis_db.prepare(
-              "UPDATE strategies SET tvl = tvl + ? WHERE id = ?"
+          const change = mode === 'BUY' ? amount : -amount;
+
+          // TVL更新前の値を取得（マイルストーン判定用）
+          const stratBefore = await c.env.axis_db.prepare(
+            "SELECT tvl, owner_pubkey FROM strategies WHERE id = ?"
+          ).bind(strategyId).first();
+
+          await c.env.axis_db.prepare(
+            "UPDATE strategies SET tvl = tvl + ? WHERE id = ?"
           ).bind(change, strategyId).run();
+
+          // TVL $10k マイルストーンボーナス（BUYで閾値を超えた場合のみ、一度だけ）
+          const TVL_MILESTONE = 10000;
+          if (mode === 'BUY' && stratBefore) {
+            const tvlBefore = (stratBefore.tvl as number) || 0;
+            const tvlAfter = tvlBefore + amount;
+            const ownerPubkey = stratBefore.owner_pubkey as string;
+
+            if (tvlBefore < TVL_MILESTONE && tvlAfter >= TVL_MILESTONE && ownerPubkey) {
+              // 二重付与チェック: このstrategyIdで既にTVL_MILESTONEを付与済みでないか
+              const alreadyAwarded = await c.env.axis_db.prepare(
+                "SELECT id FROM xp_ledger WHERE related_id = ? AND action_type = 'TVL_MILESTONE' LIMIT 1"
+              ).bind(strategyId).first();
+
+              if (!alreadyAwarded) {
+                await c.env.axis_db.prepare(
+                  "INSERT INTO xp_ledger (user_pubkey, amount, action_type, description, related_id) VALUES (?, ?, 'TVL_MILESTONE', ?, ?)"
+                ).bind(ownerPubkey, 500, `TVL $10k Milestone: ${strategyId}`, strategyId).run();
+                await c.env.axis_db.prepare(
+                  "UPDATE users SET total_xp = total_xp + 500 WHERE wallet_address = ?"
+                ).bind(ownerPubkey).run();
+              }
+            }
+          }
       }
 
       return c.json({ success: true, tx: txSig, message: `Trade Complete: ${mode} ${amount}` });
@@ -467,8 +496,8 @@ async function addXP(db: D1Database, pubkey: string, amount: number, actionType:
       `INSERT INTO xp_ledger (user_pubkey, amount, action_type, description) VALUES (?, ?, ?, ?)`
     ).bind(pubkey, amount, actionType, description).run();
     await db.prepare(
-      `UPDATE users SET total_xp = total_xp + ? WHERE pubkey = ?`
-    ).bind(amount, pubkey).run();
+      `UPDATE users SET total_xp = total_xp + ? WHERE wallet_address = ?`
+    ).bind(Math.floor(amount), pubkey).run();
   } catch(e) { /* ignore */ }
 }
 

@@ -131,9 +131,14 @@ export async function updateUser(db: D1Database, wallet: string, updates: { name
   await drizzledb.run(sql`UPDATE users SET ${sql.join(chunks, sql`, `)} WHERE wallet_address = ${wallet}`);
 }
 
-export async function updateUserXp(db: D1Database, wallet: string, xp: number, lastCheckin: number): Promise<void> {
+export async function updateUserXp(db: D1Database, wallet: string, xpDelta: number, lastCheckin: number, rankTier?: string): Promise<void> {
   const drizzledb = drizzle(db);
-  await drizzledb.run(sql`UPDATE users SET total_xp = ${xp}, last_checkin = ${lastCheckin} WHERE wallet_address = ${wallet}`);
+  // 絶対値ではなく相対加算。D1の結果整合性でstaleな読み取り値を掴んでも上書きで消えない。
+  if (rankTier) {
+    await drizzledb.run(sql`UPDATE users SET total_xp = total_xp + ${xpDelta}, last_checkin = ${lastCheckin}, rank_tier = ${rankTier} WHERE wallet_address = ${wallet}`);
+  } else {
+    await drizzledb.run(sql`UPDATE users SET total_xp = total_xp + ${xpDelta}, last_checkin = ${lastCheckin} WHERE wallet_address = ${wallet}`);
+  }
 }
 
 // ★前回不足していた関数を追加
