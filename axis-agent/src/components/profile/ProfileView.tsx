@@ -27,6 +27,7 @@ import { api } from '../../services/api';
 import { getUsdcBalance } from '../../services/usdc';
 import { TokenImage } from '../common/TokenImage';
 import { OGBadge } from '../common/OGBadge';
+import { TierBadge } from '../common/TierBadge';
 import { ProfileEditModal } from '../common/ProfileEditModal';
 import { useToast } from '../../context/ToastContext';
 
@@ -566,9 +567,9 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                 </AnimatePresence>
               </div>
 
-              <p className="text-xs text-white/40 mt-0.5">
-                Rank: <span className="text-white/70 font-bold">{userProfile?.rankTier || 'Novice'}</span>
-              </p>
+              <div className="mt-1.5">
+                <TierBadge tier={userProfile?.rankTier || 'Novice'} size="sm" />
+              </div>
 
               {/* Wallet Address */}
               <div className="flex items-center gap-1.5 mt-1.5">
