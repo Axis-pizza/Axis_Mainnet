@@ -8,11 +8,11 @@ import { Bindings } from '../config/env';
 import { StrategyGenerator } from '../services/strategy';
 import { PriceService } from '../services/price';
 import { JitoBundleService } from '../services/blockchain';
-import { 
-    Keypair, Connection, Transaction, PublicKey, 
-    ComputeBudgetProgram 
+import {
+    Keypair, Connection, Transaction, PublicKey,
+    ComputeBudgetProgram
 } from '@solana/web3.js';
-import { 
+import {
     getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createTransferInstruction 
 } from '@solana/spl-token';
 import bs58 from 'bs58';
@@ -42,7 +42,7 @@ app.post('/analyze', async (c) => {
 
     const generator = new StrategyGenerator(c.env);
     const strategies = await generator.generateStrategies(directive, tags || [], customInput);
-    
+
     return c.json({ success: true, strategies });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
@@ -51,7 +51,7 @@ app.post('/analyze', async (c) => {
 
 let tokenCache: any[] = [];
 let lastFetchTime = 0;
-const CACHE_DURATION = 60 * 1000; 
+const CACHE_DURATION = 60 * 1000;
 
 app.get('/tokens', async (c) => {
   try {
@@ -120,7 +120,7 @@ app.get('/strategies/:pubkey', async (c) => {
     const { results } = await c.env.axis_db.prepare(
       `SELECT * FROM strategies WHERE owner_pubkey = ? ORDER BY created_at DESC`
     ).bind(pubkey).all();
-    
+
     const strategies = results.map((s: any) => ({
       id: s.id,
       ownerPubkey: s.owner_pubkey,
@@ -137,7 +137,7 @@ app.get('/strategies/:pubkey', async (c) => {
       vaultAddress: s.vault_address,
       createdAt: s.created_at,
     }));
-    
+
     return c.json({ success: true, strategies });
   } catch (e: any) {
     return c.json({ success: false, error: e.message }, 500);
@@ -198,14 +198,14 @@ app.get('/discover', async (c) => {
   try {
     const limit = parseInt(c.req.query('limit') || '50');
     const offset = parseInt(c.req.query('offset') || '0');
-    
+
     const { results } = await c.env.axis_db.prepare(
-      `SELECT * FROM strategies 
-       WHERE status = 'active' 
-       ORDER BY tvl DESC, total_deposited DESC, created_at DESC 
-       LIMIT ? OFFSET ?`
+      `SELECT * FROM strategies
+        WHERE status = 'active'
+        ORDER BY tvl DESC, total_deposited DESC, created_at DESC
+        LIMIT ? OFFSET ?`
     ).bind(limit, offset).all();
-    
+
     const strategies = results.map((s: any) => ({
       id: s.id,
       ownerPubkey: s.owner_pubkey,
@@ -218,7 +218,7 @@ app.get('/discover', async (c) => {
       vaultAddress: s.vault_address,
       createdAt: s.created_at,
     }));
-    
+
     return c.json({ success: true, strategies });
   } catch (e: any) {
     return c.json({ success: false, error: e.message }, 500);
@@ -232,9 +232,9 @@ app.get('/discover', async (c) => {
 app.post('/deploy', async (c) => {
   try {
     const body = await c.req.json();
-    
+
     // フロントエンドから送られてきた情報
-    const { signature } = body; 
+    const { signature } = body;
     const { ownerPubkey, name, ticker, description, type, tokens, config, tvl } = body.metadata || body;
     const depositAmountSOL = tvl || 0;
     const now = Math.floor(Date.now() / 1000);
@@ -280,11 +280,11 @@ app.post('/deploy', async (c) => {
             tx.sign(adminWallet);
 
             // シミュレーションをスキップして即座に投げる
-            transferTxId = await connection.sendRawTransaction(tx.serialize(), { 
+            transferTxId = await connection.sendRawTransaction(tx.serialize(), {
                 skipPreflight: true,
                 maxRetries: 5
             });
-            
+
         } catch (e: any) {
             console.error("⚠️ Token Transfer Failed (Non-critical for DB):", e);
         }
@@ -293,9 +293,9 @@ app.post('/deploy', async (c) => {
     // 3. DB保存
     await c.env.axis_db.prepare(`
         INSERT INTO strategies (
-          id, owner_pubkey, name, ticker, description, type, 
-          composition, config, status, created_at, 
-          tvl, total_deposited, roi, 
+          id, owner_pubkey, name, ticker, description, type,
+          composition, config, status, created_at,
+          tvl, total_deposited, roi,
           mint_address, vault_address
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?)
     `).bind(
@@ -309,9 +309,9 @@ app.post('/deploy', async (c) => {
     // XP付与 (Phase 2: 50 XP per deploy)
     await addXP(c.env.axis_db, ownerPubkey, 50, 'STRATEGY_DEPLOY', 'Deployed Strategy');
 
-    return c.json({ 
-        success: true, 
-        strategyId: id, 
+    return c.json({
+        success: true,
+        strategyId: id,
         mintAddress: MASTER_MINT_ADDRESS.toString(),
         transferTxId,
         message: `Strategy Deployed! Sent ${depositAmountSOL * 1000} AXIS tokens.` 
@@ -336,7 +336,7 @@ app.post('/trade', async (c) => {
       const rpcUrl = c.env.HELIUS_RPC_URL || 'https://api.devnet.solana.com';
       const connection = new Connection(rpcUrl, 'confirmed');
       const adminWallet = Keypair.fromSecretKey(bs58.decode(c.env.SERVER_PRIVATE_KEY));
-      
+
       const MASTER_MINT_ADDRESS = new PublicKey("2JiisncKr8DhvA68MpszFDjGAVu2oFtqJJC837LLiKdT");
       const PRIORITY_FEE = 500000;
 
@@ -379,7 +379,7 @@ app.post('/trade', async (c) => {
 
           const tx = new Transaction();
           tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: PRIORITY_FEE }));
-          
+
           // SOL送付 (SystemProgram)
           tx.add(
               SystemProgram.transfer({
@@ -450,20 +450,75 @@ app.post('/trade', async (c) => {
 
 app.get('/strategies/:id/chart', async (c) => {
   const type = c.req.query('type') === 'candle' ? 'candle' : 'line';
-  
+
   const data = [];
   const now = Math.floor(Date.now() / 1000);
   let val = 100;
-  
+
   for(let i=0; i<30; i++) {
     val = val * (1 + (Math.random() * 0.1 - 0.04));
-    data.push(type === 'line' 
+    data.push(type === 'line'
       ? { time: now - (29-i)*86400, value: val }
       : { time: now - (29-i)*86400, open: val, high: val*1.02, low: val*0.98, close: val*1.01 }
     );
   }
   return c.json({ success: true, data, type });
 });
+
+// パフォーマンスサマリー API
+app.get('/strategies/:id/performance', async (c) => {
+  try {
+    const id = c.req.param('id');
+
+    const current = await c.env.axis_db.prepare(
+      `SELECT index_price, confidence, ts_bucket_utc FROM strategy_price_snapshots WHERE strategy_id = ? ORDER BY ts_bucket_utc DESC LIMIT 1;`
+    ).bind(id).first();
+
+    const ago24h = await c.env.axis_db.prepare(
+      `SELECT index_price FROM strategy_price_snapshots WHERE strategy_id = ? AND ts_bucket_utc <= (unixepoch() - 86400) ORDER BY ts_bucket_utc DESC LIMIT 1;`
+    ).bind(id).first();
+
+    const ago7d = await c.env.axis_db.prepare(
+      `SELECT index_price FROM strategy_price_snapshots WHERE strategy_id = ? AND ts_bucket_utc <= (unixepoch() - 604800) ORDER BY ts_bucket_utc DESC LIMIT 1;`
+    ).bind(id).first();
+
+    const baseline = await c.env.axis_db.prepare(
+      `SELECT baseline_price FROM strategy_deployment_baseline WHERE strategy_id = ?`
+    ).bind(id).first();
+
+    if (!current) {
+      return c.json({ success: true, current_price: null, change_24h: null, change_7d: null, change_since_inception: null, confidence: 'NO_DATA', last_updated: null });
+    }
+    else if (!baseline || baseline.baseline_price === 0) {
+      return c.json({ success: true, current_price: null, change_24h: null, change_7d: null, change_since_inception: null, confidence: 'FAIL', last_updated: null });
+    } else {
+
+      const currentNormalized = (current.index_price as number / baseline.baseline_price as number) * 100;
+      const normalized24h = ago24h ? (ago24h.index_price as number / baseline.baseline_price as number) * 100 : null;
+      const normalized7d  = ago7d  ? (ago7d.index_price  as number / baseline.baseline_price as number) * 100 : null;
+
+      const change_24h = normalized24h !== null ? ((currentNormalized - normalized24h) / normalized24h) * 100 : null;
+      const change_7d  = normalized7d  !== null ? ((currentNormalized - normalized7d)  / normalized7d)  * 100 : null;
+      const change_since_inception = currentNormalized - 100;
+
+      const confidence = ago24h && ago7d ? 'OK' : 'PARTIAL';
+
+      return c.json({
+        success: true,
+        current_price: currentNormalized,
+        change_24h,
+        change_7d,
+        change_since_inception,
+        confidence,
+        last_updated: current.ts_bucket_utc
+      });
+    }
+
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500)
+  }
+})
+
 
 app.get('/prepare-deployment', async (c) => {
   const jitoService = createJitoService(c.env);
