@@ -5,6 +5,7 @@ import * as SolanaService from '../services/solana';
 import * as InviteModel from '../models/invite';
 import * as UserModel from '../models/user';
 import * as AuthService from '../services/auth';
+import { runPriceSnapshot } from '../services/snapshot';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -203,6 +204,20 @@ app.post('/submit-bug', async (c) => {
     } catch (e: any) {
         console.error("Email Error:", e);
         return c.json({ success: false, message: `Failed to send email: ${e.message}` }, 500);
+    }
+});
+
+// スナップショット手動トリガー
+app.post('/admin/snapshot/trigger', async (c) => {
+try {
+        const startMs = Date.now()
+        const countResult = await c.env.axis_db.prepare('SELECT COUNT(*) as count FROM strategies').first();
+        const strategyCount = countResult?.count ?? 0;
+        await runPriceSnapshot( c.env.axis_db);
+
+        return c.json({ success: true, elapsed_ms: Date.now() - startMs, strategies: strategyCount })
+    } catch (e: any) {
+        return c.json({ success: false, error: e.message }, 500)
     }
 })
 
