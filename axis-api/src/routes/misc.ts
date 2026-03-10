@@ -66,7 +66,7 @@ app.post("/claim", async (c) => {
           const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
           try {
               await c.env.axis_db.prepare(
-                  'INSERT INTO users (id, wallet_address, invite_code, total_xp, rank_tier, last_checkin, last_faucet_at) VALUES (?, ?, ?, 0, "Novice", 0, 0)'
+                  'INSERT INTO users (id, wallet_address, invite_code, total_xp, rank_tier, last_checkin, last_faucet_at) VALUES (?, ?, ?, 500, "Bronze", 0, 0)'
               ).bind(newId, wallet_address, inviteCode).run();
           } catch {
               // INSERT 競合（並列リクエスト等）の場合は無視して再取得

@@ -8,15 +8,15 @@ interface ToastProps {
 
 export const Toast = ({ message, type }: ToastProps) => {
   const icons = {
-    success: <CheckCircle className="w-5 h-5 text-green-500" />,
+    success: <CheckCircle className="w-5 h-5 text-emerald-500" />,
     error: <AlertCircle className="w-5 h-5 text-red-500" />,
-    info: <Info className="w-5 h-5 text-[#B8863F]" />,
+    info: <Info className="w-5 h-5 text-amber-400" />,
   };
 
   const bgColors = {
-    success: 'bg-[#080503] border-green-500/30',
-    error: 'bg-[#080503] border-red-500/30',
-    info: 'bg-[#080503] border-[rgba(184,134,63,0.25)]',
+    success: 'bg-[#111110] border-emerald-500/30',
+    error: 'bg-[#111110] border-red-500/30',
+    info: 'bg-[#111110] border-[rgba(201,168,76,0.3)]',
   };
 
   const shakeIntensity = type === 'error' ? 15 : 4;
@@ -48,7 +48,7 @@ export const Toast = ({ message, type }: ToastProps) => {
         className={`fixed top-4 left-4 z-[9999] flex items-center gap-3 px-4 py-3 rounded-xl border ${bgColors[type]} shadow-2xl backdrop-blur-md min-w-[300px]`}
       >
         {icons[type]}
-        <span className="font-medium text-[#F2E0C8] text-sm">{message}</span>
+        <span className="font-medium text-zinc-300 text-sm">{message}</span>
       </motion.div>
     </AnimatePresence>
   );

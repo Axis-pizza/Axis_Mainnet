@@ -7,6 +7,16 @@ import { sendInviteEmail } from '../services/email';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+// XPに基づくランク計算（single source of truth）
+function calcRankTier(xp: number): string {
+  if (xp >= 10000) return 'Legend';
+  if (xp >= 5000)  return 'Diamond';
+  if (xp >= 2000)  return 'Gold';
+  if (xp >= 1000)  return 'Silver';
+  if (xp >= 500)   return 'Bronze';
+  return 'Novice';
+}
+
 // --- Register ---
 app.post('/register', async (c) => {
   try {
@@ -175,6 +185,12 @@ app.get('/user', async (c) => {
       });
     }
 
+    const totalXp = Math.floor(user.total_xp ?? 0);
+    const rankTier = calcRankTier(totalXp);
+
+    // Cloudflare Edgeキャッシュ・ブラウザキャッシュを無効化（XPのstale表示防止）
+    c.header('Cache-Control', 'no-store');
+
     return c.json({
       success: true,
       is_registered: true,
@@ -182,10 +198,10 @@ app.get('/user', async (c) => {
         username: user.name,
         bio: user.bio,
         pfpUrl: user.avatar_url,
-        total_xp: user.total_xp,
-        rank_tier: user.rank_tier,
-        pnl_percent: user.pnl_percent,
-        total_invested: user.total_invested_usd,
+        total_xp: totalXp,
+        rank_tier: rankTier,
+        pnl_percent: user.pnl_percent ?? 0,
+        total_invested: user.total_invested_usd ?? 0,
         is_vip: isVip,
         last_checkin: user.last_checkin ?? 0,
         last_faucet_at: user.last_faucet_at ?? 0,
@@ -240,7 +256,7 @@ app.post('/strategies/:id/watchlist', async (c) => {
       const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
       try {
         await c.env.axis_db.prepare(
-          'INSERT INTO users (id, wallet_address, invite_code, total_xp, rank_tier, last_checkin) VALUES (?, ?, ?, 0, "Novice", 0)'
+          'INSERT INTO users (id, wallet_address, invite_code, total_xp, rank_tier, last_checkin) VALUES (?, ?, ?, 500, "Bronze", 0)'
         ).bind(newId, userPubkey, inviteCode).run();
         user = { id: newId };
       } catch (err) {
@@ -367,16 +383,21 @@ app.post('/users/:wallet/checkin', async (c) => {
       // VIPなら1.5倍 (端数切り捨て)
       const earnedPoints = isVip ? Math.floor(basePoints * 1.5) : basePoints;
 
-      // ★変更: 固定の10ではなく計算した earnedPoints を足す
-      const newXp = (user.total_xp || 0) + earnedPoints;
-      
-      await UserModel.updateUserXp(c.env.axis_db, wallet, newXp, now);
+      // 絶対値ではなくdeltaを渡す。D1のstale readでXPが消えるバグを防ぐ。
+      // 楽観的に新XPを計算してランクを決定（DBの相対加算と齟齬なし）
+      const estimatedNewXp = (user.total_xp ?? 0) + earnedPoints;
+      const newRankTier = calcRankTier(estimatedNewXp);
+      await UserModel.updateUserXp(c.env.axis_db, wallet, earnedPoints, now, newRankTier);
 
-      return c.json({ 
-          success: true, 
-          user: { ...user, total_xp: newXp, last_checkin: now },
-          earnedPoints, // フロント表示用に獲得ポイントも返すと親切
-          isVip         // フロント演出用に判定結果も返す
+      // 更新後の実際のXPをDBから再読み取りしてレスポンスに返す
+      const updatedUser = await UserModel.findUserByWallet(c.env.axis_db, wallet);
+      const actualXp = updatedUser?.total_xp ?? estimatedNewXp;
+
+      return c.json({
+          success: true,
+          user: { ...user, total_xp: actualXp, rank_tier: calcRankTier(actualXp), last_checkin: now },
+          earnedPoints,
+          isVip
       });
   } catch (e: any) {
       return c.json({ success: false, error: e.message }, 500);
@@ -484,6 +505,51 @@ app.get('/users/:wallet/invested', async (c) => {
     return c.json({ success: true, strategies: results });
   } catch (e: any) {
     return c.json({ success: false, error: e.message });
+  }
+});
+
+// --- XP 過去分一括復元（管理用） ---
+// xp_ledger の累計を users.total_xp に反映する
+// 二重加算防止のため total_xp を ledger合計に置き換える（上書き）
+app.post('/admin/xp-reconcile', async (c) => {
+  try {
+    // xp_ledger から user_pubkey 別に合計を集計
+    const { results } = await c.env.axis_db.prepare(`
+      SELECT user_pubkey, SUM(amount) as total
+      FROM xp_ledger
+      GROUP BY user_pubkey
+    `).all();
+
+    if (!results || results.length === 0) {
+      return c.json({ success: true, message: 'No ledger entries found.', updated: 0 });
+    }
+
+    let updated = 0;
+    for (const row of results) {
+      const pubkey = row.user_pubkey as string;
+      const ledgerTotal = Math.floor((row.total as number) ?? 0);
+      if (!pubkey || ledgerTotal <= 0) continue;
+
+      // users.total_xp が ledger合計より小さい場合のみ上書き（減らさない）
+      const user = await c.env.axis_db.prepare(
+        'SELECT total_xp FROM users WHERE wallet_address = ?'
+      ).bind(pubkey).first();
+
+      if (!user) continue;
+
+      const currentXp = Math.floor((user.total_xp as number) ?? 0);
+      if (ledgerTotal > currentXp) {
+        const rankTier = calcRankTier(ledgerTotal);
+        await c.env.axis_db.prepare(
+          'UPDATE users SET total_xp = ?, rank_tier = ? WHERE wallet_address = ?'
+        ).bind(ledgerTotal, rankTier, pubkey).run();
+        updated++;
+      }
+    }
+
+    return c.json({ success: true, message: `XP reconciled.`, updated });
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500);
   }
 });
 

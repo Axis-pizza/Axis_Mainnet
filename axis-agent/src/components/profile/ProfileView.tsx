@@ -27,6 +27,7 @@ import { api } from '../../services/api';
 import { getUsdcBalance } from '../../services/usdc';
 import { TokenImage } from '../common/TokenImage';
 import { OGBadge } from '../common/OGBadge';
+import { TierBadge } from '../common/TierBadge';
 import { ProfileEditModal } from '../common/ProfileEditModal';
 import { useToast } from '../../context/ToastContext';
 
@@ -219,10 +220,16 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
   // --- 2. Check-in / Faucet state: localStorage を初期値とし loadProfile で上書き ---
   useEffect(() => {
     if (!publicKey) { setCheckedIn(false); setFaucetClaimed(false); return; }
-    const today = new Date().toISOString().split('T')[0];
+    const today = getJSTDate();
     const stored = localStorage.getItem(`axis_checkin_${publicKey.toBase58()}_${today}`);
     setCheckedIn(!!stored);
   }, [publicKey]);
+
+  // JST (UTC+9) 基準で今日の日付文字列 (YYYY-MM-DD) を返す
+  const getJSTDate = (): string => {
+    const jst = new Date(Date.now() + 9 * 3600 * 1000);
+    return jst.toISOString().split('T')[0];
+  };
 
   // JST (UTC+9) 基準で「今日」かどうかを判定するユーティリティ
   const isToday = (unixTs: number): boolean => {
@@ -253,9 +260,9 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           referralCode:
             u.referralCode || `AXIS-${publicKey.toBase58().slice(0, 4).toUpperCase()}`,
           totalPoints: u.total_xp || 0,
-          totalVolume: u.total_invested || 0,
+          totalVolume: Number(u.total_invested) || 0,
           rankTier: u.rank_tier || 'Novice',
-          pnlPercent: u.pnl_percent || 0,
+          pnlPercent: Number(u.pnl_percent) || 0,
           referralCount: u.referralCount || 0,
           is_vip: u.is_vip || false,
           bio: u.bio,
@@ -265,7 +272,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
         // サーバーの last_checkin / last_faucet_at で状態を上書き（localStorage 改ざん対策）
         if (isToday(u.last_checkin)) {
           setCheckedIn(true);
-          const today = new Date().toISOString().split('T')[0];
+          const today = getJSTDate();
           localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
         }
         if (isToday(u.last_faucet_at)) {
@@ -311,11 +318,20 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
       setIsLeaderboardLoading(true);
       try {
         if (leaderboardTab === 'created') {
-          const discoverRes = await api.discoverStrategies(200, 0);
-          const strategies: any[] = discoverRes.strategies || discoverRes || [];
+          // Paginate through all strategies to get accurate counts.
+          // 200 per page, stop when a page returns fewer than 200 (last page).
+          const PAGE = 200;
+          const MAX_PAGES = 10; // safety cap: at most 2000 strategies
+          const allStrategies: any[] = [];
+          for (let page = 0; page < MAX_PAGES; page++) {
+            const res = await api.discoverStrategies(PAGE, page * PAGE);
+            const items: any[] = res.strategies || res || [];
+            allStrategies.push(...items);
+            if (items.length < PAGE) break; // reached last page
+          }
 
           const countMap: Record<string, { count: number; pfpUrl?: string | null }> = {};
-          for (const s of strategies) {
+          for (const s of allStrategies) {
             const pk = s.ownerPubkey || s.owner_pubkey;
             if (!pk) continue;
             if (!countMap[pk]) countMap[pk] = { count: 0, pfpUrl: s.creatorPfpUrl ?? null };
@@ -381,7 +397,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
         setXpFlash(true);
         setTimeout(() => setXpFlash(false), 1200);
         setCheckedIn(true);
-        const today = new Date().toISOString().split('T')[0];
+        const today = getJSTDate();
         localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
         showToast(
           isVip ? `⭐ +${earned} XP Claimed! (VIP Bonus)` : `✅ +${earned} XP Claimed!`,
@@ -394,7 +410,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
         if (errorMsg.includes('already') || errorMsg.includes('today') || errorMsg.includes('済')) {
           // 正常なケース（今日すでに実施済み）— error ではなく info で表示
           setCheckedIn(true);
-          const today = new Date().toISOString().split('T')[0];
+          const today = getJSTDate();
           localStorage.setItem(`axis_checkin_${publicKey.toBase58()}_${today}`, 'true');
           showToast("Already checked in today. Come back tomorrow!", 'info');
         } else if (errorMsg.includes('not found') || errorMsg.includes('404')) {
@@ -551,9 +567,9 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                 </AnimatePresence>
               </div>
 
-              <p className="text-xs text-white/40 mt-0.5">
-                Rank: <span className="text-white/70 font-bold">{userProfile?.rankTier || 'Novice'}</span>
-              </p>
+              <div className="mt-1.5">
+                <TierBadge tier={userProfile?.rankTier || 'Novice'} size="sm" />
+              </div>
 
               {/* Wallet Address */}
               <div className="flex items-center gap-1.5 mt-1.5">

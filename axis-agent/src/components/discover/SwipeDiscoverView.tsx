@@ -693,8 +693,8 @@ export const SwipeDiscoverView = ({
   const [strategies, setStrategies] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [isSwiping, setIsSwiping] = useState(false);
   const [matchedStrategy, setMatchedStrategy] = useState<any | null>(null);
+  const lastSwipeTime = useRef(0);
 
   const [tokenDataMap, setTokenDataMap] = useState<Record<string, TokenData>>({});
   const [userMap, setUserMap] = useState<Record<string, any>>({});
@@ -736,7 +736,8 @@ export const SwipeDiscoverView = ({
       setLoading(true);
       try {
         const [publicRes, myRes, tokensRes] = await Promise.all([
-          api.discoverStrategies(50).catch(() => ({ strategies: [] })),
+          // 変更点: 引数を50から1000に変更して上限を撤廃
+          api.discoverStrategies(1000).catch(() => ({ strategies: [] })),
           publicKey
             ? api.getUserStrategies(publicKey.toBase58()).catch(() => ({ strategies: [] }))
             : Promise.resolve({ strategies: [] }),
@@ -934,16 +935,17 @@ export const SwipeDiscoverView = ({
 
   const handleSwipe = useCallback(
     (direction: 'left' | 'right', strategy: any) => {
-      if (isSwiping || matchedStrategy) return;
-      setIsSwiping(true);
+      if (matchedStrategy) return;
+      // Ref-based debounce to prevent same-frame double triggers
+      const now = Date.now();
+      if (now - lastSwipeTime.current < 50) return;
+      lastSwipeTime.current = now;
       setCurrentIndex((prev) => prev + 1);
       if (direction === 'right') {
         setMatchedStrategy(strategy);
       }
-      // Brief cooldown to prevent double-swipe
-      setTimeout(() => setIsSwiping(false), 300);
     },
-    [isSwiping, matchedStrategy]
+    [matchedStrategy]
   );
 
   const handleGoToStrategy = () => {
@@ -1186,7 +1188,7 @@ export const SwipeDiscoverView = ({
           whileHover={{ scale: 1.1, backgroundColor: 'rgba(239, 68, 68, 0.2)' }}
           whileTap={{ scale: 0.9 }}
           onClick={() => currentStrategy && handleSwipe('left', currentStrategy)}
-          disabled={isSwiping}
+          disabled={!!matchedStrategy}
           className="hidden md:flex absolute left-8 lg:left-20 xl:left-32 z-30 w-16 h-16 rounded-full border border-[rgba(184,134,63,0.15)] bg-[#140E08]/50 backdrop-blur-md text-white/40 hover:text-red-500 hover:border-red-500/50 transition-colors items-center justify-center shadow-lg"
         >
           <X className="w-8 h-8" />
@@ -1224,7 +1226,7 @@ export const SwipeDiscoverView = ({
           whileHover={{ scale: 1.1, backgroundColor: 'rgba(16, 185, 129, 0.2)' }}
           whileTap={{ scale: 0.9 }}
           onClick={() => currentStrategy && handleSwipe('right', currentStrategy)}
-          disabled={isSwiping}
+          disabled={!!matchedStrategy}
           className="hidden md:flex absolute right-8 lg:right-20 xl:right-32 z-30 w-16 h-16 rounded-full border border-[rgba(184,134,63,0.15)] bg-[#140E08]/50 backdrop-blur-md text-white/40 hover:text-emerald-400 hover:border-emerald-400/50 transition-colors items-center justify-center shadow-lg"
         >
           <Rocket className="w-8 h-8" />

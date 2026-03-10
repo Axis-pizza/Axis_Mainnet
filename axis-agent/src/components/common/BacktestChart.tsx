@@ -4,6 +4,7 @@
 
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
+import { chartColors } from '../../theme/colors';
 
 interface BacktestChartProps {
   data: {
@@ -106,8 +107,8 @@ export const BacktestChart = ({
       >
         <defs>
           <linearGradient id="backtestGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={isPositive ? '#10b981' : '#ef4444'} stopOpacity="0.3" />
-            <stop offset="100%" stopColor={isPositive ? '#10b981' : '#ef4444'} stopOpacity="0" />
+            <stop offset="0%" stopColor={isPositive ? chartColors.positive : chartColors.negative} stopOpacity="0.3" />
+            <stop offset="100%" stopColor={isPositive ? chartColors.positive : chartColors.negative} stopOpacity="0" />
           </linearGradient>
         </defs>
 
@@ -137,7 +138,7 @@ export const BacktestChart = ({
           transition={{ duration: 1.2, ease: 'easeOut' }}
           d={path}
           fill="none"
-          stroke={isPositive ? '#10b981' : '#ef4444'}
+          stroke={isPositive ? chartColors.positive : chartColors.negative}
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"

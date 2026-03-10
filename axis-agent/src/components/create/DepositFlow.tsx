@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { strategyTypeColors, colors } from '../../theme/colors';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
@@ -207,19 +208,10 @@ export const DepositFlow = ({
     setErrorMessage(null);
   };
 
-  const getTypeColor = () => {
-    switch (strategyType) {
-      case 'AGGRESSIVE':
-        return '#F97316';
-      case 'BALANCED':
-        return '#3B82F6';
-      case 'CONSERVATIVE':
-        return '#10B981';
-      default:
-        return '#B8863F';
-    }
-  };
-  const themeColor = getTypeColor();
+  const themeColor =
+    strategyType && strategyType in strategyTypeColors
+      ? strategyTypeColors[strategyType as keyof typeof strategyTypeColors].hex
+      : colors.accentSolid;
 
   return (
     <div className="min-h-screen relative overflow-hidden">
