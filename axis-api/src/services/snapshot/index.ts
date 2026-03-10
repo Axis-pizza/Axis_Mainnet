@@ -42,17 +42,31 @@ export async function runPriceSnapshot(db: any): Promise<void> {
   // 2. Parse tokens and collect all unique mints
   const strategyTokens = new Map<string, TokenEntry[]>();
   const allMints = new Set<string>();
+  // token_prices の token_name にsymbolを使うための逆引きマップ
+  const mintToSymbol = new Map<string, string>();
 
   for (const row of rows) {
     const tokens = parseTokens(row);
     strategyTokens.set(row.id, tokens);
     for (const t of tokens) {
-      if (t.mint) allMints.add(t.mint);
+      if (t.mint) {
+        allMints.add(t.mint);
+        mintToSymbol.set(t.mint.toLowerCase(), t.symbol);
+      }
     }
   }
 
   // 3. Batch fetch all prices (deduplicated by mint)
   const priceMap = await fetchPrices([...allMints]);
+  // 価格取得時刻を YYYY/MM/DD HH:MM:SS 形式で記録
+  const _now = new Date();
+  const priceFetchedAt =
+    `${_now.getUTCFullYear()}/` +
+    `${String(_now.getUTCMonth() + 1).padStart(2, '0')}/` +
+    `${String(_now.getUTCDate()).padStart(2, '0')} ` +
+    `${String(_now.getUTCHours()).padStart(2, '0')}:` +
+    `${String(_now.getUTCMinutes()).padStart(2, '0')}:` +
+    `${String(_now.getUTCSeconds()).padStart(2, '0')}`;
 
   // 4. Build snapshot statements
   const snapshotStmts: any[] = [];
@@ -66,7 +80,7 @@ export async function runPriceSnapshot(db: any): Promise<void> {
       db.prepare(`
         INSERT OR REPLACE INTO strategy_price_snapshots
           (strategy_id, ts_bucket_utc, index_price, prices_json, weights_json,
-           source_json, confidence, version, metadata_json, created_at)
+          source_json, confidence, version, metadata_json, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       `).bind(
         snapshot.strategy_id,
@@ -97,8 +111,23 @@ export async function runPriceSnapshot(db: any): Promise<void> {
     );
   }
 
-  // 5. Execute in batches (D1 batch limit)
-  await batchExecute(db, [...snapshotStmts, ...baselineStmts]);
+  // 5. token_prices への INSERT ステートメントを作成
+  const tokenPriceStmts: any[] = [];
+  for (const mint of allMints) {
+    const price = priceMap.get(mint.toLowerCase());
+    const symbol = mintToSymbol.get(mint.toLowerCase());
+    if (price && price.price_usd > 0 && symbol) {
+      tokenPriceStmts.push(
+        db.prepare(`
+          INSERT OR REPLACE INTO token_prices (token_name, recorded_at, price_usd)
+          VALUES (?, ?, ?)
+        `).bind(symbol, priceFetchedAt, price.price_usd)
+      );
+    }
+  }
+
+  // 6. Execute in batches (D1 batch limit)
+  await batchExecute(db, [...snapshotStmts, ...baselineStmts, ...tokenPriceStmts]);
 
   const elapsed = Date.now() - startMs;
   console.log(

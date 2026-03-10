@@ -66,10 +66,15 @@ export const strategiesTable = sqliteTable("strategies", {
     ticker:          text("ticker"),
     type:            text("type"),
     description:     text("description"),
+    composition:     text("composition"),
     config:          text("config"),
     jito_bundle_id:  text("jito_bundle_id"),
     status:          text("status"),
     total_deposited: real("total_deposited"),
+    tvl:             real("tvl"),
+    roi:             real("roi"),
+    mint_address:    text("mint_address"),
+    vault_address:   text("vault_address"),
     is_public:       int("is_public"),
     created_at:      int("created_at"),
     updated_at:      int("updated_at"),
@@ -148,3 +153,14 @@ export const strategyDeploymentBaselineTable = sqliteTable("strategy_deployment_
     baseline_confidence:    text("baseline_confidence"),
     created_at:             int("created_at"),
 });
+
+// ──────────────────────────────────────────────────────────
+// 各時刻の主要通貨のUSD価格
+// ──────────────────────────────────────────────────────────
+export const strategyTokenPricesTable = sqliteTable("token_prices", {
+    token_name:   text("token_name").notNull(),
+    recorded_at:  text("recorded_at").notNull(),
+    price_usd:    real("price_usd"),
+}, (t) => [
+    primaryKey({ columns: [t.token_name, t.recorded_at] }),
+]);

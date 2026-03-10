@@ -10,9 +10,17 @@ export interface PriceResult {
   source: string;
 }
 
-const DEXSCREENER_API = 'https://api.dexscreener.com/latest/dex/tokens';
-const JUPITER_PRICE_API = 'https://api.jup.ag/price/v2';
+// エンドポイントをv1に変更
+const DEXSCREENER_API = 'https://api.dexscreener.com/tokens/v1/solana';
+// jupiter v2が非推奨になったため、最新のjupiter v3に変更（現在は未使用）
+// const JUPITER_PRICE_API_FREE = 'https://api.jup.ag/price/v3';
 const DEXSCREENER_BATCH_SIZE = 30;
+
+// 価格が取れないステーブルコインを$1に固定
+const STABLECOIN_MINTS = new Set([
+  'epjfwdd5aufqssqem2qn1xzybapc8g4weggkzwytdt1v', // USDC
+  'es9vmfrzacermjfrf4h2fyd4kconky11mcce8benwnyb',  // USDT
+]);
 
 /**
  * Build a symbol → mint lookup from STRICT_LIST for resolving tokens without mint addresses.
@@ -54,46 +62,54 @@ export async function fetchPrices(mints: string[]): Promise<Map<string, PriceRes
 
   const results = new Map<string, PriceResult>();
 
-  // Initialize with 0
+  // DexScreenerのレスポンスとのアドレス大文字小文字不一致を防ぐため、小文字キーで初期化
   for (const mint of mints) {
-    results.set(mint, { price_usd: 0, source: 'none' });
+    results.set(mint.toLowerCase(), { price_usd: 0, source: 'none' });
   }
 
   if (mints.length === 0) return results;
 
-  const remaining = new Set(mints);
+  // resultsのキーは小文字なので、小文字に正規化したリストを使う
+  const lowerMints = mints.map(m => m.toLowerCase());
+
+  // APIに投げる前にステーブルコインを分離
+  const fetchTargetMints: string[] = [];
+
+  for (const mint of lowerMints) {
+    if (STABLECOIN_MINTS.has(mint)) {
+      results.set(mint, { price_usd: 1.0, source: 'hardcoded_stable' });
+      console.log(`[FetchPrices] 💵 Stablecoin detected: ${mint}. Fixed to $1.0`);
+    } else {
+      fetchTargetMints.push(mint);
+    }
+  }
 
   // --- 1. DexScreener ---
-  console.log(`[FetchPrices] Calling DexScreener...`);
-  try {
-    await fetchFromDexScreener(mints, results);
-    for (const mint of mints) {
-      if (results.get(mint)!.price_usd > 0) {
-        remaining.delete(mint);
-      }
-    }
-  } catch (e) {
-    console.error('[PriceFetcher] DexScreener batch failed:', e);
-  }
-
-  console.log(`[FetchPrices] After DexScreener, remaining count: ${remaining.size}`);
-
-  // --- 2. Jupiter Fallback ---
-  if (remaining.size > 0) {
+  // APIに投げるのはステーブルコイン「以外」のリストに
+  if (fetchTargetMints.length > 0) {
+    console.log(`[FetchPrices] Calling DexScreener...`);
     try {
-      const remainingMints = [...remaining];
-      console.log(`[FetchPrices] Calling Jupiter fallback for ${remainingMints.length} mints...`);
-      // console.log(`[FetchPrices] Jupiter Targets:`, remainingMints);
-      
-      await fetchFromJupiter(remainingMints, results);
+      await fetchFromDexScreener(fetchTargetMints, results);
     } catch (e) {
-      console.error('[PriceFetcher] Jupiter fallback failed:', e);
+      console.error('[PriceFetcher] DexScreener batch failed:', e);
     }
   }
+
+
+  // --- 2. Jupiter Fallback（現在は未使用） ---
+  // if (remaining.size > 0) {
+  //   try {
+  //     const remainingMints = [...remaining];
+  //     console.log(`[FetchPrices] Calling Jupiter fallback for ${remainingMints.length} mints...`);
+  //     await fetchFromJupiter(remainingMints, results);
+  //   } catch (e) {
+  //     console.error('[PriceFetcher] Jupiter fallback failed:', e);
+  //   }
+  // }
 
   // --- Final Report ---
   console.log('--- [FetchPrices] FINAL RESULTS ---');
-  for (const mint of mints) {
+  for (const mint of lowerMints) {
     const res = results.get(mint);
     if (res?.price_usd === 0) {
       console.error(`❌ [FAILURE] ${mint} : Price is 0. (Source: ${res.source})`);
@@ -128,21 +144,24 @@ async function fetchFromDexScreener(
         continue;
       }
 
+      // v1エンドポイントはレスポンスが { pairs: [...] } ではなく配列直接で返ってくるので、対応する形に変更
       const data: any = await res.json();
-      if (!data.pairs || !Array.isArray(data.pairs)) {
-        console.warn(`[DexScreener] No 'pairs' array in response.`);
+      const pairs = Array.isArray(data) ? data : data.pairs;
+      if (!pairs || !Array.isArray(pairs)) {
+        console.warn(`[DexScreener] Unexpected response format.`);
         continue;
       }
 
       // Build mint → best-price map
       const seen = new Map<string, { price: number; liquidity: number; pairAddress: string }>();
-      
-      for (const pair of data.pairs) {
-        const mint = pair.baseToken?.address;
+
+      for (const pair of pairs) {
+        // アドレスを小文字に正規化してマッチングの大文字小文字不一致を防ぐ
+        const mint = pair.baseToken?.address?.toLowerCase();
         if (!mint) continue;
         const price = parseFloat(pair.priceUsd);
         const liquidity = pair.liquidity?.usd || 0;
-        
+
         if (isNaN(price) || price <= 0) continue;
 
         const existing = seen.get(mint);
@@ -163,44 +182,45 @@ async function fetchFromDexScreener(
   }
 }
 
-/**
- * Jupiter Price API v2: batch fetch all at once.
- */
-async function fetchFromJupiter(
-  mints: string[],
-  results: Map<string, PriceResult>
-): Promise<void> {
-  const url = `${JUPITER_PRICE_API}?ids=${mints.join(',')}`;
-  // console.log(`[Jupiter] URL: ${url}`);
-
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Axis-Snapshot/1.0' },
-    });
-    if (!res.ok) {
-      console.warn(`[Jupiter] HTTP ${res.status}`);
-      return;
-    }
-
-    const data: any = await res.json();
-    if (!data.data) {
-        console.warn(`[Jupiter] Response missing 'data' field.`);
-        return;
-    }
-
-    for (const mint of mints) {
-      const entry = data.data[mint];
-      if (entry && entry.price) {
-        const price = parseFloat(entry.price);
-        if (!isNaN(price) && price > 0) {
-          results.set(mint, { price_usd: price, source: 'jupiter' });
-          console.log(`[Jupiter] Recovered price for ${mint}: ${price}`);
-        }
-      } else {
-        console.warn(`[Jupiter] Mint not found in response: ${mint}`);
-      }
-    }
-  } catch (e) {
-    console.warn('[Jupiter] Fetch error:', e);
-  }
-}
+// /**
+//  * Jupiter Price API v3: batch fetch all at once.
+//  */
+// //  Jupiterエンドポイントをv3 に変更(v2 は非推奨)
+// // apiKey を x-api-key ヘッダーとして使用
+// async function fetchFromJupiter(
+//   mints: string[],
+//   results: Map<string, PriceResult>,
+//   apiKey?: string,
+// ): Promise<void> {
+//   const url = `${JUPITER_PRICE_API_FREE}?ids=${mints.join(',')}`;
+//   // console.log(`[Jupiter] URL: ${url}`);
+//
+//   try {
+//     const headers: Record<string, string> = { 'User-Agent': 'Axis-Snapshot/1.0' };
+//     if (apiKey) headers['x-api-key'] = apiKey; // [apiKeyがある場合はx-api-keyをヘッダーに設定
+//     const res = await fetch(url, { headers });
+//     if (!res.ok) {
+//       const body = await res.text();
+//       console.warn(`[Jupiter] HTTP ${res.status}: ${body}`);
+//       return;
+//     }
+//
+//     // v3のレスポンス形式に合わせて変更
+//     const data: any = await res.json();
+//
+//     for (const mint of mints) {
+//       const entry = data[mint]; // dataラップがないため、data.data[mint] を data[mint] に変更
+//       if (entry && entry.usdPrice) {
+//         const price = parseFloat(entry.usdPrice); // price が usdPriceに変更されている
+//         if (!isNaN(price) && price > 0) {
+//           results.set(mint, { price_usd: price, source: 'jupiter' });
+//           console.log(`[Jupiter] Recovered price for ${mint}: ${price}`);
+//         }
+//       } else {
+//         console.warn(`[Jupiter] Mint not found in response: ${mint}`);
+//       }
+//     }
+//   } catch (e) {
+//     console.warn('[Jupiter] Fetch error:', e);
+//   }
+// }

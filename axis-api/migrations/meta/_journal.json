@@ -8,6 +8,20 @@
       "when": 1772006292250,
       "tag": "0000_superb_master_mold",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1772086518350,
+      "tag": "0001_seed_vaults",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1772089490956,
+      "tag": "0002_create_token_prices",
+      "breakpoints": true
     }
   ]
 }
