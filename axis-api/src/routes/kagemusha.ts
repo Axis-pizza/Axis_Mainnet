@@ -465,42 +465,51 @@ app.get('/strategies/:id/chart', async (c) => {
   return c.json({ success: true, data, type });
 });
 
-// パフォーマンスサマリー API
+// GET /strategies/:id/performance - ETFパフォーマンスサマリー
 app.get('/strategies/:id/performance', async (c) => {
   try {
     const id = c.req.param('id');
 
+    // 現在の最新スナップショット
     const current = await c.env.axis_db.prepare(
       `SELECT index_price, confidence, ts_bucket_utc FROM strategy_price_snapshots WHERE strategy_id = ? ORDER BY ts_bucket_utc DESC LIMIT 1;`
     ).bind(id).first();
 
+    // 24時間前以前の最新スナップショット
     const ago24h = await c.env.axis_db.prepare(
       `SELECT index_price FROM strategy_price_snapshots WHERE strategy_id = ? AND ts_bucket_utc <= (unixepoch() - 86400) ORDER BY ts_bucket_utc DESC LIMIT 1;`
     ).bind(id).first();
 
+    // 7日前以前の最新スナップショット
     const ago7d = await c.env.axis_db.prepare(
       `SELECT index_price FROM strategy_price_snapshots WHERE strategy_id = ? AND ts_bucket_utc <= (unixepoch() - 604800) ORDER BY ts_bucket_utc DESC LIMIT 1;`
     ).bind(id).first();
 
+    // ETF作成時の基準価格 (正規化の分母)
     const baseline = await c.env.axis_db.prepare(
       `SELECT baseline_price FROM strategy_deployment_baseline WHERE strategy_id = ?`
     ).bind(id).first();
 
+    // スナップショット未蓄積
     if (!current) {
       return c.json({ success: true, current_price: null, change_24h: null, change_7d: null, change_since_inception: null, confidence: 'NO_DATA', last_updated: null });
     }
+     // baselineなし or ゼロ → ゼロ除算回避
     else if (!baseline || baseline.baseline_price === 0) {
       return c.json({ success: true, current_price: null, change_24h: null, change_7d: null, change_since_inception: null, confidence: 'FAIL', last_updated: null });
     } else {
 
+      // normalized = (index_price / baseline_price) * 100
       const currentNormalized = (current.index_price as number / baseline.baseline_price as number) * 100;
       const normalized24h = ago24h ? (ago24h.index_price as number / baseline.baseline_price as number) * 100 : null;
       const normalized7d  = ago7d  ? (ago7d.index_price  as number / baseline.baseline_price as number) * 100 : null;
 
+      // change% = ((current - past) / past) * 100
       const change_24h = normalized24h !== null ? ((currentNormalized - normalized24h) / normalized24h) * 100 : null;
       const change_7d  = normalized7d  !== null ? ((currentNormalized - normalized7d)  / normalized7d)  * 100 : null;
+      // inception変動 = currentNormalized - 100 (baseline開始時が100のため)
       const change_since_inception = currentNormalized - 100;
-
+      // 24h・7d両方揃っていればOK、片方欠けていればPARTIAL
       const confidence = ago24h && ago7d ? 'OK' : 'PARTIAL';
 
       return c.json({
