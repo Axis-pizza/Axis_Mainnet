@@ -224,14 +224,13 @@ export const CreateLanding = ({ onCreate, isLoading }: CreateLandingProps) => {
       </div>
 
       {/* ── HTML Overlay ──────────────────────────────────────────────────── */}
-      <div className="relative z-10 flex flex-col items-center justify-between min-h-screen px-6 py-12 md:py-20 bg-gradient-to-b from-transparent via-[#050301]/40 to-[#050301]/90">
-        <div className="flex-1 min-h-[10vh]" />
+      {/* 変更1: justify-between を justify-center に変更 */}
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 py-12 md:py-20 bg-gradient-to-b from-transparent via-[#050301]/40 to-[#050301]/90">
+        
+        {/* 削除: <div className="flex-1 min-h-[10vh]" /> は不要になるので消します */}
 
         {/* Hero Text */}
-        <div className="text-center space-y-5 max-w-2xl mx-auto backdrop-blur-sm p-8 rounded-3xl">
-
-
-          {/* Title - 背景の光と連動して美しく見えるように再設定 */}
+        <div className="text-center space-y-5 max-w-2xl mx-auto backdrop-blur-sm p-8 rounded-3xl w-full">
           <motion.h1
             initial={{ opacity: 0, scale: 0.93 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -258,7 +257,8 @@ export const CreateLanding = ({ onCreate, isLoading }: CreateLandingProps) => {
           </motion.p>
         </div>
 
-        <div className="flex-1 min-h-[6vh]" />
+        {/* 先ほど設定した固定サイズの余白 */}
+        <div className="h-8 md:h-12" />
 
         {/* CTA Button */}
         <motion.div
