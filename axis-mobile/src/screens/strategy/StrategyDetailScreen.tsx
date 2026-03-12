@@ -48,15 +48,36 @@ const XIcon = ({ size = 18, color = '#fff' }) => (
   <Text style={{ color, fontSize: size, fontWeight: '700' }}>𝕏</Text>
 );
 
-// ─── SwipeToConfirm ───────────────────────────────────────────────────────────
-interface SliderProps { onConfirm: () => void; isLoading: boolean; isSuccess: boolean; label: string; }
-const SwipeToConfirm = ({ onConfirm, isLoading, isSuccess, label }: SliderProps) => {
+// ─── SwipeToConfirm with label pulse ─────────────────────────────────────────
+interface SliderProps { onConfirm: () => void; isLoading: boolean; isSuccess: boolean; label: string; amount?: string; }
+const SwipeToConfirm = ({ onConfirm, isLoading, isSuccess, label, amount }: SliderProps) => {
   const TRACK_W = W - 48;
   const HANDLE = 56;
   const PAD = 4;
   const MAX = TRACK_W - HANDLE - PAD * 2;
   const x = useSharedValue(0);
   const confirmed = useRef(false);
+  const labelPulse = useRef(new RNAnimated.Value(1)).current;
+
+  useEffect(() => {
+    // Pulse like web's animate-pulse
+    const loop = RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(labelPulse, { toValue: 0.4, duration: 800, useNativeDriver: true }),
+        RNAnimated.timing(labelPulse, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
+
+  // Reset slider on amount change (matches web behavior)
+  useEffect(() => {
+    if (!isLoading && !isSuccess) {
+      x.value = withSpring(0, { stiffness: 300, damping: 30 });
+      confirmed.current = false;
+    }
+  }, [amount]);
 
   useEffect(() => {
     if (isSuccess) x.value = withSpring(MAX);
@@ -68,9 +89,9 @@ const SwipeToConfirm = ({ onConfirm, isLoading, isSuccess, label }: SliderProps)
     .onUpdate(e => { x.value = Math.max(0, Math.min(e.translationX, MAX)); })
     .onEnd(() => {
       if (x.value > MAX * 0.6) {
-        x.value = withSpring(MAX);
+        x.value = withSpring(MAX, { stiffness: 500, damping: 40 });
         if (!confirmed.current && !isLoading && !isSuccess) { confirmed.current = true; runOnJS(onConfirm)(); }
-      } else { x.value = withSpring(0); confirmed.current = false; }
+      } else { x.value = withSpring(0, { stiffness: 400, damping: 30 }); confirmed.current = false; }
     });
 
   const fillStyle = useAnimatedStyle(() => ({ width: HANDLE + PAD * 2 + x.value }));
@@ -78,24 +99,26 @@ const SwipeToConfirm = ({ onConfirm, isLoading, isSuccess, label }: SliderProps)
   const handleStyle = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
 
   return (
-    <View style={{ height: 64, borderRadius: 32, overflow: 'hidden', borderWidth: 1, borderColor: isSuccess ? 'rgba(16,185,129,0.5)' : 'rgba(255,255,255,0.1)', backgroundColor: isSuccess ? 'rgba(16,185,129,0.2)' : '#1C1C1E' }}>
+    <View style={{ height: 64, borderRadius: 32, overflow: 'hidden', borderWidth: 1, borderColor: isSuccess ? 'rgba(16,185,129,0.5)' : 'rgba(255,255,255,0.1)', backgroundColor: isSuccess ? 'rgba(16,185,129,0.2)' : '#1C1C1E',
+      ...(isSuccess ? { shadowColor: '#10B981', shadowRadius: 20, shadowOpacity: 0.3, elevation: 8 } : {}),
+    }}>
       <Animated.View style={[fillStyle, { position: 'absolute', top: 0, left: 0, bottom: 0, borderRadius: 32, overflow: 'hidden' }]}>
         {!isSuccess ? (
           <LinearGradient colors={[gold[700], gold[400]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
         ) : <View style={[StyleSheet.absoluteFill, { backgroundColor: '#10B981' }]} />}
       </Animated.View>
-      <Animated.View style={[textStyle, { position: 'absolute', inset: 0, justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: '700', letterSpacing: 2 }}>
+      <Animated.View style={[textStyle, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }]}>
+        <RNAnimated.Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: '700', letterSpacing: 4, opacity: labelPulse }}>
           {isLoading ? 'PROCESSING...' : label}
-        </Text>
+        </RNAnimated.Text>
       </Animated.View>
       {isSuccess && (
-        <View style={{ position: 'absolute', inset: 0, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13, letterSpacing: 2 }}>SUCCESS</Text>
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13, letterSpacing: 4 }}>SUCCESS</Text>
         </View>
       )}
       <GestureDetector gesture={gesture}>
-        <Animated.View style={[handleStyle, { position: 'absolute', top: PAD, left: PAD, width: HANDLE, height: HANDLE, borderRadius: HANDLE / 2, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6 }]}>
+        <Animated.View style={[handleStyle, { position: 'absolute', top: PAD, left: PAD, width: HANDLE, height: HANDLE, borderRadius: HANDLE / 2, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 }]}>
           {isLoading ? <ActivityIndicator size="small" color={gold[400]} /> : isSuccess ? <Check size={24} color="#10B981" /> : <ChevronRight size={24} color={gold[400]} />}
         </Animated.View>
       </GestureDetector>
@@ -162,9 +185,12 @@ const InvestSheet = ({ isOpen, onClose, strategy, status, onConfirm, userEtfBala
         <Text style={{ color: '#78716C', fontSize: 18, fontWeight: '700', marginTop: 8 }}>{mode === 'BUY' ? 'USDC' : ticker}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, backgroundColor: '#1C1C1E', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', gap: 8 }}>
           <Wallet size={14} color="#78716C" />
-          <Text style={{ color: '#A8A29E', fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+          <Text style={{ color: '#A8A29E', fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
             Available: {mode === 'BUY' ? '0.00 USDC' : `${userEtfBalance.toFixed(4)} ${ticker}`}
           </Text>
+          <Pressable onPress={() => setAmount(mode === 'BUY' ? '0' : userEtfBalance.toFixed(4))}>
+            <Text style={{ color: gold[400], fontSize: 11, fontWeight: '700' }}>Max</Text>
+          </Pressable>
         </View>
         {amount !== '0' && (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 6 }}>
@@ -197,7 +223,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, status, onConfirm, userEtfBala
             <Text style={{ color: '#fff', fontWeight: '700', letterSpacing: 2, fontSize: 13 }}>PROCESSING...</Text>
           </View>
         ) : (
-          <SwipeToConfirm onConfirm={handleExecute} isLoading={false} isSuccess={status === 'SUCCESS'} label={`SLIDE TO ${mode}`} />
+          <SwipeToConfirm onConfirm={handleExecute} isLoading={false} isSuccess={status === 'SUCCESS'} label={`SLIDE TO ${mode}`} amount={amount} />
         )}
       </View>
     </View>
