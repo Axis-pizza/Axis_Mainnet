@@ -12,7 +12,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import {
   View, Text, TextInput, Pressable, ScrollView, Image, Dimensions,
-  Animated as RNAnimated,
+  Animated as RNAnimated, Easing,
 } from 'react-native';
 import { Search, TrendingUp, TrendingDown, Clock, Copy, Wallet } from 'lucide-react-native';
 import { api } from '../../services/api';
@@ -62,9 +62,9 @@ const shuffleArray = <T,>(arr: T[]): T[] => {
 };
 
 const typeColors = {
-  AGGRESSIVE: { text: gold[400], bg: `rgba(199,125,54,0.1)`, border: `rgba(199,125,54,0.2)` },
-  BALANCED: { text: '#3b82f6', bg: 'rgba(59,130,246,0.1)', border: 'rgba(59,130,246,0.2)' },
-  CONSERVATIVE: { text: '#30a46c', bg: 'rgba(48,164,108,0.1)', border: 'rgba(48,164,108,0.2)' },
+  AGGRESSIVE: { text: '#fde68a', bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.3)' },
+  BALANCED: { text: '#bfdbfe', bg: 'rgba(59,130,246,0.1)', border: 'rgba(59,130,246,0.3)' },
+  CONSERVATIVE: { text: '#a7f3d0', bg: 'rgba(16,185,129,0.1)', border: 'rgba(16,185,129,0.3)' },
 };
 
 const TokenIcon = memo(({ symbol, src, address, size = 20 }: { symbol: string; src?: string | null; address?: string; size?: number }) => {
@@ -170,7 +170,20 @@ const SwipeCardBody = memo(({ strategy }: { strategy: DiscoveredStrategy }) => {
 
 const SkeletonCard = memo(({ delay, cardWidth }: { delay: number; cardWidth: number }) => {
   const shimmer = useRef(new RNAnimated.Value(-cardWidth)).current;
+  const opacity = useRef(new RNAnimated.Value(0)).current;
+  const translateY = useRef(new RNAnimated.Value(28)).current;
+  const scale = useRef(new RNAnimated.Value(0.93)).current;
   useEffect(() => {
+    // Entrance animation — mirrors web: opacity 0→1, y 28→0, scale 0.93→1 ease [0.22,1,0.36,1]
+    RNAnimated.sequence([
+      RNAnimated.delay(delay * 1000),
+      RNAnimated.parallel([
+        RNAnimated.timing(opacity, { toValue: 1, duration: 380, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: true }),
+        RNAnimated.timing(translateY, { toValue: 0, duration: 380, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: true }),
+        RNAnimated.timing(scale, { toValue: 1, duration: 380, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: true }),
+      ]),
+    ]).start();
+    // Shimmer loop — starts after entrance
     const anim = RNAnimated.loop(
       RNAnimated.sequence([
         RNAnimated.delay(delay * 1000 + 350),
@@ -183,7 +196,7 @@ const SkeletonCard = memo(({ delay, cardWidth }: { delay: number; cardWidth: num
     return () => anim.stop();
   }, [cardWidth]);
   return (
-    <View style={{ width: cardWidth, height: 300, borderRadius: 20, overflow: 'hidden', backgroundColor: '#111111', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' }}>
+    <RNAnimated.View style={{ width: cardWidth, height: 300, borderRadius: 20, overflow: 'hidden', backgroundColor: '#111111', borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)', opacity, transform: [{ translateY }, { scale }] }}>
       <RNAnimated.View style={{ position: 'absolute', top: 0, bottom: 0, width: cardWidth * 0.5, backgroundColor: 'rgba(255,255,255,0.04)', transform: [{ translateX: shimmer }] }} />
       <View style={{ padding: 12 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -202,7 +215,7 @@ const SkeletonCard = memo(({ delay, cardWidth }: { delay: number; cardWidth: num
           ))}
         </View>
       </View>
-    </View>
+    </RNAnimated.View>
   );
 });
 
@@ -270,20 +283,33 @@ const ScrollRow = memo(({ strategies, pxPerSec, cardWidth, onSelect }: {
   );
 });
 
+// Animated loading dot — mirrors web: opacity [0.2,1,0.2] delay i*0.25s duration 0.9s repeat
+const AnimatedDot = memo(({ index }: { index: number }) => {
+  const opacity = useRef(new RNAnimated.Value(0.2)).current;
+  useEffect(() => {
+    RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.delay(index * 250),
+        RNAnimated.timing(opacity, { toValue: 1, duration: 450, easing: Easing.inOut(Easing.sine), useNativeDriver: true }),
+        RNAnimated.timing(opacity, { toValue: 0.2, duration: 450, easing: Easing.inOut(Easing.sine), useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+  return <RNAnimated.Text style={{ color: '#D97706', fontSize: 16, opacity }}>·</RNAnimated.Text>;
+});
+
 const MobileLoader = ({ cardWidth }: { cardWidth: number }) => (
   <View style={{ gap: 20 }}>
     {[0, 1, 2].map(row => (
       <ScrollView key={row} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
         {[0, 1, 2, 3].map(col => (
-          <SkeletonCard key={col} delay={(row * 4 + col) * 0.08} cardWidth={cardWidth} />
+          <SkeletonCard key={col} delay={(row * 3 + col) * 0.08} cardWidth={cardWidth} />
         ))}
       </ScrollView>
     ))}
-    <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 4, marginTop: 4 }}>
+    <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4, marginTop: 4 }}>
       <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 13 }}>Loading strategies</Text>
-      {[gold[400], gold[300], gold[200]].map((c, i) => (
-        <Text key={i} style={{ color: c, fontSize: 16 }}>·</Text>
-      ))}
+      {[0, 1, 2].map(i => <AnimatedDot key={i} index={i} />)}
     </View>
   </View>
 );
