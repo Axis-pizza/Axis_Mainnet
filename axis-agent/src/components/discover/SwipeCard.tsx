@@ -252,7 +252,7 @@ export const SwipeCardBody = ({
       <div className={`grid grid-cols-2 relative z-10 ${c ? 'px-3 py-1.5 gap-2' : 'px-6 py-2 gap-3'}`}>
         {/* ROI Card */}
         <div
-          className={`col-span-1 rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-inner flex flex-col items-center justify-center relative overflow-hidden group ${c ? 'h-[68px]' : 'h-[100px]'}`}
+          className={`col-span-1 rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-inner flex flex-col items-center justify-center relative overflow-hidden group ${c ? 'h-[68px]' : 'h-[80px]'}`}
         >
           <div
             className={`absolute inset-0 opacity-20 bg-gradient-to-br ${strategy.roi >= 0 ? 'from-emerald-500/30 to-transparent' : 'from-red-500/30 to-transparent'}`}
@@ -269,7 +269,7 @@ export const SwipeCardBody = ({
 
         {/* TVL Card */}
         <div
-          className={`col-span-1 rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-inner flex flex-col justify-center relative overflow-hidden ${c ? 'h-[68px] px-2.5' : 'h-[100px] px-4'}`}
+          className={`col-span-1 rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-inner flex flex-col justify-center relative overflow-hidden ${c ? 'h-[68px] px-2.5' : 'h-[80px] px-4'}`}
         >
           <div className={`absolute top-0 right-0 opacity-10 ${c ? 'p-2' : 'p-3'}`}>
             <Wallet className={c ? 'w-8 h-8 text-white' : 'w-12 h-12 text-white'} />
@@ -298,7 +298,7 @@ export const SwipeCardBody = ({
         </div>
 
         {/* 2カラム・グリッドで構成銘柄をすべて表示 */}
-        <div className={`grid grid-cols-2 ${c ? 'gap-1.5' : 'gap-2'} mt-1 overflow-y-auto pr-1 pb-1 scrollbar-hide`}>
+        <div className={`grid grid-cols-2 ${c ? 'gap-1.5' : 'gap-2'} mt-1 overflow-y-auto pr-1 pb-1 scrollbar-hide flex-1 min-h-0`}>
           {(() => {
             // 最も比重の大きい数値を基準（100%）にしてゲージの長さを相対計算する
             const maxWeight = Math.max(...sortedTokens.map(t => t.weight));
@@ -488,7 +488,7 @@ export const SwipeCard = ({
       initial={false}
       animate={isTop ? undefined : { scale: 1 - index * 0.05, y: index * 14, rotate: deckRotate }}
       exit={{ opacity: 0, transition: { duration: 0.3 } }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      transition={{ type: 'spring', stiffness: 280, damping: 24 }}
     >
       {/* Card Body */}
       <SwipeCardBody strategy={strategy} />
