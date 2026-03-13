@@ -94,7 +94,12 @@ export async function fetchStockTokens(): Promise<JupiterToken[]> {
   for (const sym of XSTOCK_SYMBOLS) {
     const results = await JupiterService.searchTokens(sym);
 
-    const best = results.find((t) => t.symbol?.toLowerCase() === sym.toLowerCase()) ?? results[0];
+    const best =
+      results.find(
+        (t) => t.symbol?.toUpperCase() === sym.toUpperCase() && t.name?.includes('(EN)')
+      ) ??
+      results.find((t) => t.symbol?.toUpperCase() === sym.toUpperCase()) ??
+      results.sort((a, b) => (b.dailyVolume || 0) - (a.dailyVolume || 0))[0];
 
     if (best) {
       found.push({

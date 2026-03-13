@@ -257,16 +257,30 @@ export const useManualDashboard = ({
         if (!isMounted) return;
 
         const uniqueMap = new Map<string, JupiterToken>();
+        const seenSymbols = new Set<string>();
 
         POPULAR_SYMBOLS.forEach((sym) => {
           const t = list.find((x) => x.symbol === sym);
-          if (t) uniqueMap.set(t.address, t);
+          if (t) {
+            uniqueMap.set(t.address, t);
+            seenSymbols.add(t.symbol.toUpperCase());
+          }
         });
-        [...predictionTokens, ...stockTokens, ...commodityTokens].forEach((t) =>
-          uniqueMap.set(t.address, t)
-        );
+        [...predictionTokens, ...stockTokens, ...commodityTokens].forEach((t) => {
+          const upperSym = t.symbol.toUpperCase();
+          if (seenSymbols.has(upperSym)) {
+            console.warn(`[Duplicate] Skipping ${t.symbol} from ${t.source}, already exists`);
+            return;
+          }
+          uniqueMap.set(t.address, t);
+          seenSymbols.add(upperSym);
+        });
         list.forEach((t) => {
-          if (!uniqueMap.has(t.address)) uniqueMap.set(t.address, t);
+          const upperSym = t.symbol.toUpperCase();
+          if (!uniqueMap.has(t.address) && !seenSymbols.has(upperSym)) {
+            uniqueMap.set(t.address, t);
+            seenSymbols.add(upperSym);
+          }
         });
 
         const enriched = Array.from(uniqueMap.values()).map((t) => {
