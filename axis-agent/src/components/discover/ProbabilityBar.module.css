@@ -1,0 +1,83 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+.yesLabel,
+.noLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.labelText {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.yesLabel .labelText {
+  color: var(--green-500, #10B981);
+}
+
+.noLabel .labelText {
+  color: var(--red-500, #EF4444);
+}
+
+.percentage {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.yesLabel .percentage {
+  color: var(--green-500, #10B981);
+}
+
+.noLabel .percentage {
+  color: var(--red-500, #EF4444);
+}
+
+.trend {
+  font-size: 11px;
+  color: var(--gray-600, #4B5563);
+  font-weight: 500;
+}
+
+.barContainer {
+  display: flex;
+  height: 32px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--gray-100, #F3F4F6);
+}
+
+.yesBar {
+  background: var(--green-500, #10B981);
+  transition: width 0.3s ease;
+}
+
+.noBar {
+  background: var(--red-500, #EF4444);
+  transition: width 0.3s ease;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .percentage {
+    font-size: 20px;
+  }
+  
+  .barContainer {
+    height: 28px;
+  }
+}

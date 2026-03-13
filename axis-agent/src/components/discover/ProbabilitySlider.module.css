@@ -1,0 +1,80 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 0.5rem;
+  border: 1px solid #e5e7eb;
+}
+
+.label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.sliderWrapper {
+  padding: 0.5rem 0.75rem;
+}
+
+.slider {
+  width: 100%;
+}
+
+.valueDisplay {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -0.25rem;
+  padding: 0 0.5rem;
+}
+
+.valueLabel {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #22c55e;
+}
+
+.presets {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.presetBtn {
+  flex: 1;
+  min-width: fit-content;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  background: #fff;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.presetBtn:hover {
+  border-color: #22c55e;
+  color: #22c55e;
+  background: #f0fdf4;
+}
+
+.presetBtn.active {
+  border-color: #22c55e;
+  color: #fff;
+  background: #22c55e;
+}
+
+@media (max-width: 768px) {
+  .presets {
+    flex-direction: column;
+  }
+  
+  .presetBtn {
+    width: 100%;
+  }
+}
