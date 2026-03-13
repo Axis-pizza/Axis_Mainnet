@@ -203,6 +203,37 @@ export const useManualDashboard = ({
     }
 
     result.sort((a: any, b: any) => (b.totalVolume || 0) - (a.totalVolume || 0));
+
+    // 【追加】画像の多様性を確保
+    const diversifyPredictions = (markets: typeof result) => {
+      if (markets.length <= 10) return markets;
+      
+      const topTen = markets.slice(0, 10);
+      const remaining = markets.slice(10);
+      
+      // 画像URLでグループ化
+      const byImage = remaining.reduce((acc, market) => {
+        const key = market.image || 'unknown';
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(market);
+        return acc;
+      }, {} as Record<string, typeof result>);
+      
+      // ラウンドロビン方式で交互配置
+      const diversified: typeof result = [];
+      const imageGroups = Object.values(byImage);
+      const maxLength = Math.max(...imageGroups.map(g => g.length));
+      
+      for (let i = 0; i < maxLength; i++) {
+        for (const group of imageGroups) {
+          if (group[i]) diversified.push(group[i]);
+        }
+      }
+      
+      return [...topTen, ...diversified];
+    };
+
+    result = diversifyPredictions(result);
     return result;
   }, [allTokens, searchQuery, activeTab]);
 
@@ -257,16 +288,30 @@ export const useManualDashboard = ({
         if (!isMounted) return;
 
         const uniqueMap = new Map<string, JupiterToken>();
+        const seenSymbols = new Set<string>();
 
         POPULAR_SYMBOLS.forEach((sym) => {
           const t = list.find((x) => x.symbol === sym);
-          if (t) uniqueMap.set(t.address, t);
+          if (t) {
+            uniqueMap.set(t.address, t);
+            seenSymbols.add(t.symbol.toUpperCase());
+          }
         });
-        [...predictionTokens, ...stockTokens, ...commodityTokens].forEach((t) =>
-          uniqueMap.set(t.address, t)
-        );
+        [...predictionTokens, ...stockTokens, ...commodityTokens].forEach((t) => {
+          const upperSym = t.symbol.toUpperCase();
+          if (seenSymbols.has(upperSym)) {
+            console.warn(`[Duplicate] Skipping ${t.symbol} from ${t.source}, already exists`);
+            return;
+          }
+          uniqueMap.set(t.address, t);
+          seenSymbols.add(upperSym);
+        });
         list.forEach((t) => {
-          if (!uniqueMap.has(t.address)) uniqueMap.set(t.address, t);
+          const upperSym = t.symbol.toUpperCase();
+          if (!uniqueMap.has(t.address) && !seenSymbols.has(upperSym)) {
+            uniqueMap.set(t.address, t);
+            seenSymbols.add(upperSym);
+          }
         });
 
         const enriched = Array.from(uniqueMap.values()).map((t) => {
