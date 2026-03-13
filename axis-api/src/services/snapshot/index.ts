@@ -196,7 +196,7 @@ interface SnapshotRecord {
 /**
  * Build a snapshot record for a single strategy.
  */
-function buildSnapshot(
+export function buildSnapshot(
   strategyId: string,
   tsBucket: number,
   tokens: TokenEntry[],
