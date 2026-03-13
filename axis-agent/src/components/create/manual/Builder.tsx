@@ -27,6 +27,9 @@ import type { AssetItem, BuilderProps } from './types';
 import { PredictionSelectModal } from './PredictionSelectModal';
 import { PredictionEventCard, type PredictionGroup } from './PredictionEventCard';
 import { PredictionMarketCard } from '../discover/PredictionMarketCard';
+import { ProbabilitySlider } from '../discover/ProbabilitySlider';
+import { DateFilter, type DateFilterValue } from '../discover/DateFilter';
+import { SortDropdown, type SortOption } from '../discover/SortDropdown';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared sub-components
@@ -560,6 +563,11 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
   const [selectedDetailToken, setSelectedDetailToken] = useState<JupiterToken | null>(null);
   const mobileScrollRef = useRef<HTMLDivElement>(null);
   const [selectedPredictionGroup, setSelectedPredictionGroup] = useState<PredictionGroup | null>(null);
+  
+  // Phase 2: Filter states
+  const [probabilityRange, setProbabilityRange] = useState<[number, number]>([0, 100]);
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>('any-time');
+  const [sortOption, setSortOption] = useState<SortOption>('volume');
 
   const mobileVirtualizer = useVirtualizer({
     count: sortedVisibleTokens.length,
@@ -817,6 +825,21 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                   </button>
                 </div>
                 <TabSelector activeTab={activeTab} setActiveTab={setActiveTab} isWalletConnected={!!publicKey} />
+                
+                {/* Phase 2: Filter Panel (for prediction tab) */}
+                {activeTab === 'prediction' && (
+                  <div className="mt-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <SortDropdown value={sortOption} onChange={setSortOption} />
+                      </div>
+                      <div className="flex-1">
+                        <DateFilter value={dateFilter} onChange={setDateFilter} />
+                      </div>
+                    </div>
+                    <ProbabilitySlider value={probabilityRange} onChange={setProbabilityRange} />
+                  </div>
+                )}
               </div>
 
               <div ref={mobileScrollRef} className="flex-1 overflow-y-auto bg-[#121212] custom-scrollbar">
@@ -961,6 +984,11 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
   const { publicKey } = useWallet();
 
   const [selectedPredictionGroup, setSelectedPredictionGroup] = useState<PredictionGroup | null>(null);
+  
+  // Phase 2: Filter states
+  const [probabilityRange, setProbabilityRange] = useState<[number, number]>([0, 100]);
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>('any-time');
+  const [sortOption, setSortOption] = useState<SortOption>('volume');
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -1187,6 +1215,21 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 </div>
               </label>
             </div>
+            
+            {/* Phase 2: Filter Panel (for prediction tab) */}
+            {activeTab === 'prediction' && (
+              <div className="mt-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <SortDropdown value={sortOption} onChange={setSortOption} />
+                  </div>
+                  <div className="flex-1">
+                    <DateFilter value={dateFilter} onChange={setDateFilter} />
+                  </div>
+                </div>
+                <ProbabilitySlider value={probabilityRange} onChange={setProbabilityRange} />
+              </div>
+            )}
           </div>
 
           <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 pb-4 custom-scrollbar">
