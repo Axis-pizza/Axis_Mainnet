@@ -26,6 +26,7 @@ import type { JupiterToken } from '../../../services/jupiter';
 import type { AssetItem, BuilderProps } from './types';
 import { PredictionSelectModal } from './PredictionSelectModal';
 import { PredictionEventCard, type PredictionGroup } from './PredictionEventCard';
+import { PredictionMarketCard } from '../discover/PredictionMarketCard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared sub-components
@@ -551,6 +552,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
     setActiveTab,
     flyingToken,
     flyingCoords,
+    addTokenToComposition,
   } = dashboard;
 
   const { publicKey } = useWallet();
@@ -831,11 +833,14 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                     if (group.noToken && selectedIds.has(group.noToken.address)) selectedSide = 'NO';
 
                     return (
-                      <PredictionEventCard
+                      <PredictionMarketCard
                         key={`pred-${group.marketId}`}
                         group={group}
                         selectedSide={selectedSide}
-                        onClick={() => setSelectedPredictionGroup(group)}
+                        onAddClick={(g, side) => {
+                          const token = side === 'YES' ? g.yesToken : g.noToken;
+                          if (token) addTokenToComposition(token, side);
+                        }}
                       />
                     );
                   })}
@@ -947,6 +952,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
     setActiveTab,
     handleToIdentity,
     addTokenDirect,
+    addTokenToComposition,
     removeToken,
     updateWeight,
     distributeEvenly,
@@ -1197,11 +1203,14 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 if (group.noToken && selectedIds.has(group.noToken.address)) selectedSide = 'NO';
 
                 return (
-                  <PredictionEventCard
+                  <PredictionMarketCard
                     key={`pred-${group.marketId}`}
                     group={group}
                     selectedSide={selectedSide}
-                    onClick={() => setSelectedPredictionGroup(group)}
+                    onAddClick={(g, side) => {
+                      const token = side === 'YES' ? g.yesToken : g.noToken;
+                      if (token) addTokenToComposition(token, side);
+                    }}
                   />
                 );
               })}
