@@ -529,7 +529,7 @@ const DesktopAssetCard = ({
 // ─────────────────────────────────────────────────────────────────────────────
 // MobileBuilder
 // ─────────────────────────────────────────────────────────────────────────────
-export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) => {
+export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: BuilderProps) => {
   const {
     portfolio,
     searchQuery,
@@ -616,13 +616,13 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
   }, []);
 
   return (
-    <div className="absolute inset-0 bg-[#030303] flex flex-col">
+    <div className={inline ? 'flex flex-col h-full' : 'absolute inset-0 bg-[#030303] flex flex-col'}>
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="absolute top-0 left-0 right-0 z-30 bg-[#030303]/90 backdrop-blur-md border-b border-white/5 safe-area-top"
+        className={`${inline ? 'flex-none' : 'absolute top-0 left-0 right-0 z-30'} bg-[#030303]/90 backdrop-blur-md border-b border-white/5 safe-area-top`}
       >
         <div className="px-4 py-3 flex items-center justify-between">
           <button
@@ -641,8 +641,8 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
       </motion.div>
 
       {/* Scrollable Content */}
-      <div className="absolute inset-0 overflow-y-auto custom-scrollbar z-0">
-        <div className="h-[64px] safe-area-top" />
+      <div className={`${inline ? 'flex-1 min-h-0' : 'absolute inset-0 z-0'} overflow-y-auto custom-scrollbar`}>
+        {!inline && <div className="h-[64px] safe-area-top" />}
 
         {/* Stats Header */}
         <div className="sticky top-0 z-20 bg-[#030303]/95 border-b border-white/5 backdrop-blur-sm shadow-lg shadow-black/20 px-4 py-4 flex justify-between items-center">
@@ -735,9 +735,13 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
         </div>
       </div>
 
-      {/* FAB - Add Token */}
+      {/* FAB - Add Token (fixed in standalone mode, absolute in inline) */}
       {!isSelectorOpen && (
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="fixed bottom-6 right-6 z-40 safe-area-bottom">
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          className={`${inline ? 'absolute bottom-20 right-6 z-40' : 'fixed bottom-6 right-6 z-40 safe-area-bottom'}`}
+        >
           <button
             onClick={() => setIsSelectorOpen(true)}
             className="btn-gold w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-transform [background:var(--gold-button)] shadow-[var(--glow-sm)]"
@@ -747,22 +751,51 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
         </motion.div>
       )}
 
-      {/* Next Step FAB */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] z-30 pointer-events-none">
-        <AnimatePresence>
-          {isValidAllocation && !isSelectorOpen && (
-            <motion.button
-              initial={{ y: 100, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 100, opacity: 0 }}
-              onClick={handleToIdentityMobile}
-              className="w-full h-14 btn-gold text-zinc-950 font-bold text-lg rounded-full flex items-center justify-center gap-2 pointer-events-auto active:scale-[0.98] transition-transform [background:var(--gold-button)] shadow-[0_4px_24px_rgba(0,0,0,0.6),var(--glow-sm)]"
-            >
-              Next Step <ChevronRight size={20} />
-            </motion.button>
-          )}
-        </AnimatePresence>
-      </div>
+      {/* Next Step Button */}
+      {inline ? (
+        /* Inline mode: sticky bottom bar inside the section */
+        <div className="flex-none border-t border-white/5 bg-black/60 backdrop-blur-sm p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+          <AnimatePresence>
+            {isValidAllocation && !isSelectorOpen && (
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                onClick={handleToIdentityMobile}
+                className="w-full h-14 btn-gold text-zinc-950 font-bold text-lg rounded-full flex items-center justify-center gap-2 active:scale-[0.98] transition-transform [background:var(--gold-button)] shadow-[0_4px_24px_rgba(0,0,0,0.6),var(--glow-sm)]"
+              >
+                Next Step <ChevronRight size={20} />
+              </motion.button>
+            )}
+            {!isValidAllocation && (
+              <div className="w-full h-14 flex items-center justify-center text-white/30 text-sm">
+                {dashboard.portfolio.length === 0
+                  ? 'Add at least 2 tokens'
+                  : dashboard.totalWeight !== 100
+                  ? `Allocate ${100 - dashboard.totalWeight}% more to continue`
+                  : 'Add at least 2 tokens to continue'}
+              </div>
+            )}
+          </AnimatePresence>
+        </div>
+      ) : (
+        /* Standalone mode: fixed FAB */
+        <div className="fixed bottom-0 left-0 right-0 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] z-30 pointer-events-none">
+          <AnimatePresence>
+            {isValidAllocation && !isSelectorOpen && (
+              <motion.button
+                initial={{ y: 100, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 100, opacity: 0 }}
+                onClick={handleToIdentityMobile}
+                className="w-full h-14 btn-gold text-zinc-950 font-bold text-lg rounded-full flex items-center justify-center gap-2 pointer-events-auto active:scale-[0.98] transition-transform [background:var(--gold-button)] shadow-[0_4px_24px_rgba(0,0,0,0.6),var(--glow-sm)]"
+              >
+                Next Step <ChevronRight size={20} />
+              </motion.button>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Token Selector Modal */}
       {isSelectorOpen && (
