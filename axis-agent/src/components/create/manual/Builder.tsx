@@ -14,6 +14,7 @@ import {
   ClipboardPaste,
   Minus,
   Copy,
+  Star,
 } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -250,25 +251,75 @@ const TokenDetailModal = ({
   );
 };
 
+// ─── FavoriteStar: 星ボタン（タップでくるっと回転）────────────────────────────
+const FavoriteStar = memo(function FavoriteStar({
+  isFav,
+  onToggle,
+}: {
+  isFav: boolean;
+  onToggle: (e: React.MouseEvent) => void;
+}) {
+  const [spinning, setSpinning] = useState(false);
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSpinning(true);
+    onToggle(e);
+    setTimeout(() => setSpinning(false), 480);
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      className={`w-9 h-9 flex items-center justify-center rounded-xl flex-none transition-colors ${
+        isFav ? 'text-amber-400' : 'text-white/20 active:text-amber-400'
+      }`}
+    >
+      <motion.div
+        animate={spinning ? { rotate: 360, scale: [1, 1.5, 1] } : { rotate: 0, scale: 1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <Star size={15} fill={isFav ? 'currentColor' : 'none'} strokeWidth={2} />
+      </motion.div>
+    </button>
+  );
+});
+
 // ─── Mobile: Token List Item (swipe-right to add, swipe-left to remove, tap for detail) ──
 const MobileTokenListItem = memo(
   function MobileTokenListItem({
     token,
     isSelected,
+    isFav,
     onAdd,
     onRemove,
     onDetail,
+    onToggleFav,
   }: {
     token: JupiterToken;
     isSelected: boolean;
+    isFav: boolean;
     onAdd: () => void;
     onRemove?: () => void;
     onDetail: () => void;
+    onToggleFav: (e: React.MouseEvent) => void;
   }) {
     const x = useMotionValue(0);
     const addOpacity = useTransform(x, [0, 56], [0, 1]);
     const removeOpacity = useTransform(x, [-56, 0], [1, 0]);
     const isDragging = useRef(false);
+
+    // Flash glow when token is first selected
+    const [justAdded, setJustAdded] = useState(false);
+    const prevSelected = useRef(isSelected);
+    useEffect(() => {
+      if (isSelected && !prevSelected.current) {
+        setJustAdded(true);
+        const t = setTimeout(() => setJustAdded(false), 700);
+        return () => clearTimeout(t);
+      }
+      prevSelected.current = isSelected;
+    }, [isSelected]);
 
     return (
       <div className="relative overflow-hidden rounded-xl">
@@ -296,6 +347,17 @@ const MobileTokenListItem = memo(
           </motion.div>
         )}
 
+        {/* selection flash overlay */}
+        {justAdded && (
+          <motion.div
+            initial={{ opacity: 0.6 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 0.6 }}
+            className="absolute inset-0 rounded-xl pointer-events-none"
+            style={{ background: 'radial-gradient(ellipse, rgba(251,191,36,0.25) 0%, transparent 70%)' }}
+          />
+        )}
+
         {/* draggable row */}
         <motion.div
           drag="x"
@@ -310,15 +372,22 @@ const MobileTokenListItem = memo(
             setTimeout(() => { isDragging.current = false; }, 80);
           }}
           onClick={() => { if (!isDragging.current) onDetail(); }}
-          className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl min-h-[58px] select-none touch-pan-y
-            ${isSelected
+          className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl min-h-[58px] select-none touch-pan-y transition-shadow ${
+            justAdded ? 'shadow-[0_0_16px_rgba(251,191,36,0.2)]' : ''
+          } ${
+            isSelected
               ? 'bg-gradient-to-r from-amber-950/60 to-amber-900/40 border border-amber-800/40'
               : 'bg-[#181818]'
-            }`}
+          }`}
         >
           {/* logo */}
           <div className="relative flex-none">
-            <TokenImage src={token.logoURI} className="w-9 h-9 rounded-full bg-white/10" />
+            <motion.div
+              animate={justAdded ? { scale: [1, 1.15, 1] } : {}}
+              transition={{ duration: 0.35, ease: 'backOut' }}
+            >
+              <TokenImage src={token.logoURI} className="w-9 h-9 rounded-full bg-white/10" />
+            </motion.div>
             {token.isVerified && (
               <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center ring-1 ring-[#181818]">
                 <Check size={8} className="text-white" />
@@ -343,11 +412,19 @@ const MobileTokenListItem = memo(
             <div className="text-[11px] text-white/50 font-mono leading-none">{formatCompactUSD(token.marketCap)}</div>
           </div>
 
+          {/* star favorite button */}
+          <FavoriteStar isFav={isFav} onToggle={onToggleFav} />
+
           {/* added indicator */}
           {isSelected && (
-            <div className="flex-none w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-700">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+              className="flex-none w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-700"
+            >
               <Check size={13} className="text-zinc-950" />
-            </div>
+            </motion.div>
           )}
         </motion.div>
       </div>
@@ -355,7 +432,8 @@ const MobileTokenListItem = memo(
   },
   (prev, next) =>
     prev.token.address === next.token.address &&
-    prev.isSelected === next.isSelected,
+    prev.isSelected === next.isSelected &&
+    prev.isFav === next.isFav,
 );
 
 // ─── Mobile: Asset Card ───────────────────────────────────────────────────────
@@ -617,84 +695,128 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
 
   return (
     <div className={inline ? 'flex flex-col h-full' : 'absolute inset-0 bg-[#030303] flex flex-col'}>
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className={`${inline ? 'flex-none' : 'absolute top-0 left-0 right-0 z-30'} bg-[#030303]/90 backdrop-blur-md border-b border-white/5 safe-area-top`}
-      >
-        <div className="px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={onBack}
-            className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center active:bg-white/10 transition-colors"
-          >
-            <ArrowLeft size={20} className="text-white" />
-          </button>
-          <button
-            onClick={() => setIsSelectorOpen(true)}
-            className="btn-glass-gold w-10 h-10 rounded-full flex items-center justify-center transition-colors"
-          >
-            <Plus size={20} />
-          </button>
-        </div>
-      </motion.div>
+      {/* Header — standalone mode only */}
+      {!inline && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="absolute top-0 left-0 right-0 z-30 bg-[#030303]/90 backdrop-blur-md border-b border-white/5 safe-area-top"
+        >
+          <div className="px-4 py-3 flex items-center justify-between">
+            <button
+              onClick={onBack}
+              className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center active:bg-white/10 transition-colors"
+            >
+              <ArrowLeft size={20} className="text-white" />
+            </button>
+            <button
+              onClick={() => setIsSelectorOpen(true)}
+              className="btn-glass-gold w-10 h-10 rounded-full flex items-center justify-center transition-colors"
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       {/* Scrollable Content */}
       <div className={`${inline ? 'flex-1 min-h-0' : 'absolute inset-0 z-0'} overflow-y-auto custom-scrollbar`}>
         {!inline && <div className="h-[64px] safe-area-top" />}
 
-        {/* Stats Header */}
-        <div className="sticky top-0 z-20 bg-[#030303]/95 border-b border-white/5 backdrop-blur-sm shadow-lg shadow-black/20 px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div
-              className={`relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center overflow-hidden border ${
+        {/* Stats bar — inline mode: compact pill row */}
+        {inline ? (
+          <div className="sticky top-0 z-20 backdrop-blur-sm bg-black/60 border-b border-white/5 px-4 py-2.5 flex items-center gap-3">
+            {/* Allocation pill */}
+            <motion.div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
                 totalWeight === 100
-                  ? 'bg-emerald-900/20 border-emerald-500/30'
+                  ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/30'
                   : totalWeight > 100
-                    ? 'bg-red-900/20 border-red-500/30'
-                    : 'bg-amber-900/10 border-amber-500/20'
+                    ? 'bg-red-900/30 text-red-400 border border-red-700/30'
+                    : 'bg-amber-900/20 text-amber-500 border border-amber-800/20'
               }`}
+              animate={totalWeight === 100 ? { scale: [1, 1.05, 1] } : {}}
+              transition={{ duration: 0.3 }}
             >
-              <span
-                className={`text-2xl font-bold ${
-                  totalWeight === 100 ? 'text-emerald-400' : totalWeight > 100 ? 'text-red-400' : 'text-amber-500'
-                }`}
-              >
-                {totalWeight}
-              </span>
-              <span className="text-[10px] text-white/40 -mt-1">%</span>
-            </div>
-            <div>
-              <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Allocation</div>
-              <div className="text-sm font-medium mt-0.5">
-                {totalWeight === 100 ? (
-                  <span className="text-emerald-400 flex items-center gap-1"><Check size={14} /> Ready</span>
-                ) : totalWeight > 100 ? (
-                  <span className="text-red-400">Over limit</span>
-                ) : (
-                  <span className="text-amber-500/80">{100 - totalWeight}% remaining</span>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-2">
+              {totalWeight === 100 ? (
+                <><Check size={11} /> Complete</>
+              ) : totalWeight > 100 ? (
+                <><AlertCircle size={11} /> {totalWeight - 100}% over</>
+              ) : (
+                <><span style={{ fontFamily: '"Times New Roman", serif' }}>{totalWeight}%</span> / 100</>
+              )}
+            </motion.div>
+
+            {/* Assets count */}
+            <span className="text-xs text-white/30">
+              {portfolio.length} asset{portfolio.length !== 1 ? 's' : ''}
+            </span>
+
+            <div className="flex-1" />
+
+            {/* Equal button */}
             {portfolio.length >= 2 && (
               <button
                 onClick={distributeEvenly}
-                className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg bg-white/5 text-white/70 active:bg-white/10 transition-colors"
+                className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white/5 text-white/50 active:bg-white/10 transition-colors"
               >
-                <Percent size={12} /> Equal
+                <Percent size={10} /> Equal
               </button>
             )}
-            <div className="text-xs text-white/30 font-mono">
-              {portfolio.length} Asset{portfolio.length !== 1 ? 's' : ''}
+
+            {/* Add token button */}
+            <button
+              onClick={() => setIsSelectorOpen(true)}
+              className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full btn-glass-gold transition-colors"
+            >
+              <Plus size={12} /> Add
+            </button>
+          </div>
+        ) : (
+          /* Stats Header — standalone mode */
+          <div className="sticky top-0 z-20 bg-[#030303]/95 border-b border-white/5 backdrop-blur-sm shadow-lg shadow-black/20 px-4 py-4 flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <div
+                className={`relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center overflow-hidden border ${
+                  totalWeight === 100
+                    ? 'bg-emerald-900/20 border-emerald-500/30'
+                    : totalWeight > 100
+                      ? 'bg-red-900/20 border-red-500/30'
+                      : 'bg-amber-900/10 border-amber-500/20'
+                }`}
+              >
+                <span className={`text-2xl font-bold ${totalWeight === 100 ? 'text-emerald-400' : totalWeight > 100 ? 'text-red-400' : 'text-amber-500'}`}>
+                  {totalWeight}
+                </span>
+                <span className="text-[10px] text-white/40 -mt-1">%</span>
+              </div>
+              <div>
+                <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Allocation</div>
+                <div className="text-sm font-medium mt-0.5">
+                  {totalWeight === 100 ? (
+                    <span className="text-emerald-400 flex items-center gap-1"><Check size={14} /> Ready</span>
+                  ) : totalWeight > 100 ? (
+                    <span className="text-red-400">Over limit</span>
+                  ) : (
+                    <span className="text-amber-500/80">{100 - totalWeight}% remaining</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              {portfolio.length >= 2 && (
+                <button onClick={distributeEvenly} className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg bg-white/5 text-white/70 active:bg-white/10 transition-colors">
+                  <Percent size={12} /> Equal
+                </button>
+              )}
+              <div className="text-xs text-white/30 font-mono">{portfolio.length} Asset{portfolio.length !== 1 ? 's' : ''}</div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Portfolio List */}
-        <div className="p-4 space-y-3 pb-40">
+        <div className={`p-4 space-y-3 ${inline ? 'pb-4' : 'pb-40'}`}>
           <AnimatePresence>
             {totalWeight > 100 && (
               <motion.div
@@ -895,9 +1017,11 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
                             <MobileTokenListItem
                               token={token}
                               isSelected={isSelected}
+                              isFav={preferences.isFavorite(token.address)}
                               onAdd={() => handleTokenSelect(token)}
                               onRemove={isSelected ? () => removeToken(token.address) : undefined}
                               onDetail={() => setSelectedDetailToken(token)}
+                              onToggleFav={(e) => { e.stopPropagation(); preferences.toggleFavorite(token.address); }}
                             />
                           </div>
                         </div>

@@ -3,8 +3,6 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { motion } from 'framer-motion';
 import {
-  Plus,
-  Loader2,
   ChevronDown,
   Fingerprint,
   Type,
@@ -18,8 +16,6 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useManualDashboard } from '../../hooks/useManualDashboard';
 import { useTokenPreferences } from '../../hooks/useTokenPreferences';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { ProfileEditModal } from '../common/ProfileEditModal';
-import { api } from '../../services/api';
 import { MobileBuilder, DesktopBuilder } from './manual/Builder';
 import { DeploymentBlueprint } from './DeploymentBlueprint';
 
@@ -339,9 +335,6 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
   const isMobile = useIsMobile();
   const preferences = useTokenPreferences();
 
-  const [showRegistration, setShowRegistration] = useState(false);
-  const [checkingRegistration, setCheckingRegistration] = useState(false);
-
   // Section refs for smooth-scroll navigation
   const builderRef = useRef<HTMLDivElement>(null);
   const identityRef = useRef<HTMLDivElement>(null);
@@ -360,32 +353,6 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
   }, []);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
-
-  // CTA button: check registration then scroll to builder
-  const handleStartCreate = async () => {
-    if (!connected || !publicKey) {
-      setWalletModalVisible(true);
-      return;
-    }
-    setCheckingRegistration(true);
-    try {
-      const res = await api.getUser(publicKey.toBase58());
-      if (!res.is_registered) {
-        setShowRegistration(true);
-        return;
-      }
-    } catch {
-      // allow through on error
-    } finally {
-      setCheckingRegistration(false);
-    }
-    scrollTo(builderRef);
-  };
-
-  const handleRegistrationComplete = () => {
-    setShowRegistration(false);
-    scrollTo(builderRef);
-  };
 
   // Builder "Next Step" → scroll to identity
   const handleBuilderNext = useCallback(() => {
@@ -441,26 +408,16 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
         />
       </div>
 
-      {/* ── Registration Modal ────────────────────────────────────────────── */}
-      <ProfileEditModal
-        isOpen={showRegistration}
-        onClose={() => setShowRegistration(false)}
-        currentProfile={{ pubkey: publicKey?.toBase58() || '', username: undefined }}
-        onUpdate={handleRegistrationComplete}
-      />
-
       {/* ── Section 1: Hero ───────────────────────────────────────────────── */}
-      <section className="relative z-10 min-h-[100dvh] flex flex-col items-center justify-between px-6 py-12 md:py-20">
-        <div className="flex-1" />
-
+      <section className="relative z-10 min-h-[100dvh] flex flex-col items-center justify-center px-6">
         {/* Hero text */}
-        <div className="text-center space-y-5 max-w-2xl mx-auto backdrop-blur-sm p-8 rounded-3xl">
+        <div className="text-center max-w-2xl mx-auto">
           <motion.h1
-            initial={{ opacity: 0, scale: 0.93 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.35, duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-            className="font-black leading-[0.95] tracking-tighter text-white"
-            style={{ fontSize: 'clamp(3.5rem, 9vw, 7rem)' }}
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+            className="font-black leading-[0.9] tracking-tighter text-white"
+            style={{ fontSize: 'clamp(4rem, 10vw, 8rem)' }}
           >
             Your Idea.
             <br />
@@ -470,76 +427,37 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.55, duration: 0.5 }}
-            className="font-medium leading-relaxed max-w-sm mx-auto pt-2"
-            style={{ fontSize: 'clamp(0.92rem, 2.2vw, 1.1rem)', color: 'rgba(232,194,138,0.6)' }}
+            transition={{ delay: 0.5, duration: 0.6 }}
+            className="font-medium leading-relaxed max-w-sm mx-auto mt-5"
+            style={{ fontSize: 'clamp(0.95rem, 2.2vw, 1.1rem)', color: 'rgba(232,194,138,0.55)' }}
           >
             Build, manage, and scale your on-chain index fund in seconds.
           </motion.p>
-        </div>
 
-        <div className="flex-1 min-h-[6vh]" />
-
-        {/* CTA Button */}
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.72, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-          className="w-full max-w-xs mx-auto"
-        >
-          <button
-            onClick={handleStartCreate}
-            disabled={checkingRegistration}
-            className="group relative w-full transition-all duration-200 active:scale-[0.97] disabled:opacity-55"
+          {/* Animated scroll invitation */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.0, duration: 0.8 }}
+            className="flex flex-col items-center gap-2 mt-12 cursor-pointer select-none"
+            onClick={() => scrollTo(builderRef)}
           >
-            <div
-              className="absolute -inset-2 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
-              style={{ background: 'radial-gradient(ellipse, rgba(199,125,54,0.30) 0%, transparent 70%)' }}
-            />
-            <div
-              className="absolute inset-0 rounded-2xl transition-transform duration-200 group-active:translate-y-[2px]"
-              style={{ transform: 'translateY(6px)', background: '#4A230F', boxShadow: '0 16px 36px rgba(0,0,0,0.75)' }}
-            />
-            <div
-              className="relative flex items-center justify-center gap-3 overflow-hidden rounded-2xl px-8 py-5 border transition-transform duration-200 group-hover:-translate-y-[3px] group-active:translate-y-[2px]"
-              style={{
-                background: 'var(--gold-button, #c9a84c)',
-                borderColor: 'rgba(244,223,190,0.22)',
-                boxShadow: 'inset 0 1.5px 0 rgba(244,223,190,0.45), inset 0 -1px 0 rgba(20,8,2,0.45)',
-              }}
-            >
-              <span
-                className="relative z-10 flex items-center gap-3 font-black text-xl tracking-tight select-none"
-                style={{ color: '#1A0A04' }}
-              >
-                {checkingRegistration ? (
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                ) : (
-                  <>
-                    Create Your ETF
-                    <span
-                      className="flex items-center justify-center w-7 h-7 rounded-full shrink-0"
-                      style={{ background: 'rgba(26,10,4,0.80)', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.55)' }}
-                    >
-                      <Plus strokeWidth={4} size={18} style={{ color: '#E8C28A' }} />
-                    </span>
-                  </>
-                )}
-              </span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-600/50">
+              Scroll to build
+            </span>
+            <div className="flex flex-col items-center -space-y-2">
+              {[0, 0.18, 0.36].map((delay, i) => (
+                <motion.div
+                  key={i}
+                  animate={{ y: [0, 5, 0], opacity: [0.25, 0.7, 0.25] }}
+                  transition={{ duration: 1.4, delay, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <ChevronDown size={18} className="text-amber-600/60" />
+                </motion.div>
+              ))}
             </div>
-          </button>
-        </motion.div>
-
-        {/* Scroll down hint */}
-        <div
-          className="mt-8 flex flex-col items-center gap-1 text-amber-600/50 cursor-pointer"
-          onClick={() => scrollTo(builderRef)}
-        >
-          <span className="text-xs font-medium uppercase tracking-widest">Scroll to build</span>
-          <ChevronDown size={18} className="animate-bounce" />
+          </motion.div>
         </div>
-
-        <div className="h-10 safe-area-bottom" />
       </section>
 
       {/* ── Section 2: Token Builder ──────────────────────────────────────── */}
