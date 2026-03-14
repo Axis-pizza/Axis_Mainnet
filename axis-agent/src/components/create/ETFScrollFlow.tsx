@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Plus,
   Loader2,
@@ -22,7 +22,6 @@ import { ProfileEditModal } from '../common/ProfileEditModal';
 import { api } from '../../services/api';
 import { MobileBuilder, DesktopBuilder } from './manual/Builder';
 import { DeploymentBlueprint } from './DeploymentBlueprint';
-import type { ManualData } from './manual/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3D Background (reused from CreateLanding)
@@ -330,8 +329,6 @@ function InlineIdentityStep({
 // ETFScrollFlow — Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-type FlowPhase = 'hero' | 'building' | 'identity' | 'review';
-
 export interface ETFScrollFlowProps {
   onDeployComplete?: () => void;
 }
@@ -342,21 +339,17 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
   const isMobile = useIsMobile();
   const preferences = useTokenPreferences();
 
-  const [phase, setPhase] = useState<FlowPhase>('hero');
   const [showRegistration, setShowRegistration] = useState(false);
   const [checkingRegistration, setCheckingRegistration] = useState(false);
-  const [draftStrategy, setDraftStrategy] = useState<ManualData | null>(null);
 
-  // Section refs for auto-scroll
+  // Section refs for smooth-scroll navigation
   const builderRef = useRef<HTMLDivElement>(null);
   const identityRef = useRef<HTMLDivElement>(null);
   const reviewRef = useRef<HTMLDivElement>(null);
 
   // Builder state (shared hook)
   const dashboard = useManualDashboard({
-    onDeploySuccess: () => {}, // overridden below
-    initialConfig: draftStrategy?.config,
-    initialTokens: draftStrategy?.tokens,
+    onDeploySuccess: () => {},
     verifiedOnly: preferences.verifiedOnly,
   });
 
@@ -368,6 +361,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
+  // CTA button: check registration then scroll to builder
   const handleStartCreate = async () => {
     if (!connected || !publicKey) {
       setWalletModalVisible(true);
@@ -385,23 +379,20 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
     } finally {
       setCheckingRegistration(false);
     }
-    setPhase('building');
     scrollTo(builderRef);
   };
 
   const handleRegistrationComplete = () => {
     setShowRegistration(false);
-    setPhase('building');
     scrollTo(builderRef);
   };
 
-  // Called when user finishes builder and moves to identity
+  // Builder "Next Step" → scroll to identity
   const handleBuilderNext = useCallback(() => {
-    setPhase('identity');
     scrollTo(identityRef);
   }, [scrollTo]);
 
-  // Called from identity "Review ETF" button
+  // Identity "Review ETF" → scroll to review
   const handleIdentityNext = useCallback(() => {
     const { config } = dashboard;
     if (!config.ticker || !config.name) return;
@@ -409,14 +400,6 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
       setWalletModalVisible(true);
       return;
     }
-    const mappedTokens = dashboard.portfolio.map((p) => ({
-      symbol: p.token.symbol,
-      weight: p.weight,
-      mint: p.token.address,
-      logoURI: p.token.logoURI,
-    }));
-    setDraftStrategy({ tokens: mappedTokens, config });
-    setPhase('review');
     scrollTo(reviewRef);
   }, [dashboard, connected, publicKey, setWalletModalVisible, scrollTo]);
 
@@ -424,17 +407,21 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
     onDeployComplete?.();
   };
 
-  // When builder step changes to 'identity' (hook-internal nav), reset and use our scroll-based nav instead
+  // When builder hook internally tries to go to 'identity', redirect to our scroll nav
   useEffect(() => {
-    if (dashboard.step === 'identity' && phase === 'building') {
+    if (dashboard.step === 'identity') {
       dashboard.setStep('builder');
       handleBuilderNext();
     }
-  }, [dashboard.step, phase, handleBuilderNext, dashboard.setStep]);
+  }, [dashboard.step, handleBuilderNext, dashboard.setStep]);
 
-  const isBuilderVisible = phase === 'building' || phase === 'identity' || phase === 'review';
-  const isIdentityVisible = phase === 'identity' || phase === 'review';
-  const isReviewVisible = phase === 'review';
+  // Derive live review data from current dashboard state
+  const reviewTokens = dashboard.portfolio.map((p) => ({
+    symbol: p.token.symbol,
+    weight: p.weight,
+    mint: p.token.address,
+    logoURI: p.token.logoURI,
+  }));
 
   return (
     <div className="relative bg-[#050301] overflow-x-hidden">
@@ -543,180 +530,116 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
           </button>
         </motion.div>
 
-        {/* Scroll hint — visible when builder is active */}
-        <AnimatePresence>
-          {isBuilderVisible && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="mt-8 flex flex-col items-center gap-1 text-amber-600/50 cursor-pointer"
-              onClick={() => scrollTo(builderRef)}
-            >
-              <span className="text-xs font-medium uppercase tracking-widest">Build below</span>
-              <ChevronDown size={18} className="animate-bounce" />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Scroll down hint */}
+        <div
+          className="mt-8 flex flex-col items-center gap-1 text-amber-600/50 cursor-pointer"
+          onClick={() => scrollTo(builderRef)}
+        >
+          <span className="text-xs font-medium uppercase tracking-widest">Scroll to build</span>
+          <ChevronDown size={18} className="animate-bounce" />
+        </div>
 
         <div className="h-10 safe-area-bottom" />
       </section>
 
       {/* ── Section 2: Token Builder ──────────────────────────────────────── */}
-      <AnimatePresence>
-        {isBuilderVisible && (
-          <motion.div
-            ref={builderRef}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4 }}
+      <div ref={builderRef}>
+        <GlassSection className="h-[100dvh]" innerClassName="h-full flex flex-col">
+          {/* Section label */}
+          <div className="flex-none px-4 pt-4 pb-2 border-b border-white/5">
+            <div className="flex items-center justify-between">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-xs font-medium uppercase tracking-wider">
+                Step 1 · Select Tokens
+              </div>
+              <div className="text-xs text-white/30">
+                {dashboard.portfolio.length} asset{dashboard.portfolio.length !== 1 ? 's' : ''} · {dashboard.totalWeight}%
+              </div>
+            </div>
+          </div>
+
+          {/* Builder content */}
+          <div className="flex-1 min-h-0 flex flex-col">
+            {isMobile ? (
+              <MobileBuilder
+                dashboard={{ ...dashboard, handleToIdentity: handleBuilderNext }}
+                preferences={preferences}
+                onBack={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                inline
+              />
+            ) : (
+              <DesktopBuilder
+                dashboard={{ ...dashboard, handleToIdentity: handleBuilderNext }}
+                preferences={preferences}
+                onBack={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              />
+            )}
+          </div>
+
+          {/* Scroll to next */}
+          <div
+            className="flex-none flex justify-center py-3 border-t border-white/5 cursor-pointer"
+            onClick={() => scrollTo(identityRef)}
           >
-            <GlassSection className="h-[100dvh]" innerClassName="h-full flex flex-col">
-              {/* Section label */}
-              <div className="flex-none px-4 pt-4 pb-2 border-b border-white/5">
-                <div className="flex items-center justify-between">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-xs font-medium uppercase tracking-wider">
-                    Step 1 · Select Tokens
-                  </div>
-                  <div className="text-xs text-white/30">
-                    {dashboard.portfolio.length} asset{dashboard.portfolio.length !== 1 ? 's' : ''} · {dashboard.totalWeight}%
-                  </div>
-                </div>
-              </div>
-
-              {/* Builder content */}
-              <div className="flex-1 min-h-0 flex flex-col">
-                {isMobile ? (
-                  <MobileBuilder
-                    dashboard={{
-                      ...dashboard,
-                      // Override handleToIdentity to use our scroll-based nav
-                      handleToIdentity: handleBuilderNext,
-                    }}
-                    preferences={preferences}
-                    onBack={() => {
-                      setPhase('hero');
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    inline
-                  />
-                ) : (
-                  <DesktopBuilder
-                    dashboard={{
-                      ...dashboard,
-                      handleToIdentity: handleBuilderNext,
-                    }}
-                    preferences={preferences}
-                    onBack={() => {
-                      setPhase('hero');
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                  />
-                )}
-              </div>
-
-              {/* Scroll hint */}
-              <AnimatePresence>
-                {isIdentityVisible && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="flex-none flex justify-center py-3 border-t border-white/5 cursor-pointer"
-                    onClick={() => scrollTo(identityRef)}
-                  >
-                    <span className="text-xs text-amber-600/60 flex items-center gap-1.5">
-                      <ChevronDown size={14} className="animate-bounce" /> Continue to Identity
-                    </span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </GlassSection>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            <span className="text-xs text-amber-600/60 flex items-center gap-1.5">
+              <ChevronDown size={14} className="animate-bounce" /> Name your ETF below
+            </span>
+          </div>
+        </GlassSection>
+      </div>
 
       {/* ── Section 3: Identity ───────────────────────────────────────────── */}
-      <AnimatePresence>
-        {isIdentityVisible && (
-          <motion.div
-            ref={identityRef}
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <GlassSection>
-              {/* Section label */}
-              <div className="px-4 pt-4 pb-0">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-xs font-medium uppercase tracking-wider">
-                  Step 2 · Name Your ETF
-                </div>
-              </div>
-              <InlineIdentityStep
-                config={dashboard.config}
-                setConfig={dashboard.setConfig}
-                focusedField={dashboard.focusedField}
-                setFocusedField={dashboard.setFocusedField}
-                portfolioCount={dashboard.portfolio.length}
-                connected={connected}
-                onDeploy={handleIdentityNext}
-                onGenerateRandomTicker={dashboard.generateRandomTicker}
-              />
+      <div ref={identityRef}>
+        <GlassSection>
+          {/* Section label */}
+          <div className="px-4 pt-4 pb-0">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-xs font-medium uppercase tracking-wider">
+              Step 2 · Name Your ETF
+            </div>
+          </div>
+          <InlineIdentityStep
+            config={dashboard.config}
+            setConfig={dashboard.setConfig}
+            focusedField={dashboard.focusedField}
+            setFocusedField={dashboard.setFocusedField}
+            portfolioCount={dashboard.portfolio.length}
+            connected={connected}
+            onDeploy={handleIdentityNext}
+            onGenerateRandomTicker={dashboard.generateRandomTicker}
+          />
 
-              {/* Scroll hint */}
-              <AnimatePresence>
-                {isReviewVisible && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="flex justify-center pb-6 cursor-pointer"
-                    onClick={() => scrollTo(reviewRef)}
-                  >
-                    <span className="text-xs text-amber-600/60 flex items-center gap-1.5">
-                      <ChevronDown size={14} className="animate-bounce" /> Continue to Review
-                    </span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </GlassSection>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          {/* Scroll to next */}
+          <div
+            className="flex justify-center pb-6 cursor-pointer"
+            onClick={() => scrollTo(reviewRef)}
+          >
+            <span className="text-xs text-amber-600/60 flex items-center gap-1.5">
+              <ChevronDown size={14} className="animate-bounce" /> Review & deploy below
+            </span>
+          </div>
+        </GlassSection>
+      </div>
 
       {/* ── Section 4: Review & Deploy ────────────────────────────────────── */}
-      <AnimatePresence>
-        {isReviewVisible && draftStrategy && (
-          <motion.div
-            ref={reviewRef}
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <GlassSection innerClassName="px-4 pt-6 pb-28">
-              {/* Section label */}
-              <div className="mb-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-xs font-medium uppercase tracking-wider">
-                  Step 3 · Review & Deploy
-                </div>
-              </div>
-              <DeploymentBlueprint
-                strategyName={draftStrategy.config.name || 'Untitled'}
-                strategyType="BALANCED"
-                tokens={draftStrategy.tokens || []}
-                description={draftStrategy.config.description || ''}
-                info={{ symbol: draftStrategy.config.ticker || 'ETF' }}
-                initialTvl={1.0}
-                onBack={() => {
-                  setPhase('identity');
-                  scrollTo(identityRef);
-                }}
-                onComplete={handleDeployComplete}
-              />
-            </GlassSection>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div ref={reviewRef}>
+        <GlassSection innerClassName="px-4 pt-6 pb-28">
+          {/* Section label */}
+          <div className="mb-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-xs font-medium uppercase tracking-wider">
+              Step 3 · Review & Deploy
+            </div>
+          </div>
+          <DeploymentBlueprint
+            strategyName={dashboard.config.name || 'Untitled'}
+            strategyType="BALANCED"
+            tokens={reviewTokens}
+            description={dashboard.config.description || ''}
+            info={{ symbol: dashboard.config.ticker || 'ETF' }}
+            initialTvl={1.0}
+            onBack={() => scrollTo(identityRef)}
+            onComplete={handleDeployComplete}
+          />
+        </GlassSection>
+      </div>
 
       {/* Bottom spacer */}
       <div className="relative z-10 h-16 safe-area-bottom" />
