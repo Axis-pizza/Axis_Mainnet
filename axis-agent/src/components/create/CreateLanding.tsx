@@ -48,7 +48,7 @@ function createCoinTexture(symbol: string) {
 
   // 中央のテキスト（銘柄シンボル）
   ctx.fillStyle = GOLD_DARK;
-  ctx.font = `bold ${symbol.length >= 4 ? '56' : '72'}px "Times New Roman", serif`;
+  ctx.font = `bold ${symbol.length >= 4 ? '56' : '72'}px "Lora", "Times New Roman", serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   // 文字を中央に描画
@@ -235,7 +235,7 @@ export const CreateLanding = ({ onCreate, isLoading }: CreateLandingProps) => {
             initial={{ opacity: 0, scale: 0.93 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.35, duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-            className="font-black leading-[0.95] tracking-tighter text-white"
+            className="font-normal leading-[0.95] tracking-tighter text-white"
             style={{ fontSize: 'clamp(3.5rem, 9vw, 7rem)' }}
           >
             Your Idea.
@@ -247,7 +247,7 @@ export const CreateLanding = ({ onCreate, isLoading }: CreateLandingProps) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.55, duration: 0.5 }}
-            className="font-medium leading-relaxed max-w-sm mx-auto pt-2"
+            className="font-normal leading-relaxed max-w-sm mx-auto pt-2"
             style={{
               fontSize: 'clamp(0.92rem, 2.2vw, 1.1rem)',
               color: 'rgba(232, 194, 138, 0.6)',
@@ -297,7 +297,7 @@ export const CreateLanding = ({ onCreate, isLoading }: CreateLandingProps) => {
             >
               <div className="absolute inset-0 rounded-2xl border-t border-amber-100/20 pointer-events-none" />
               <span
-                className="relative z-10 flex items-center gap-3 font-black text-xl tracking-tight select-none"
+                className="relative z-10 flex items-center gap-3 font-normal text-xl tracking-tight select-none"
                 style={{ color: '#1A0A04' }}
               >
                 {isLoading ? (

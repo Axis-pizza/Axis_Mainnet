@@ -188,7 +188,7 @@ export const DeploymentBlueprint = ({
                   </li>
                 ))
               ) : (
-                <li className="text-sm italic opacity-50">No tokens selected</li>
+                <li className="text-sm opacity-50">No tokens selected</li>
               )}
             </ul>
           </div>

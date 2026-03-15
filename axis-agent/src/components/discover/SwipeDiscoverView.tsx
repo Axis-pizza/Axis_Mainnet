@@ -577,7 +577,7 @@ const SuccessOverlay = ({
         transition={{ type: 'spring', damping: 14, stiffness: 100, delay: 0.1 }}
         className="relative mb-10 z-20 text-center"
       >
-        <h1 className="text-5xl md:text-7xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-yellow-200 to-orange-500 drop-shadow-[0_0_30px_rgba(234,88,12,0.8)] transform -rotate-3 leading-none tracking-tight">
+        <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-yellow-200 to-orange-500 drop-shadow-[0_0_30px_rgba(234,88,12,0.8)] transform -rotate-3 leading-none tracking-tight">
           READY FOR
           <br />
           TAKEOFF

@@ -58,7 +58,7 @@ export const IdentityStep = ({
               </motion.div>
               <h2
                 className="text-2xl text-white"
-                style={{ fontFamily: '"Times New Roman", serif' }}
+                style={{ fontFamily: "'Lora', 'Times New Roman', serif" }}
               >
                 Name Your Strategy
               </h2>
@@ -81,7 +81,7 @@ export const IdentityStep = ({
               <div className="flex items-center gap-4">
                 <span
                   className={`text-4xl ${focusedField === 'ticker' ? 'text-amber-600' : 'text-white/20'}`}
-                  style={{ fontFamily: '"Times New Roman", serif' }}
+                  style={{ fontFamily: "'Lora', 'Times New Roman', serif" }}
                 >
                   $
                 </span>
@@ -95,7 +95,7 @@ export const IdentityStep = ({
                   }
                   placeholder="MEME"
                   className="flex-1 bg-transparent text-4xl tracking-widest placeholder:text-white/10 focus:outline-none uppercase text-white"
-                  style={{ fontFamily: '"Times New Roman", serif' }}
+                  style={{ fontFamily: "'Lora', 'Times New Roman', serif" }}
                 />
                 <button
                   onClick={(e) => {
@@ -164,7 +164,7 @@ export const IdentityStep = ({
                 <div className="text-xs text-amber-700/50 uppercase font-medium">Fee</div>
                 <div
                   className="text-2xl text-amber-500 mt-1"
-                  style={{ fontFamily: '"Times New Roman", serif' }}
+                  style={{ fontFamily: "'Lora', 'Times New Roman', serif" }}
                 >
                   0.5%
                 </div>
@@ -173,7 +173,7 @@ export const IdentityStep = ({
                 <div className="text-xs text-amber-700/50 uppercase font-medium">Assets</div>
                 <div
                   className="text-2xl text-white mt-1"
-                  style={{ fontFamily: '"Times New Roman", serif' }}
+                  style={{ fontFamily: "'Lora', 'Times New Roman', serif" }}
                 >
                   {portfolioCount}
                 </div>

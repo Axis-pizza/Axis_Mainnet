@@ -154,7 +154,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-white font-serif text-xl italic tracking-wide">
+                        <span className="text-white font-serif text-xl tracking-wide">
                           Muse
                         </span>
                         <span className="px-2 py-0.5 bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[9px] font-bold rounded-sm tracking-widest">
@@ -193,7 +193,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
                   <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4 text-orange-400 border border-orange-500/20">
                     <Send size={32} />
                   </div>
-                  <p className="text-2xl italic text-white mb-2">Signal Transmitted.</p>
+                  <p className="text-2xl text-white mb-2">Signal Transmitted.</p>
                   <p className="text-sm font-sans text-white/40">
                     We will analyze your report shortly.
                   </p>

@@ -484,7 +484,7 @@ const MobileAssetCard = memo(
                   background: 'rgba(10,5,2,0.7)',
                   borderColor: AXIS_GOLD,
                   color: AXIS_GOLD,
-                  fontFamily: '"Times New Roman", serif',
+                  fontFamily: "'Lora', 'Times New Roman', serif",
                 }}
                 maxLength={3}
                 autoFocus
@@ -498,7 +498,7 @@ const MobileAssetCard = memo(
                   className="text-[32px] font-bold tabular-nums leading-none"
                   style={{
                     color: isOverLimit ? '#ef4444' : AXIS_GOLD,
-                    fontFamily: '"Times New Roman", serif',
+                    fontFamily: "'Lora', 'Times New Roman', serif",
                   }}
                 >
                   {item.weight}
