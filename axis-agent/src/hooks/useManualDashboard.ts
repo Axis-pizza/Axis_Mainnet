@@ -48,6 +48,10 @@ export const useManualDashboard = ({
   const [tokenFilter, setTokenFilter] = useState<
     'all' | 'crypto' | 'stock' | 'commodity' | 'prediction'
   >('all');
+  
+  // Prediction market sort option
+  type PredictionSortOption = 'volume' | 'close-race' | 'ending-soon' | 'recent';
+  const [predictionSortBy, setPredictionSortBy] = useState<PredictionSortOption>('volume');
 
   const [config, setConfig] = useState<StrategyConfig>({
     name: initialConfig?.name || '',
@@ -215,9 +219,72 @@ export const useManualDashboard = ({
       );
     }
 
-    result.sort((a: any, b: any) => (b.totalVolume || 0) - (a.totalVolume || 0));
+    // Apply sorting based on predictionSortBy
+    switch (predictionSortBy) {
+      case 'volume':
+        result.sort((a: any, b: any) => (b.totalVolume || 0) - (a.totalVolume || 0));
+        break;
+      case 'close-race':
+        // Sort by how close the race is (markets near 50-50)
+        result.sort((a: any, b: any) => {
+          const aDiff = Math.abs(0.5 - (a.yesToken?.price || 0.5));
+          const bDiff = Math.abs(0.5 - (b.yesToken?.price || 0.5));
+          return aDiff - bDiff; // Closer to 50% comes first
+        });
+        break;
+      case 'ending-soon':
+        // Sort by expiry date (soonest first)
+        result.sort((a: any, b: any) => {
+          const aEnd = new Date(a.expiry || '2099-12-31').getTime();
+          const bEnd = new Date(b.expiry || '2099-12-31').getTime();
+          return aEnd - bEnd; // Earlier dates first
+        });
+        break;
+      case 'recent':
+        // Sort by creation date (newest first)
+        result.sort((a: any, b: any) => {
+          const aCreated = new Date(a.createdAt || 0).getTime();
+          const bCreated = new Date(b.createdAt || 0).getTime();
+          return bCreated - aCreated; // Newer dates first
+        });
+        break;
+    }
+
+    // 【追加】画像の多様性を確保（volumeソート時のみ）
+    if (predictionSortBy === 'volume') {
+      const diversifyPredictions = (markets: typeof result) => {
+        if (markets.length <= 10) return markets;
+        
+        const topTen = markets.slice(0, 10);
+        const remaining = markets.slice(10);
+        
+        // 画像URLでグループ化
+        const byImage = remaining.reduce((acc, market) => {
+          const key = market.image || 'unknown';
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(market);
+          return acc;
+        }, {} as Record<string, typeof result>);
+        
+        // ラウンドロビン方式で交互配置
+        const diversified: typeof result = [];
+        const imageGroups = Object.values(byImage);
+        const maxLength = Math.max(...imageGroups.map((g: any) => g.length));
+        
+        for (let i = 0; i < maxLength; i++) {
+          for (const group of imageGroups) {
+            if ((group as any)[i]) diversified.push((group as any)[i]);
+          }
+        }
+        
+        return [...topTen, ...diversified];
+      };
+
+      result = diversifyPredictions(result);
+    }
+    
     return result;
-  }, [allTokens, searchQuery, activeTab]);
+  }, [allTokens, searchQuery, activeTab, predictionSortBy]);
 
   // C. その他の計算
   const selectedIds = useMemo(() => new Set(portfolio.map((p) => p.token.address)), [portfolio]);
@@ -270,16 +337,30 @@ export const useManualDashboard = ({
         if (!isMounted) return;
 
         const uniqueMap = new Map<string, JupiterToken>();
+        const seenSymbols = new Set<string>();
 
         POPULAR_SYMBOLS.forEach((sym) => {
           const t = list.find((x) => x.symbol === sym);
-          if (t) uniqueMap.set(t.address, t);
+          if (t) {
+            uniqueMap.set(t.address, t);
+            seenSymbols.add(t.symbol.toUpperCase());
+          }
         });
-        [...predictionTokens, ...stockTokens, ...commodityTokens].forEach((t) =>
-          uniqueMap.set(t.address, t)
-        );
+        [...predictionTokens, ...stockTokens, ...commodityTokens].forEach((t) => {
+          const upperSym = t.symbol.toUpperCase();
+          if (seenSymbols.has(upperSym)) {
+            console.warn(`[Duplicate] Skipping ${t.symbol} from ${t.source}, already exists`);
+            return;
+          }
+          uniqueMap.set(t.address, t);
+          seenSymbols.add(upperSym);
+        });
         list.forEach((t) => {
-          if (!uniqueMap.has(t.address)) uniqueMap.set(t.address, t);
+          const upperSym = t.symbol.toUpperCase();
+          if (!uniqueMap.has(t.address) && !seenSymbols.has(upperSym)) {
+            uniqueMap.set(t.address, t);
+            seenSymbols.add(upperSym);
+          }
         });
 
         const enriched = Array.from(uniqueMap.values()).map((t) => {
@@ -376,6 +457,37 @@ export const useManualDashboard = ({
     });
     setSearchQuery('');
   }, []);
+
+  // One-click add function for prediction market cards
+  const addTokenToComposition = useCallback((token: JupiterToken, side?: 'YES' | 'NO') => {
+    triggerHaptic();
+    
+    // Check if already added
+    if (portfolio.some((p) => p.token.address === token.address)) {
+      toast.info('Already in ETF', { 
+        description: `${token.symbol} is already in your composition` 
+      });
+      return;
+    }
+    
+    // Add token directly (skip modal)
+    setPortfolio((prev) => {
+      const currentW = prev.reduce((s, i) => s + i.weight, 0);
+      let nextW = 0;
+      if (currentW < 100) {
+        nextW = Math.max(1, Math.floor((100 - currentW) / 2));
+        if (nextW === 0 && currentW < 100) nextW = 100 - currentW;
+      }
+      return [...prev, { token, weight: nextW, locked: false, id: token.address }];
+    });
+    
+    // Success toast
+    toast.success('Added to ETF ✓', {
+      description: `${token.symbol} ${side ? `(${side})` : ''} added successfully`
+    });
+    
+    setSearchQuery('');
+  }, [portfolio, triggerHaptic]);
 
   const removeToken = useCallback(
     (address: string) => {
@@ -482,6 +594,8 @@ export const useManualDashboard = ({
     setTokenFilter,
     connected,
     groupedPredictions,
+    predictionSortBy,
+    setPredictionSortBy,
     handleToIdentity,
     handleBackToBuilder,
     handleDeploy,
@@ -489,6 +603,7 @@ export const useManualDashboard = ({
     triggerAddAnimation,
     handleAnimationComplete,
     addTokenDirect,
+    addTokenToComposition,
     removeToken,
     updateWeight,
     distributeEvenly,

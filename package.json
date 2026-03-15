@@ -9,6 +9,9 @@
     "build:mock": "pnpm --filter axis-mock build",
     "start:mock": "pnpm --filter axis-mock start",
     "lint:mock": "pnpm --filter axis-mock lint",
+    "dev:agent": "pnpm --filter axis-agent dev",
+    "build:agent": "pnpm --filter axis-agent build && cp -r axis-agent/dist dist",
+    "build": "pnpm --filter axis-agent build && cp -r axis-agent/dist dist",
     "dev": "pnpm --recursive --parallel dev"
   },
   "pnpm": {

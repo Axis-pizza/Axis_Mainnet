@@ -200,6 +200,29 @@
   /* Gravity shadows — pure void beneath elements */
   --shadow-void:      0  8px 40px rgba(0, 0, 0, 0.90), 0 2px 12px rgba(0, 0, 0, 0.70);
   --shadow-void-deep: 0 20px 80px rgba(0, 0, 0, 0.96), 0 6px 24px rgba(0, 0, 0, 0.80);
+  
+  /* ═════════════════════════════════════════════════════════════════════
+     Prediction Market UI Colors (Phase 1)
+     ─────────────────────────────────────────────────────────────────── */
+  
+  /* Primary Colors for Probability Display */
+  --green-500: #10B981;   /* YES probability - emerald green */
+  --red-500: #EF4444;     /* NO probability - red */
+  --blue-500: #3B82F6;    /* General accents */
+  
+  /* Neutral Grays */
+  --gray-50: #F9FAFB;
+  --gray-100: #F3F4F6;
+  --gray-300: #D1D5DB;
+  --gray-600: #4B5563;
+  --gray-900: #111827;
+  
+  /* Category Colors */
+  --category-politics: #6366F1;       /* Indigo - Politics */
+  --category-sports: #F59E0B;         /* Amber - Sports */
+  --category-crypto: #8B5CF6;         /* Purple - Crypto */
+  --category-entertainment: #EC4899;  /* Pink - Entertainment */
+  --category-world: #14B8A6;          /* Teal - World Events */
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
