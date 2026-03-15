@@ -14,6 +14,7 @@ import {
   ClipboardPaste,
   Minus,
   Copy,
+  Star,
 } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -279,25 +280,75 @@ const TokenDetailModal = ({
   );
 };
 
+// ─── FavoriteStar: 星ボタン（タップでくるっと回転）────────────────────────────
+const FavoriteStar = memo(function FavoriteStar({
+  isFav,
+  onToggle,
+}: {
+  isFav: boolean;
+  onToggle: (e: React.MouseEvent) => void;
+}) {
+  const [spinning, setSpinning] = useState(false);
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSpinning(true);
+    onToggle(e);
+    setTimeout(() => setSpinning(false), 480);
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      className={`w-9 h-9 flex items-center justify-center rounded-xl flex-none transition-colors ${
+        isFav ? 'text-amber-400' : 'text-white/20 active:text-amber-400'
+      }`}
+    >
+      <motion.div
+        animate={spinning ? { rotate: 360, scale: [1, 1.5, 1] } : { rotate: 0, scale: 1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <Star size={15} fill={isFav ? 'currentColor' : 'none'} strokeWidth={2} />
+      </motion.div>
+    </button>
+  );
+});
+
 // ─── Mobile: Token List Item (swipe-right to add, swipe-left to remove, tap for detail) ──
 const MobileTokenListItem = memo(
   function MobileTokenListItem({
     token,
     isSelected,
+    isFav,
     onAdd,
     onRemove,
     onDetail,
+    onToggleFav,
   }: {
     token: JupiterToken;
     isSelected: boolean;
+    isFav: boolean;
     onAdd: () => void;
     onRemove?: () => void;
     onDetail: () => void;
+    onToggleFav: (e: React.MouseEvent) => void;
   }) {
     const x = useMotionValue(0);
     const addOpacity = useTransform(x, [0, 56], [0, 1]);
     const removeOpacity = useTransform(x, [-56, 0], [1, 0]);
     const isDragging = useRef(false);
+
+    // Flash glow when token is first selected
+    const [justAdded, setJustAdded] = useState(false);
+    const prevSelected = useRef(isSelected);
+    useEffect(() => {
+      if (isSelected && !prevSelected.current) {
+        setJustAdded(true);
+        const t = setTimeout(() => setJustAdded(false), 700);
+        return () => clearTimeout(t);
+      }
+      prevSelected.current = isSelected;
+    }, [isSelected]);
 
     return (
       <div className="relative overflow-hidden rounded-xl">
@@ -325,6 +376,17 @@ const MobileTokenListItem = memo(
           </motion.div>
         )}
 
+        {/* selection flash overlay */}
+        {justAdded && (
+          <motion.div
+            initial={{ opacity: 0.6 }}
+            animate={{ opacity: 0 }}
+            transition={{ duration: 0.6 }}
+            className="absolute inset-0 rounded-xl pointer-events-none"
+            style={{ background: 'radial-gradient(ellipse, rgba(251,191,36,0.25) 0%, transparent 70%)' }}
+          />
+        )}
+
         {/* draggable row */}
         <motion.div
           drag="x"
@@ -339,15 +401,22 @@ const MobileTokenListItem = memo(
             setTimeout(() => { isDragging.current = false; }, 80);
           }}
           onClick={() => { if (!isDragging.current) onDetail(); }}
-          className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl min-h-[58px] select-none touch-pan-y
-            ${isSelected
+          className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl min-h-[58px] select-none touch-pan-y transition-shadow ${
+            justAdded ? 'shadow-[0_0_16px_rgba(251,191,36,0.2)]' : ''
+          } ${
+            isSelected
               ? 'bg-gradient-to-r from-amber-950/60 to-amber-900/40 border border-amber-800/40'
               : 'bg-[#181818]'
-            }`}
+          }`}
         >
           {/* logo */}
           <div className="relative flex-none">
-            <TokenImage src={token.logoURI} className="w-9 h-9 rounded-full bg-white/10" />
+            <motion.div
+              animate={justAdded ? { scale: [1, 1.15, 1] } : {}}
+              transition={{ duration: 0.35, ease: 'backOut' }}
+            >
+              <TokenImage src={token.logoURI} className="w-9 h-9 rounded-full bg-white/10" />
+            </motion.div>
             {token.isVerified && (
               <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center ring-1 ring-[#181818]">
                 <Check size={8} className="text-white" />
@@ -374,9 +443,14 @@ const MobileTokenListItem = memo(
 
           {/* added indicator */}
           {isSelected && (
-            <div className="flex-none w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-700">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+              className="flex-none w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-700"
+            >
               <Check size={13} className="text-zinc-950" />
-            </div>
+            </motion.div>
           )}
         </motion.div>
       </div>
@@ -384,7 +458,8 @@ const MobileTokenListItem = memo(
   },
   (prev, next) =>
     prev.token.address === next.token.address &&
-    prev.isSelected === next.isSelected,
+    prev.isSelected === next.isSelected &&
+    prev.isFav === next.isFav,
 );
 
 // ─── Mobile: Asset Card ───────────────────────────────────────────────────────
@@ -804,7 +879,7 @@ const PortfolioProgressBar = memo(
 // ─────────────────────────────────────────────────────────────────────────────
 // MobileBuilder
 // ─────────────────────────────────────────────────────────────────────────────
-export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) => {
+export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: BuilderProps) => {
   const {
     portfolio,
     searchQuery,
@@ -891,45 +966,129 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
   }, []);
 
   return (
-    <div className="absolute inset-0 bg-[#030303] flex flex-col">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="absolute top-0 left-0 right-0 z-30 bg-[#030303]/90 backdrop-blur-md border-b border-white/5 safe-area-top"
-      >
-        <div className="px-4 py-3 flex items-center">
-          <button
-            onClick={onBack}
-            className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center active:bg-white/10 transition-colors"
-          >
-            <ArrowLeft size={20} className="text-white" />
-          </button>
-          <h2
-            className="ml-3 text-base text-white/70 font-medium tracking-wide"
-            style={{ fontFamily: '"Times New Roman", serif' }}
-          >
-            Build Strategy
-          </h2>
-        </div>
-      </motion.div>
+    <div className={inline ? 'flex flex-col h-full' : 'absolute inset-0 bg-[#030303] flex flex-col'}>
+      {/* Header — standalone mode only */}
+      {!inline && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="absolute top-0 left-0 right-0 z-30 bg-[#030303]/90 backdrop-blur-md border-b border-white/5 safe-area-top"
+        >
+          <div className="px-4 py-3 flex items-center justify-between">
+            <button
+              onClick={onBack}
+              className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center active:bg-white/10 transition-colors"
+            >
+              <ArrowLeft size={20} className="text-white" />
+            </button>
+            <button
+              onClick={() => setIsSelectorOpen(true)}
+              className="btn-glass-gold w-10 h-10 rounded-full flex items-center justify-center transition-colors"
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       {/* Scrollable Content */}
-      <div className="absolute inset-0 overflow-y-auto custom-scrollbar z-0">
-        <div className="h-[64px] safe-area-top" />
+      <div className={`${inline ? 'flex-1 min-h-0' : 'absolute inset-0 z-0'} overflow-y-auto custom-scrollbar`}>
+        {!inline && <div className="h-[64px] safe-area-top" />}
 
-        {/* Stats Header */}
-        <div className="sticky top-0 z-20 bg-[#030303]/95 border-b border-white/5 backdrop-blur-sm shadow-lg shadow-black/20">
-          <PortfolioProgressBar
-            portfolio={portfolio}
-            totalWeight={totalWeight}
-            onDistributeEvenly={distributeEvenly}
-          />
-        </div>
+        {/* Stats bar — inline mode: compact pill row */}
+        {inline ? (
+          <div className="sticky top-0 z-20 backdrop-blur-sm bg-black/50 px-4 py-2.5 flex items-center gap-3">
+            {/* Allocation pill */}
+            <motion.div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
+                totalWeight === 100
+                  ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/30'
+                  : totalWeight > 100
+                    ? 'bg-red-900/30 text-red-400 border border-red-700/30'
+                    : 'bg-amber-900/20 text-amber-500 border border-amber-800/20'
+              }`}
+              animate={totalWeight === 100 ? { scale: [1, 1.05, 1] } : {}}
+              transition={{ duration: 0.3 }}
+            >
+              {totalWeight === 100 ? (
+                <><Check size={11} /> Complete</>
+              ) : totalWeight > 100 ? (
+                <><AlertCircle size={11} /> {totalWeight - 100}% over</>
+              ) : (
+                <><span style={{ fontFamily: '"Times New Roman", serif' }}>{totalWeight}%</span> / 100</>
+              )}
+            </motion.div>
+
+            {/* Assets count */}
+            <span className="text-xs text-white/30">
+              {portfolio.length} asset{portfolio.length !== 1 ? 's' : ''}
+            </span>
+
+            <div className="flex-1" />
+
+            {/* Equal button */}
+            {portfolio.length >= 2 && (
+              <button
+                onClick={distributeEvenly}
+                className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white/5 text-white/50 active:bg-white/10 transition-colors"
+              >
+                <Percent size={10} /> Equal
+              </button>
+            )}
+
+            {/* Add token button */}
+            <button
+              onClick={() => setIsSelectorOpen(true)}
+              className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full btn-glass-gold transition-colors"
+            >
+              <Plus size={12} /> Add
+            </button>
+          </div>
+        ) : (
+          /* Stats Header — standalone mode */
+          <div className="sticky top-0 z-20 bg-[#030303]/95 border-b border-white/5 backdrop-blur-sm shadow-lg shadow-black/20 px-4 py-4 flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <div
+                className={`relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center overflow-hidden border ${
+                  totalWeight === 100
+                    ? 'bg-emerald-900/20 border-emerald-500/30'
+                    : totalWeight > 100
+                      ? 'bg-red-900/20 border-red-500/30'
+                      : 'bg-amber-900/10 border-amber-500/20'
+                }`}
+              >
+                <span className={`text-2xl font-bold ${totalWeight === 100 ? 'text-emerald-400' : totalWeight > 100 ? 'text-red-400' : 'text-amber-500'}`}>
+                  {totalWeight}
+                </span>
+                <span className="text-[10px] text-white/40 -mt-1">%</span>
+              </div>
+              <div>
+                <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Allocation</div>
+                <div className="text-sm font-medium mt-0.5">
+                  {totalWeight === 100 ? (
+                    <span className="text-emerald-400 flex items-center gap-1"><Check size={14} /> Ready</span>
+                  ) : totalWeight > 100 ? (
+                    <span className="text-red-400">Over limit</span>
+                  ) : (
+                    <span className="text-amber-500/80">{100 - totalWeight}% remaining</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              {portfolio.length >= 2 && (
+                <button onClick={distributeEvenly} className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg bg-white/5 text-white/70 active:bg-white/10 transition-colors">
+                  <Percent size={12} /> Equal
+                </button>
+              )}
+              <div className="text-xs text-white/30 font-mono">{portfolio.length} Asset{portfolio.length !== 1 ? 's' : ''}</div>
+            </div>
+          </div>
+        )}
 
         {/* Portfolio List */}
-        <div className="p-4 space-y-3 pb-40">
+        <div className={`p-4 space-y-3 ${inline ? 'pb-4' : 'pb-40'}`}>
           <AnimatePresence>
             {totalWeight > 100 && (
               <motion.div
@@ -960,36 +1119,16 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
 
           <motion.button
             layout
+            whileTap={{ scale: 0.98 }}
             onClick={() => setIsSelectorOpen(true)}
-            className="w-full py-5 rounded-2xl flex items-center justify-center gap-3 transition-colors active:opacity-70"
-            style={{
-              background: `${AXIS_GOLD_GLOW}0.04)`,
-              border: `1.5px dashed ${AXIS_GOLD_GLOW}0.18)`,
-              color: `${AXIS_GOLD_GLOW}0.55)`,
-            }}
+            className="w-full py-4 rounded-2xl border border-dashed border-white/[0.08] flex items-center justify-center gap-2.5 text-white/25 active:bg-white/5 active:text-white/50 transition-colors"
           >
-            <Plus size={18} />
-            <span className="text-sm font-semibold tracking-wide">Add asset</span>
+            <Plus size={17} />
+            <span className="text-sm font-medium">Add token</span>
           </motion.button>
         </div>
       </div>
 
-      {/* Next Step FAB */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] z-30 pointer-events-none">
-        <AnimatePresence>
-          {isValidAllocation && !isSelectorOpen && (
-            <motion.button
-              initial={{ y: 100, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 100, opacity: 0 }}
-              onClick={handleToIdentityMobile}
-              className="w-full h-14 btn-gold text-zinc-950 font-bold text-lg rounded-full flex items-center justify-center gap-2 pointer-events-auto active:scale-[0.98] transition-transform [background:var(--gold-button)] shadow-[0_4px_24px_rgba(0,0,0,0.6),var(--glow-sm)]"
-            >
-              Next Step <ChevronRight size={20} />
-            </motion.button>
-          )}
-        </AnimatePresence>
-      </div>
 
       {/* Token Selector Modal */}
       {isSelectorOpen && (
@@ -1089,9 +1228,11 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                             <MobileTokenListItem
                               token={token}
                               isSelected={isSelected}
+                              isFav={preferences.isFavorite(token.address)}
                               onAdd={() => handleTokenSelect(token)}
                               onRemove={isSelected ? () => removeToken(token.address) : undefined}
                               onDetail={() => setSelectedDetailToken(token)}
+                              onToggleFav={(e) => { e.stopPropagation(); preferences.toggleFavorite(token.address); }}
                             />
                           </div>
                         </div>
@@ -1216,7 +1357,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-none px-6 py-4 flex items-center justify-between border-b border-white/5 bg-black">
+      <div className="flex-none px-6 py-4 flex items-center justify-between border-b border-white/[0.06]">
         <div className="flex items-center gap-4">
           <button
             onClick={onBack}
@@ -1233,12 +1374,51 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
       <div className="flex-1 flex min-h-0">
         {/* Left Panel: Portfolio */}
         <div className="w-[55%] flex flex-col min-h-0 border-r border-white/5">
-          <div className="border-b border-white/5">
-            <PortfolioProgressBar
-              portfolio={portfolio}
-              totalWeight={totalWeight}
-              onDistributeEvenly={distributeEvenly}
-            />
+          <div className="px-6 py-4 flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <div
+                className={`relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center overflow-hidden ${
+                  totalWeight === 100
+                    ? 'bg-gradient-to-br from-emerald-900/50 to-emerald-950/80 ring-1 ring-emerald-700/30'
+                    : totalWeight > 100
+                      ? 'bg-gradient-to-br from-red-900/50 to-red-950/80 ring-1 ring-red-700/30'
+                      : 'bg-gradient-to-br from-amber-900/30 to-[#0a0a0a] ring-1 ring-amber-800/20'
+                }`}
+              >
+                <span
+                  className={`text-2xl ${totalWeight === 100 ? 'text-emerald-400' : totalWeight > 100 ? 'text-red-400' : 'text-amber-500'}`}
+                  style={{ fontFamily: '"Times New Roman", serif' }}
+                >
+                  {totalWeight}
+                </span>
+                <span className="text-[10px] text-white/40 -mt-1">%</span>
+              </div>
+              <div>
+                <div className="text-xs text-amber-700/70 font-medium uppercase tracking-wider">Total</div>
+                <div className="text-sm mt-1">
+                  {totalWeight === 100 ? (
+                    <span className="text-emerald-400 flex items-center gap-1.5"><Check size={14} /> Complete</span>
+                  ) : totalWeight > 100 ? (
+                    <span className="text-red-400">+{totalWeight - 100}% over</span>
+                  ) : (
+                    <span className="text-white/50">{100 - totalWeight}% left</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {portfolio.length >= 2 && (
+                <button
+                  onClick={distributeEvenly}
+                  className="btn-glass-gold flex items-center gap-2 text-sm px-4 py-2 rounded-xl"
+                >
+                  <Percent size={14} /> Equal
+                </button>
+              )}
+              <div className="text-sm text-amber-300/50" style={{ fontFamily: '"Times New Roman", serif' }}>
+                {portfolio.length} asset{portfolio.length !== 1 ? 's' : ''}
+              </div>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
@@ -1272,19 +1452,6 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
             )}
           </div>
 
-          <div className="p-4 border-t border-white/5">
-            <button
-              onClick={handleToIdentity}
-              disabled={!isValidAllocation}
-              className={`w-full py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all ${
-                isValidAllocation
-                  ? 'btn-gold text-zinc-950 [background:var(--gold-button)] shadow-[var(--glow-sm)] hover:brightness-110'
-                  : 'btn-glass text-white/20 cursor-not-allowed opacity-40'
-              }`}
-            >
-              Next <ChevronRight size={18} />
-            </button>
-          </div>
         </div>
 
         {/* Right Panel: Token Selector */}

@@ -131,7 +131,20 @@ export const useManualDashboard = ({
         baseList = allTokens.filter(
           (t) => t.tags.includes('birdeye-trending') || (t.dailyVolume && t.dailyVolume > 1000000)
         );
-    } else baseList = allTokens; // 'all' タブ
+    } else {
+      // 'all' タブ: prediction(dflow)を除外 → marketCap降順 → symbol重複排除
+      // (同じsymbolの複数バージョン: wrapped/bridged USDCなどを除去)
+      const sorted = allTokens
+        .filter((t) => t.source !== 'dflow')
+        .sort((a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0));
+      const seenSymbols = new Set<string>();
+      baseList = sorted.filter((t) => {
+        const sym = t.symbol.toUpperCase();
+        if (seenSymbols.has(sym)) return false;
+        seenSymbols.add(sym);
+        return true;
+      });
+    }
 
     // カテゴリフィルタ (Allタブ内での絞り込み)
     if (activeTab === 'all' && tokenFilter !== 'all') {

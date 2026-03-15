@@ -40,4 +40,6 @@ export interface BuilderProps {
   dashboard: ExtendedDashboardHook;
   preferences: TokenPreferences;
   onBack?: () => void;
+  /** When true, renders inline (no absolute/fixed positioning for the root) */
+  inline?: boolean;
 }

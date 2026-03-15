@@ -1,19 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
-// AnimatePresence removed: nested animations in ManualDashboard/IdentityStep
-// caused exit animation to block the BLUEPRINT step from rendering
-import { useWallet, useConnection } from '../../hooks/useWallet';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import React from 'react';
-// --- Components ---
-import { CreateLanding } from './CreateLanding';
-import { ManualDashboard, type ManualData } from './manual/ManualDashboard';
-import { DeploymentBlueprint } from './DeploymentBlueprint';
-import { ProfileEditModal } from '../common/ProfileEditModal';
+import { ETFScrollFlow } from './ETFScrollFlow';
 
-// --- Services ---
-import { getUserStrategies, type OnChainStrategy } from '../../services/kagemusha';
-import { api } from '../../services/api';
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Simple Error Boundary
+// ─────────────────────────────────────────────────────────────────────────────
 class SimpleErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; error: any }
@@ -44,7 +34,10 @@ class SimpleErrorBoundary extends React.Component<
   }
 }
 
-// ★ Step定義を更新
+// ─────────────────────────────────────────────────────────────────────────────
+// KagemushaFlow
+// Single-page scrollable ETF creation UI
+// ─────────────────────────────────────────────────────────────────────────────
 type CreateStep = 'LANDING' | 'BUILDER' | 'BLUEPRINT' | 'DASHBOARD' | 'REBALANCE';
 
 interface KagemushaFlowProps {
@@ -52,173 +45,13 @@ interface KagemushaFlowProps {
 }
 
 export const KagemushaFlow = ({ onStepChange }: KagemushaFlowProps) => {
-  const { publicKey, connected } = useWallet();
-  const { connection } = useConnection();
-  const { setVisible: setWalletModalVisible } = useWalletModal();
-
-  const [step, setStep] = useState<CreateStep>('LANDING');
-  const [showRegistration, setShowRegistration] = useState(false);
-  const [checkingRegistration, setCheckingRegistration] = useState(false);
-
-  // ★ Builderで作ったデータを一時保存するState
-  const [draftStrategy, setDraftStrategy] = useState<ManualData | null>(null);
-
-  // Dashboard用のState (既存維持)
-  const [userStrategies, setUserStrategies] = useState<OnChainStrategy[]>([]);
-  const [selectedDashboardStrategy, setSelectedDashboardStrategy] =
-    useState<OnChainStrategy | null>(null);
-  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
-
-  useEffect(() => {
-    onStepChange?.(step);
-  }, [step, onStepChange]);
-
-  const loadUserStrategies = useCallback(async () => {
-    if (!publicKey) return;
-    setIsDashboardLoading(true);
-    try {
-      const strategies = await getUserStrategies(connection, publicKey);
-      setUserStrategies(strategies);
-    } catch {
-    } finally {
-      setIsDashboardLoading(false);
-    }
-  }, [connection, publicKey]);
-
-  useEffect(() => {
-    if (step === 'DASHBOARD' && publicKey) loadUserStrategies();
-  }, [step, publicKey, loadUserStrategies]);
-
-  // --- Handlers ---
-
-  const handleStartCreate = async () => {
-    // 1. Wallet not connected → open wallet modal
-    if (!connected || !publicKey) {
-      setWalletModalVisible(true);
-      return;
-    }
-
-    // 2. Check user registration
-    setCheckingRegistration(true);
-    try {
-      const res = await api.getUser(publicKey.toBase58());
-      if (!res.is_registered) {
-        setShowRegistration(true);
-        return;
-      }
-    } catch {
-      // On error, allow through
-    } finally {
-      setCheckingRegistration(false);
-    }
-
-    // 3. Registered → proceed to BUILDER
-    setStep('BUILDER');
-  };
-
-  const handleRegistrationComplete = () => {
-    setShowRegistration(false);
-    setStep('BUILDER');
-  };
-
-  const handleBuilderBack = () => {
-    setStep('LANDING');
-    setDraftStrategy(null);
-  };
-
-  // ★ Builder(Identity)完了時の処理
-  const handleBuilderComplete = (data: ManualData) => {
-    // データ構造のチェック
-    if (!data) {
-      return;
-    }
-    if (!data.config) {
-      return;
-    }
-    if (!data.tokens || data.tokens.length === 0) {
-      return;
-    }
-
-    setDraftStrategy(data);
-    setStep('BLUEPRINT');
-  };
-
-  const handleBlueprintBack = () => {
-    setStep('BUILDER');
-  };
-
-  // ★ Mint完了時の処理
-  const handleDeploymentComplete = () => {
-    setDraftStrategy(null);
-    // まずDAGHBOARDに遷移（同一コンポーネント内でアンマウントを防ぐ）
-    setStep('DASHBOARD');
-  };
-
-  const handleCreateNew = () => {
-    setStep('LANDING');
+  const handleDeployComplete = () => {
+    onStepChange?.('DASHBOARD');
   };
 
   return (
     <SimpleErrorBoundary>
-      <div className="min-h-screen bg-[#030303] w-full relative overflow-hidden">
-        {/* Registration Gate Modal */}
-        <ProfileEditModal
-          isOpen={showRegistration}
-          onClose={() => setShowRegistration(false)}
-          currentProfile={{
-            pubkey: publicKey?.toBase58() || '',
-            username: undefined,
-          }}
-          onUpdate={handleRegistrationComplete}
-        />
-
-        {/* 1. LANDING */}
-        {step === 'LANDING' && (
-          <CreateLanding onCreate={handleStartCreate} isLoading={checkingRegistration} />
-        )}
-
-        {/* 2. BUILDER (ManualDashboard + Identity) */}
-        {step === 'BUILDER' && (
-          <ManualDashboard
-            onDeploySuccess={handleBuilderComplete}
-            onBack={handleBuilderBack}
-            initialConfig={draftStrategy?.config}
-            initialTokens={draftStrategy?.tokens}
-          />
-        )}
-
-        {/* 3. BLUEPRINT */}
-        {step === 'BLUEPRINT' && (
-          <div className="pt-20 px-4 pb-32 max-w-6xl mx-auto">
-            {draftStrategy && draftStrategy.config ? (
-              <DeploymentBlueprint
-                strategyName={draftStrategy.config.name || 'Untitled'}
-                strategyType="BALANCED"
-                tokens={draftStrategy.tokens || []}
-                description={draftStrategy.config.description || ''}
-                info={{ symbol: draftStrategy.config.ticker || 'ETF' }}
-                initialTvl={1.0}
-                onBack={handleBlueprintBack}
-                onComplete={handleDeploymentComplete}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center min-h-[50vh] text-red-500 gap-4">
-                <h2 className="text-2xl font-bold">Data Loading Error</h2>
-                <p>Strategy data is invalid or missing.</p>
-                <pre className="bg-black/50 p-4 rounded text-xs text-left">
-                  {JSON.stringify(draftStrategy, null, 2)}
-                </pre>
-                <button
-                  onClick={handleBlueprintBack}
-                  className="px-6 py-2 bg-white/10 rounded-lg text-white"
-                >
-                  Back to Builder
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <ETFScrollFlow onDeployComplete={handleDeployComplete} />
     </SimpleErrorBoundary>
   );
 };
