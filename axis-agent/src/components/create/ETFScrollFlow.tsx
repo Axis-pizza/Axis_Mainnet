@@ -146,8 +146,8 @@ function GlassSection({
   return (
     <section className={`relative z-10 ${className}`}>
       <div
-        className={`backdrop-blur-md border-t border-white/10 ${innerClassName}`}
-        style={{ background: 'rgba(3, 3, 3, 0.55)' }}
+        className={`mx-4 md:mx-8 backdrop-blur-md border border-white/[0.08] rounded-2xl overflow-hidden ${innerClassName}`}
+        style={{ background: 'rgba(6, 4, 2, 0.68)' }}
       >
         {children}
       </div>
@@ -223,12 +223,15 @@ function InlineIdentityStep({
             className="flex-1 bg-transparent text-4xl tracking-widest placeholder:text-white/10 focus:outline-none uppercase text-white"
             style={{ fontFamily: '"Times New Roman", serif' }}
           />
-          <button
+          <motion.button
+            whileHover={{ scale: 1.1, backgroundColor: 'rgba(180,120,40,0.2)' }}
+            whileTap={{ scale: 0.9, rotate: 180 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 15 }}
             onClick={(e) => { e.stopPropagation(); onGenerateRandomTicker(); }}
-            className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center text-white/30 active:text-white active:bg-white/10"
+            className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center text-white/30 hover:text-amber-500 transition-colors"
           >
             <RefreshCw size={22} />
-          </button>
+          </motion.button>
         </div>
       </div>
 
@@ -299,10 +302,13 @@ function InlineIdentityStep({
 
       {/* Deploy Button */}
       <div className="pt-2 pb-4">
-        <button
+        <motion.button
+          whileHover={!config.ticker || !config.name ? {} : { scale: 1.01, boxShadow: '0 0 24px rgba(201,168,76,0.35)' }}
+          whileTap={!config.ticker || !config.name ? {} : { scale: 0.97 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 20 }}
           onClick={onDeploy}
           disabled={!config.ticker || !config.name}
-          className={`w-full py-5 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 shadow-2xl transition-all active:scale-[0.98] ${
+          className={`w-full py-5 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 shadow-2xl ${
             !config.ticker || !config.name
               ? 'bg-[#222] text-white/20 cursor-not-allowed'
               : 'bg-gradient-to-r from-amber-700 via-amber-600 to-amber-700 text-black'
@@ -315,7 +321,7 @@ function InlineIdentityStep({
           ) : (
             'Connect Wallet'
           )}
-        </button>
+        </motion.button>
       </div>
     </div>
   );
@@ -462,9 +468,9 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
 
       {/* ── Section 2: Token Builder ──────────────────────────────────────── */}
       <div ref={builderRef}>
-        <GlassSection className="h-[100dvh]" innerClassName="h-full flex flex-col">
+        <GlassSection className="py-4" innerClassName="h-[calc(100dvh-2rem)] flex flex-col">
           {/* Section label */}
-          <div className="flex-none px-4 pt-4 pb-2 border-b border-white/5">
+          <div className="flex-none px-4 pt-4 pb-2">
             <div className="flex items-center justify-between">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-xs font-medium uppercase tracking-wider">
                 Step 1 · Select Tokens
@@ -492,28 +498,12 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
               />
             )}
           </div>
-
-          {/* Scroll to next */}
-          <div
-            className="flex-none flex justify-center py-3 border-t border-white/5 cursor-pointer"
-            onClick={() => scrollTo(identityRef)}
-          >
-            <span className="text-xs text-amber-600/60 flex items-center gap-1.5">
-              <ChevronDown size={14} className="animate-bounce" /> Name your ETF below
-            </span>
-          </div>
         </GlassSection>
       </div>
 
       {/* ── Section 3: Identity ───────────────────────────────────────────── */}
       <div ref={identityRef}>
-        <GlassSection>
-          {/* Section label */}
-          <div className="px-4 pt-4 pb-0">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-xs font-medium uppercase tracking-wider">
-              Step 2 · Name Your ETF
-            </div>
-          </div>
+        <GlassSection className="py-4">
           <InlineIdentityStep
             config={dashboard.config}
             setConfig={dashboard.setConfig}
@@ -524,28 +514,12 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
             onDeploy={handleIdentityNext}
             onGenerateRandomTicker={dashboard.generateRandomTicker}
           />
-
-          {/* Scroll to next */}
-          <div
-            className="flex justify-center pb-6 cursor-pointer"
-            onClick={() => scrollTo(reviewRef)}
-          >
-            <span className="text-xs text-amber-600/60 flex items-center gap-1.5">
-              <ChevronDown size={14} className="animate-bounce" /> Review & deploy below
-            </span>
-          </div>
         </GlassSection>
       </div>
 
       {/* ── Section 4: Review & Deploy ────────────────────────────────────── */}
       <div ref={reviewRef}>
-        <GlassSection innerClassName="px-4 pt-6 pb-28">
-          {/* Section label */}
-          <div className="mb-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-xs font-medium uppercase tracking-wider">
-              Step 3 · Review & Deploy
-            </div>
-          </div>
+        <GlassSection className="py-4" innerClassName="px-4 pt-6 pb-20">
           <DeploymentBlueprint
             strategyName={dashboard.config.name || 'Untitled'}
             strategyType="BALANCED"

@@ -412,9 +412,6 @@ const MobileTokenListItem = memo(
             <div className="text-[11px] text-white/50 font-mono leading-none">{formatCompactUSD(token.marketCap)}</div>
           </div>
 
-          {/* star favorite button */}
-          <FavoriteStar isFav={isFav} onToggle={onToggleFav} />
-
           {/* added indicator */}
           {isSelected && (
             <motion.div
@@ -726,7 +723,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
 
         {/* Stats bar — inline mode: compact pill row */}
         {inline ? (
-          <div className="sticky top-0 z-20 backdrop-blur-sm bg-black/60 border-b border-white/5 px-4 py-2.5 flex items-center gap-3">
+          <div className="sticky top-0 z-20 backdrop-blur-sm bg-black/50 px-4 py-2.5 flex items-center gap-3">
             {/* Allocation pill */}
             <motion.div
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
@@ -846,78 +843,16 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
 
           <motion.button
             layout
+            whileTap={{ scale: 0.98 }}
             onClick={() => setIsSelectorOpen(true)}
-            className="w-full py-6 rounded-3xl border border-dashed border-white/10 flex flex-col items-center justify-center gap-2 text-white/30 active:bg-white/5 transition-colors bg-white/[0.02]"
+            className="w-full py-4 rounded-2xl border border-dashed border-white/[0.08] flex items-center justify-center gap-2.5 text-white/25 active:bg-white/5 active:text-white/50 transition-colors"
           >
-            <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center shadow-inner">
-              <Plus size={24} />
-            </div>
-            <span className="text-sm font-medium">Tap to add asset</span>
+            <Plus size={17} />
+            <span className="text-sm font-medium">Add token</span>
           </motion.button>
         </div>
       </div>
 
-      {/* FAB - Add Token (fixed in standalone mode, absolute in inline) */}
-      {!isSelectorOpen && (
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          className={`${inline ? 'absolute bottom-20 right-6 z-40' : 'fixed bottom-6 right-6 z-40 safe-area-bottom'}`}
-        >
-          <button
-            onClick={() => setIsSelectorOpen(true)}
-            className="btn-gold w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-transform [background:var(--gold-button)] shadow-[var(--glow-sm)]"
-          >
-            <Plus size={28} />
-          </button>
-        </motion.div>
-      )}
-
-      {/* Next Step Button */}
-      {inline ? (
-        /* Inline mode: sticky bottom bar inside the section */
-        <div className="flex-none border-t border-white/5 bg-black/60 backdrop-blur-sm p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
-          <AnimatePresence>
-            {isValidAllocation && !isSelectorOpen && (
-              <motion.button
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                onClick={handleToIdentityMobile}
-                className="w-full h-14 btn-gold text-zinc-950 font-bold text-lg rounded-full flex items-center justify-center gap-2 active:scale-[0.98] transition-transform [background:var(--gold-button)] shadow-[0_4px_24px_rgba(0,0,0,0.6),var(--glow-sm)]"
-              >
-                Next Step <ChevronRight size={20} />
-              </motion.button>
-            )}
-            {!isValidAllocation && (
-              <div className="w-full h-14 flex items-center justify-center text-white/30 text-sm">
-                {dashboard.portfolio.length === 0
-                  ? 'Add at least 2 tokens'
-                  : dashboard.totalWeight !== 100
-                  ? `Allocate ${100 - dashboard.totalWeight}% more to continue`
-                  : 'Add at least 2 tokens to continue'}
-              </div>
-            )}
-          </AnimatePresence>
-        </div>
-      ) : (
-        /* Standalone mode: fixed FAB */
-        <div className="fixed bottom-0 left-0 right-0 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] z-30 pointer-events-none">
-          <AnimatePresence>
-            {isValidAllocation && !isSelectorOpen && (
-              <motion.button
-                initial={{ y: 100, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 100, opacity: 0 }}
-                onClick={handleToIdentityMobile}
-                className="w-full h-14 btn-gold text-zinc-950 font-bold text-lg rounded-full flex items-center justify-center gap-2 pointer-events-auto active:scale-[0.98] transition-transform [background:var(--gold-button)] shadow-[0_4px_24px_rgba(0,0,0,0.6),var(--glow-sm)]"
-              >
-                Next Step <ChevronRight size={20} />
-              </motion.button>
-            )}
-          </AnimatePresence>
-        </div>
-      )}
 
       {/* Token Selector Modal */}
       {isSelectorOpen && (
@@ -1146,7 +1081,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-none px-6 py-4 flex items-center justify-between border-b border-white/5 bg-black">
+      <div className="flex-none px-6 py-4 flex items-center justify-between border-b border-white/[0.06]">
         <div className="flex items-center gap-4">
           <button
             onClick={onBack}
@@ -1163,7 +1098,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
       <div className="flex-1 flex min-h-0">
         {/* Left Panel: Portfolio */}
         <div className="w-[55%] flex flex-col min-h-0 border-r border-white/5">
-          <div className="px-6 py-4 flex justify-between items-center border-b border-amber-900/10 bg-gradient-to-r from-[#050505] to-amber-950/5">
+          <div className="px-6 py-4 flex justify-between items-center">
             <div className="flex items-center gap-4">
               <div
                 className={`relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center overflow-hidden ${
@@ -1240,19 +1175,6 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
             )}
           </div>
 
-          <div className="p-4 border-t border-white/5">
-            <button
-              onClick={handleToIdentity}
-              disabled={!isValidAllocation}
-              className={`w-full py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all ${
-                isValidAllocation
-                  ? 'btn-gold text-zinc-950 [background:var(--gold-button)] shadow-[var(--glow-sm)] hover:brightness-110'
-                  : 'btn-glass text-white/20 cursor-not-allowed opacity-40'
-              }`}
-            >
-              Next <ChevronRight size={18} />
-            </button>
-          </div>
         </div>
 
         {/* Right Panel: Token Selector */}

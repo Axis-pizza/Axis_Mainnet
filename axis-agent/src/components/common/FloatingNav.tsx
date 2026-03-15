@@ -22,9 +22,11 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
   const [isBugDrawerOpen, setIsBugDrawerOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [hiddenByScroll, setHiddenByScroll] = useState(false);
 
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isHoveringRef = useRef(false);
+  const lastScrollY = useRef(0);
 
   useEffect(() => {
     const checkDesktop = () => setIsDesktop(window.innerWidth >= 768);
@@ -32,6 +34,30 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
     window.addEventListener('resize', checkDesktop);
     return () => window.removeEventListener('resize', checkDesktop);
   }, []);
+
+  // Scroll-direction based hide/show
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY;
+      const dy = y - lastScrollY.current;
+      if (y < 80) {
+        setHiddenByScroll(false);
+      } else if (dy > 6) {
+        setHiddenByScroll(true);
+      } else if (dy < -6) {
+        setHiddenByScroll(false);
+      }
+      lastScrollY.current = y;
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Reset on view change
+  useEffect(() => {
+    setHiddenByScroll(false);
+    lastScrollY.current = 0;
+  }, [currentView]);
 
   const handleActivity = useCallback(() => {
     if (isDesktop) {
@@ -43,13 +69,13 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
     if (!isHoveringRef.current && !isBugDrawerOpen) {
       hideTimerRef.current = setTimeout(() => {
         setIsVisible(false);
-      }, 1500);
+      }, 3000);
     }
   }, [isBugDrawerOpen, isDesktop]);
 
   useEffect(() => {
     if (isDesktop) return;
-    const events = ['scroll', 'touchstart', 'click', 'keydown', 'mousemove'];
+    const events = ['touchstart', 'click', 'keydown', 'mousemove'];
     events.forEach((event) => window.addEventListener(event, handleActivity));
     handleActivity();
     return () => {
@@ -76,8 +102,10 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
       <motion.div
         initial={{ y: 0 }}
         animate={{
-          y: isDesktop ? 0 : isVisible ? 0 : 120,
-          opacity: isDesktop ? 1 : isVisible ? 1 : 0.5,
+          y: hiddenByScroll
+            ? (isDesktop ? -80 : 120)
+            : (isDesktop ? 0 : isVisible ? 0 : 120),
+          opacity: hiddenByScroll ? 0 : (isDesktop ? 1 : isVisible ? 1 : 0.5),
         }}
         transition={{
           type: 'spring',

@@ -144,88 +144,96 @@ export const DeploymentBlueprint = ({
   };
 
   return (
-    <div className="max-w-3xl mx-auto animate-in slide-in-from-bottom-8 duration-500 text-white">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-serif font-bold text-[#F2E0C8] mb-2">
+    <div className="max-w-2xl mx-auto animate-in slide-in-from-bottom-8 duration-500 text-white">
+      <div className="text-center mb-6">
+        <h2 className="text-2xl font-serif font-bold text-white/90 mb-1">
           This is Your ETF-Token
         </h2>
-        <p className="text-[#B89860]">Review your ETF specifications.</p>
+        <p className="text-white/40 text-sm">Review your ETF specifications.</p>
       </div>
 
-      {/* 変更点: 背景色を白一色に変更 
-          bg-gradient-to-b ... -> bg-white 
-          テキストカラーは黒系統のまま維持
-      */}
-      <div className="bg-white text-[#080503] rounded-sm p-8 shadow-2xl relative overflow-hidden mb-8 font-serif border border-white/10">
-        <div className="relative border-b-2 border-[#080503] pb-6 mb-6 flex justify-between items-start">
+      <div className="backdrop-blur-sm bg-white/[0.04] border border-white/[0.08] rounded-2xl p-6 md:p-8 shadow-2xl relative overflow-hidden mb-6">
+        <div className="relative border-b border-white/[0.08] pb-5 mb-6 flex justify-between items-start">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 border-2 border-[#080503] flex items-center justify-center bg-white overflow-hidden">
+            <div className="w-14 h-14 border border-white/10 rounded-xl flex items-center justify-center bg-white/5 overflow-hidden">
               <img src="/ETFtoken.png" alt="Strategy Icon" className="w-full h-full object-cover" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold uppercase tracking-wide">{strategyName}</h1>
+              <h1 className="text-2xl font-bold uppercase tracking-wide text-white">{strategyName}</h1>
               <div className="flex items-center gap-2 mt-1">
-                <span className="px-2 py-0.5 border border-[#080503] text-xs font-bold bg-[#080503] text-white">
+                <span className="px-2 py-0.5 border border-amber-600/40 text-xs font-bold bg-amber-900/20 text-amber-400">
                   {safeSymbol}
                 </span>
-                <span className="text-sm font-mono text-[#080503]/70">TYPE: {strategyType}</span>
+                <span className="text-xs font-mono text-white/30">TYPE: {strategyType}</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="relative grid md:grid-cols-2 gap-8 mb-8">
+        <div className="relative grid md:grid-cols-2 gap-8 mb-2">
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-widest border-b border-[#080503]/20 pb-2 mb-3 flex items-center gap-2">
+            <h4 className="text-xs font-bold uppercase tracking-widest border-b border-white/[0.08] pb-2 mb-3 flex items-center gap-2 text-white/40">
               <FileText className="w-3 h-3" /> Composition
             </h4>
             <ul className="space-y-2">
               {safeTokens.length > 0 ? (
                 safeTokens.map((t, i) => (
-                  <li key={i} className="flex justify-between items-center text-sm">
-                    <span className="font-bold flex items-center gap-2">{t.symbol}</span>
-                    <span className="font-mono">{t.weight}%</span>
-                  </li>
+                  <motion.li
+                    key={i}
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.04, duration: 0.3 }}
+                    className="flex justify-between items-center text-sm"
+                  >
+                    <span className="font-bold text-white/80 flex items-center gap-2">{t.symbol}</span>
+                    <span className="font-mono text-amber-400">{t.weight}%</span>
+                  </motion.li>
                 ))
               ) : (
-                <li className="text-sm italic opacity-50">No tokens selected</li>
+                <li className="text-sm italic text-white/30">No tokens selected</li>
               )}
             </ul>
           </div>
 
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-widest border-b border-[#080503]/20 pb-2 mb-3 flex items-center gap-2">
+            <h4 className="text-xs font-bold uppercase tracking-widest border-b border-white/[0.08] pb-2 mb-3 flex items-center gap-2 text-white/40">
               <ShieldCheck className="w-3 h-3" /> Parameters
             </h4>
             <ul className="space-y-3 text-sm">
               <li className="flex justify-between">
-                <span className="text-[#080503]/70">Ticker</span>
-                <span className="font-bold">${safeSymbol}</span>
+                <span className="text-white/40">Ticker</span>
+                <span className="font-bold text-amber-400">${safeSymbol}</span>
               </li>
               <li className="flex justify-between">
-                <span className="text-[#080503]/70">Total Assets</span>
-                <span className="font-bold">{safeTokens.length}</span>
+                <span className="text-white/40">Total Assets</span>
+                <span className="font-bold text-white">{safeTokens.length}</span>
               </li>
             </ul>
           </div>
         </div>
       </div>
 
-      <div className="flex gap-4 pb-20">
-        <button
+      <div className="flex gap-3 pb-8">
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.97 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 20 }}
           onClick={onBack}
           disabled={isDeploying}
-          className="px-8 py-4 bg-[#140E08] rounded-xl font-bold text-[#7A5A30] hover:text-[#F2E0C8] border border-[#7A5A30]/30"
+          className="px-6 py-4 backdrop-blur-sm bg-white/5 rounded-xl font-bold text-white/40 hover:text-white/70 border border-white/[0.08] transition-colors"
         >
           Modify
-        </button>
-        <button
+        </motion.button>
+        <motion.button
+          whileHover={{ scale: 1.01, boxShadow: '0 0 28px rgba(201,168,76,0.3)' }}
+          whileTap={{ scale: 0.98 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 20 }}
           onClick={handleInitialDeployClick}
           disabled={isDeploying}
           className="flex-1 py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#080503] font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20"
         >
           <Wallet className="w-5 h-5" /> Deposit & Mint
-        </button>
+        </motion.button>
       </div>
 
       <AnimatePresence>
