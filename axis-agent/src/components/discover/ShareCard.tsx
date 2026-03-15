@@ -61,7 +61,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(({ strategy 
         width: '1200px',
         height: '630px',
         background: 'linear-gradient(135deg, #080503 0%, #140E08 100%)',
-        fontFamily: '"Times New Roman", Times, serif', // Explicit font
+        fontFamily: "'Lora', 'Times New Roman', Times, serif", // Explicit font
       }}
       className="flex relative overflow-hidden text-[#E7E5E4]"
     >
@@ -103,7 +103,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(({ strategy 
             <div>
               <h1
                 className="text-5xl font-bold mb-2 tracking-tight"
-                style={{ fontFamily: 'serif' }}
+                style={{ fontFamily: "'Lora', serif" }}
               >
                 {strategy.name}
               </h1>
@@ -124,7 +124,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(({ strategy 
           <div className="text-right">
             <h2
               className="text-4xl font-bold text-[#B8863F] tracking-widest"
-              style={{ fontFamily: 'serif' }}
+              style={{ fontFamily: "'Lora', serif" }}
             >
               AXIS
             </h2>
@@ -139,7 +139,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(({ strategy 
           {/* Chart */}
           <div className="flex-1 h-64 relative">
             <div className="absolute top-0 left-0">
-              <p className="text-6xl font-bold tabular-nums" style={{ fontFamily: 'serif' }}>
+              <p className="text-6xl font-bold tabular-nums" style={{ fontFamily: "'Lora', serif" }}>
                 ${strategy.price.toFixed(2)}
               </p>
               <p className="text-3xl font-bold mt-2" style={{ color: color }}>

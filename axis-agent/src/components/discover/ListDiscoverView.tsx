@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWallet } from '../../hooks/useWallet';
-import { Search, X as XIcon } from 'lucide-react';
+import { Search, X as XIcon, ChevronRight } from 'lucide-react';
 import { api } from '../../services/api';
 import { JupiterService } from '../../services/jupiter';
 import { DexScreenerService } from '../../services/dexscreener';
-import { SwipeCardBody, type StrategyCardData } from './SwipeCard';
+import { SwipeCardBody, TokenIcon, formatTvl, type StrategyCardData } from './SwipeCard';
 
 export interface Strategy {
   id: string;
@@ -68,87 +68,63 @@ const toCardData = (s: DiscoveredStrategy): StrategyCardData => ({
   vaultAddress: s.vaultAddress,
 });
 
-function shuffleArray<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Type badge pill
+// ─────────────────────────────────────────────────────────────────────────────
+const TypePill = ({ type }: { type: string }) => {
+  const styles: Record<string, string> = {
+    AGGRESSIVE: 'bg-amber-500/10 text-amber-300 border-amber-500/20',
+    BALANCED: 'bg-blue-500/10 text-blue-300 border-blue-500/20',
+    CONSERVATIVE: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+  };
+  return (
+    <span
+      className={`inline-flex items-center text-[8px] font-bold uppercase px-1.5 py-px rounded-full border shrink-0 ${
+        styles[type] || styles.BALANCED
+      }`}
+    >
+      {type[0]}
+    </span>
+  );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mobile loading: 3×3 skeleton cards that deal in with stagger
+// Mobile table row skeleton
 // ─────────────────────────────────────────────────────────────────────────────
-const SkeletonCard = ({ delay }: { delay: number }) => (
+const TableRowSkeleton = ({ delay }: { delay: number }) => (
   <motion.div
-    className="flex-1 h-[300px] rounded-[20px] overflow-hidden relative"
-    initial={{ opacity: 0, y: 28, scale: 0.93 }}
-    animate={{ opacity: 1, y: 0, scale: 1 }}
-    transition={{ delay, duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
-    style={{
-      background: 'linear-gradient(145deg, #111111 0%, #0a0a0a 100%)',
-      border: '1px solid rgba(255,255,255,0.06)',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-    }}
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    transition={{ delay, duration: 0.3 }}
+    className="flex items-center gap-3 px-4 py-3.5 border-b border-white/[0.05]"
   >
-    <motion.div
-      className="absolute inset-0"
-      initial={{ x: '-100%' }}
-      animate={{ x: '100%' }}
-      transition={{ delay: delay + 0.35, duration: 1.1, repeat: Infinity, repeatDelay: 1.4, ease: 'easeInOut' }}
-      style={{
-        background:
-          'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 40%, rgba(255,255,255,0.09) 50%, rgba(255,255,255,0.04) 60%, transparent 100%)',
-      }}
-    />
-    <div className="p-3 flex flex-col gap-2 h-full">
-      <div className="flex justify-between items-start">
-        <div className="h-4 w-12 rounded-full bg-white/[0.06]" />
-        <div className="h-7 w-7 rounded-full bg-white/[0.06]" />
+    <div className="w-5 h-2.5 bg-white/[0.05] rounded shrink-0" />
+    <div className="w-8 h-8 rounded-full bg-white/[0.07] shrink-0" />
+    <div className="flex-1 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <div className="h-3.5 bg-white/[0.06] rounded w-2/5" />
+        <div className="h-3 bg-white/[0.04] rounded w-10" />
       </div>
-      <div className="h-4 w-3/4 rounded bg-white/[0.05] mt-1" />
-      <div className="h-3 w-1/2 rounded bg-white/[0.04]" />
-      <div className="flex gap-1 mt-auto">
-        <div className="flex-1 h-16 rounded-xl bg-white/[0.04]" />
-        <div className="flex-1 h-16 rounded-xl bg-white/[0.04]" />
-      </div>
-      <div className="grid grid-cols-2 gap-1">
-        {[0, 1, 2, 3].map((k) => (
-          <div key={k} className="h-6 rounded-lg bg-white/[0.04]" />
-        ))}
-      </div>
+      <div className="h-3 bg-white/[0.04] rounded w-3/5" />
     </div>
+    <div className="space-y-1 text-right shrink-0">
+      <div className="h-3 bg-white/[0.06] rounded w-10" />
+      <div className="h-2.5 bg-white/[0.03] rounded w-8 ml-auto" />
+    </div>
+    <div className="w-3.5 h-3.5 bg-white/[0.04] rounded shrink-0" />
   </motion.div>
 );
 
-const MobileLoader = () => (
-  <div className="flex flex-col gap-5">
-    {[0, 1, 2].map((row) => (
-      <div key={row} className="flex gap-2">
-        {[0, 1, 2].map((col) => (
-          <SkeletonCard key={col} delay={(row * 3 + col) * 0.08} />
-        ))}
-      </div>
+const MobileTableLoader = () => (
+  <div className="border-t border-white/[0.05]">
+    {Array.from({ length: 10 }).map((_, i) => (
+      <TableRowSkeleton key={i} delay={i * 0.04} />
     ))}
-    <div className="flex items-center justify-center gap-1.5 text-white/30 text-sm mt-1">
-      <span>Loading strategies</span>
-      {[0, 1, 2].map((i) => (
-        <motion.span
-          key={i}
-          animate={{ opacity: [0.2, 1, 0.2] }}
-          transition={{ delay: i * 0.25, duration: 0.9, repeat: Infinity }}
-          className="text-[#D97706]"
-        >
-          ·
-        </motion.span>
-      ))}
-    </div>
   </div>
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PC loading: grid skeleton that matches the desktop card grid
+// PC loading: grid skeleton
 // ─────────────────────────────────────────────────────────────────────────────
 const DesktopSkeletonCard = ({ delay }: { delay: number }) => (
   <motion.div
@@ -198,155 +174,96 @@ const DesktopLoader = () => (
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ScrollRow (mobile only)
-//   • Auto-scroll  : RAF drives el.scrollLeft via virtual position (s.pos)
-//   • Manual scroll: overflow-x scroll — RAF does NOT touch scrollLeft while
-//                    paused, so native touch inertia runs freely
-//   • Seamless loop: halfW = N × (cardWidth + gap); when pos ≥ halfW, wrap
-//   • Resume sync  : on unpause, normalizes pos from actual scrollLeft so
-//                    auto-scroll continues from wherever the user left off
+// Mobile table row
 // ─────────────────────────────────────────────────────────────────────────────
-interface ScrollRowProps {
-  strategies: DiscoveredStrategy[];
-  pxPerSec: number;
-  onSelect: (s: DiscoveredStrategy) => void;
-}
+const TableRow = memo(
+  ({
+    strategy,
+    index,
+    onSelect,
+  }: {
+    strategy: DiscoveredStrategy;
+    index: number;
+    onSelect: (s: DiscoveredStrategy) => void;
+  }) => {
+    const sortedTokens = useMemo(
+      () => [...strategy.tokens].sort((a, b) => b.weight - a.weight),
+      [strategy.tokens]
+    );
+    const visible = sortedTokens.slice(0, 5);
+    const overflow = Math.max(0, sortedTokens.length - 5);
 
-const ScrollRow = ({ strategies, pxPerSec, onSelect }: ScrollRowProps) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef    = useRef<HTMLDivElement>(null);
-  const rafRef       = useRef<number>(0);
-  const resumeTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // All mutable scroll state in one ref — never triggers re-renders
-  const s = useRef({ pos: 0, paused: false, speed: pxPerSec, halfW: 0 });
-  s.current.speed = pxPerSec;
-
-  const [cardWidth, setCardWidth] = useState(() =>
-    typeof window !== 'undefined' ? Math.floor((window.innerWidth - 16) / 3) : 120
-  );
-  const cardWidthRef = useRef(cardWidth);
-  cardWidthRef.current = cardWidth;
-
-  // Measure container → exactly 3 cards per screen
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const measure = () => {
-      const w = el.clientWidth;
-      if (w > 0) setCardWidth(Math.floor((w - 16) / 3));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // Pad to ≥ 6 cards for a smooth seamless loop
-  const items = useMemo(() => {
-    if (strategies.length === 0) return [];
-    const arr = [...strategies];
-    while (arr.length < 6) arr.push(...strategies);
-    return arr;
-  }, [strategies]);
-
-  const doubled = useMemo(() => [...items, ...items], [items]);
-
-  // RAF loop — starts fresh when items count changes, runs until unmount
-  useEffect(() => {
-    if (items.length === 0) return;
-    const N = items.length;
-
-    s.current.pos = 0;
-    s.current.halfW = 0;
-    if (scrollRef.current) scrollRef.current.scrollLeft = 0;
-
-    const startTimer = setTimeout(() => {
-      let lastMs = performance.now();
-
-      const tick = (ms: number) => {
-        const dt = Math.min((ms - lastMs) / 1000, 0.05);
-        lastMs = ms;
-
-        const el = scrollRef.current;
-        if (el) {
-          // halfW = exact width of one copy: N × (cardWidth + gap)
-          const halfW = N * (cardWidthRef.current + 8);
-          s.current.halfW = halfW;
-
-          if (!s.current.paused && halfW > 0) {
-            s.current.pos += s.current.speed * dt;
-            if (s.current.pos >= halfW) s.current.pos -= halfW;
-            el.scrollLeft = s.current.pos;
-          }
-          // When paused: do NOT touch el.scrollLeft — browser owns it
-        }
-
-        rafRef.current = requestAnimationFrame(tick);
-      };
-
-      rafRef.current = requestAnimationFrame(tick);
-    }, 150);
-
-    return () => {
-      clearTimeout(startTimer);
-      cancelAnimationFrame(rafRef.current);
-    };
-  }, [items.length]);
-
-  const pause = useCallback(() => {
-    if (resumeTimer.current) clearTimeout(resumeTimer.current);
-    s.current.paused = true;
-  }, []);
-
-  const resume = useCallback((delayMs = 0) => {
-    if (resumeTimer.current) clearTimeout(resumeTimer.current);
-
-    const doResume = () => {
-      const el = scrollRef.current;
-      if (el && s.current.halfW > 0) {
-        const cur = el.scrollLeft;
-        // Normalize into [0, halfW) — visually identical at cur and cur-halfW
-        const normalized = cur >= s.current.halfW ? cur - s.current.halfW : cur;
-        s.current.pos = normalized;
-        if (Math.abs(cur - normalized) > 0.5) el.scrollLeft = normalized;
-      }
-      s.current.paused = false;
-      resumeTimer.current = null;
-    };
-
-    if (delayMs === 0) doResume();
-    else resumeTimer.current = setTimeout(doResume, delayMs);
-  }, []);
-
-  if (items.length === 0) return null;
-
-  return (
-    <div ref={containerRef} className="relative">
-      <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-r from-[#030303] to-transparent" />
-      <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-l from-[#030303] to-transparent" />
-      <div
-        ref={scrollRef}
-        className="flex gap-2 pb-2"
-        style={{ overflowX: 'scroll', scrollbarWidth: 'none' }}
-        onMouseEnter={pause}
-        onMouseLeave={() => resume(0)}
-        onTouchStart={pause}
-        onTouchEnd={() => resume(2000)}
+    return (
+      <motion.div
+        initial={{ opacity: 0, x: -8 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: Math.min(index * 0.025, 0.35), duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        className="flex items-center gap-3 px-4 py-3.5 border-b border-white/[0.05] active:bg-white/[0.04] cursor-pointer transition-colors select-none"
+        onClick={() => onSelect(strategy)}
       >
-        {doubled.map((strategy, i) => (
-          <div
-            key={`${strategy.id}-${i}`}
-            style={{ width: cardWidth, height: 300, flexShrink: 0, cursor: 'pointer' }}
-            onClick={() => onSelect(strategy)}
-          >
-            <SwipeCardBody strategy={toCardData(strategy)} compact={true} />
+        {/* Rank */}
+        <span className="w-5 text-center text-[11px] font-mono text-white/20 shrink-0">
+          {index + 1}
+        </span>
+
+        {/* Creator Avatar */}
+        <div className="w-8 h-8 rounded-full border border-white/10 overflow-hidden shrink-0 bg-black/50">
+          <img
+            src={
+              strategy.creatorPfpUrl ||
+              `https://api.dicebear.com/7.x/identicon/svg?seed=${strategy.ownerPubkey}`
+            }
+            alt="Creator"
+            className="w-full h-full object-cover"
+          />
+        </div>
+
+        {/* Name + tokens */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-1 min-w-0">
+            <span className="font-bold text-[13px] text-white truncate min-w-0">{strategy.name}</span>
+            <TypePill type={strategy.type} />
           </div>
-        ))}
-      </div>
-    </div>
-  );
-};
+          <div className="flex items-center gap-1.5">
+            {/* Token icon stack */}
+            <div className="flex items-center shrink-0">
+              {visible.map((t, i) => (
+                <div
+                  key={i}
+                  className="w-4 h-4 rounded-full border border-[#050505] overflow-hidden bg-black/50"
+                  style={{ marginLeft: i === 0 ? 0 : -4, zIndex: 10 - i, position: 'relative' }}
+                >
+                  <TokenIcon
+                    symbol={t.symbol}
+                    src={t.logoURI}
+                    address={t.address}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ))}
+            </div>
+            <span className="text-[10px] text-white/30 truncate">
+              {sortedTokens
+                .slice(0, 4)
+                .map((t) => t.symbol)
+                .join(' · ')}
+              {overflow > 0 ? ` +${overflow}` : ''}
+            </span>
+          </div>
+        </div>
+
+        {/* TVL */}
+        <div className="text-right shrink-0">
+          <div className="text-[12px] font-bold font-mono text-white/80">{formatTvl(strategy.tvl)}</div>
+          <div className="text-[8px] text-white/25 uppercase tracking-wide">USDC</div>
+        </div>
+
+        {/* Chevron */}
+        <ChevronRight className="w-3.5 h-3.5 text-white/15 shrink-0" />
+      </motion.div>
+    );
+  }
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
@@ -363,7 +280,7 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Responsive layout: PC uses grid, mobile uses horizontal scroll rows
+  // Responsive layout: PC uses grid, mobile uses table rows
   const [isDesktop, setIsDesktop] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : false
   );
@@ -409,9 +326,10 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
         });
 
         const myStrats = myRes.strategies || myRes || [];
+        // Public strategies first, own strategies fill in any gaps
         const combined = [
-          ...(Array.isArray(myStrats) ? myStrats : []),
           ...(publicRes.strategies || []),
+          ...(Array.isArray(myStrats) ? myStrats : []),
         ];
         const uniqueMap = new Map<string, any>();
         combined.forEach((item: any) => {
@@ -524,14 +442,6 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
         };
       });
 
-      let weightedSum = 0;
-      let totalWeight = 0;
-      enrichedTokens.forEach((t) => {
-        const w = t.weight || 0;
-        weightedSum += (t.change24h || 0) * w;
-        totalWeight += w;
-      });
-
       const ownerPubkey = s.ownerPubkey || s.creator || 'Unknown';
       const userProfile = userMap[ownerPubkey];
 
@@ -544,7 +454,7 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
         ownerPubkey,
         tvl: Number(s.tvl || 0),
         createdAt: s.createdAt ? Number(s.createdAt) : Date.now() / 1000,
-        roi: totalWeight > 0 ? weightedSum / totalWeight : 0,
+        roi: 0,
         creatorPfpUrl: userProfile?.avatar_url
           ? api.getProxyUrl(userProfile.avatar_url)
           : null,
@@ -554,39 +464,25 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
     });
   }, [rawStrategies, tokenDataMap, userMap]);
 
-  // Shuffle order fixed on rawStrategies change — stable across price updates
-  const shuffledIds = useMemo(
-    () => shuffleArray(rawStrategies.map((s) => s.id || s.address || '')),
-    [rawStrategies]
-  );
-  const shuffledStrategies = useMemo(() => {
-    const byId = new Map(strategies.map((s) => [s.id, s]));
-    return shuffledIds.map((id) => byId.get(id)).filter(Boolean) as DiscoveredStrategy[];
-  }, [strategies, shuffledIds]);
-
+  // Sort by TVL desc then createdAt desc — stable, no self-first bias
   const filteredStrategies = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return shuffledStrategies;
-    return shuffledStrategies.filter((s) => {
-      if (s.name.toLowerCase().includes(q)) return true;
-      if (s.type.toLowerCase().includes(q)) return true;
-      if (s.tokens.some((t) => t.symbol.toLowerCase().includes(q))) return true;
-      return false;
+    let result = [...strategies];
+    if (q) {
+      result = result.filter((s) => {
+        if (s.name.toLowerCase().includes(q)) return true;
+        if (s.type.toLowerCase().includes(q)) return true;
+        if (s.tokens.some((t) => t.symbol.toLowerCase().includes(q))) return true;
+        return false;
+      });
+    }
+    result.sort((a, b) => {
+      const tvlDiff = (b.tvl || 0) - (a.tvl || 0);
+      if (tvlDiff !== 0) return tvlDiff;
+      return (b.createdAt || 0) - (a.createdAt || 0);
     });
-  }, [shuffledStrategies, searchQuery]);
-
-  // Distribute round-robin into 3 rows for mobile ScrollRow
-  const [row1, row2, row3] = useMemo(() => {
-    const r0: DiscoveredStrategy[] = [];
-    const r1: DiscoveredStrategy[] = [];
-    const r2: DiscoveredStrategy[] = [];
-    filteredStrategies.forEach((s, i) => {
-      if (i % 3 === 0) r0.push(s);
-      else if (i % 3 === 1) r1.push(s);
-      else r2.push(s);
-    });
-    return [r0, r1, r2];
-  }, [filteredStrategies]);
+    return result;
+  }, [strategies, searchQuery]);
 
   const handleSelect = useCallback(
     (strategy: DiscoveredStrategy) => {
@@ -597,13 +493,13 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
   );
 
   return (
-    <div className="min-h-screen bg-[#030303] text-white px-4 md:px-8 lg:px-12 py-6 pb-24">
+    <div className="min-h-screen bg-[#030303] text-white pb-24">
       <div className="max-w-7xl mx-auto">
         <div className="pt-12 md:pt-20" />
 
         {/* Search Bar */}
         {!loading && strategies.length > 0 && (
-          <div className="mb-6">
+          <div className="mb-4 px-4 md:px-8 lg:px-12">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30 pointer-events-none" />
               <input
@@ -611,7 +507,7 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by name or token symbol..."
+                placeholder="Search by name or token..."
                 className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder-white/25 focus:outline-none focus:border-[#B8863F]/50 focus:bg-white/[0.07] transition-all"
               />
               <AnimatePresence>
@@ -644,7 +540,11 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
 
         {/* ── Loading ─────────────────────────────────────────────────────── */}
         {loading ? (
-          isDesktop ? <DesktopLoader /> : <MobileLoader />
+          isDesktop ? (
+            <div className="px-8 lg:px-12"><DesktopLoader /></div>
+          ) : (
+            <MobileTableLoader />
+          )
         ) : strategies.length === 0 ? (
           <EmptyState />
         ) : filteredStrategies.length === 0 ? (
@@ -665,33 +565,52 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
             </button>
           </motion.div>
         ) : isDesktop ? (
-          /* ── PC: vertical grid, all strategies, no limit ───────────────── */
-          <div className="grid grid-cols-3 gap-6">
-            <AnimatePresence mode="popLayout">
-              {filteredStrategies.map((strategy, i) => (
-                <motion.div
-                  key={strategy.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ delay: searchQuery ? 0 : Math.min(i * 0.04, 0.4) }}
-                  className="h-[480px] cursor-pointer"
-                  onClick={() => handleSelect(strategy)}
-                >
-                  <SwipeCardBody strategy={toCardData(strategy)} compact={false} />
-                </motion.div>
-              ))}
-            </AnimatePresence>
+          /* ── PC: vertical grid ──────────────────────────────────────────── */
+          <div className="px-8 lg:px-12">
+            <div className="grid grid-cols-3 gap-6">
+              <AnimatePresence mode="popLayout">
+                {filteredStrategies.map((strategy, i) => (
+                  <motion.div
+                    key={strategy.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ delay: searchQuery ? 0 : Math.min(i * 0.04, 0.4) }}
+                    className="h-[480px] cursor-pointer"
+                    onClick={() => handleSelect(strategy)}
+                  >
+                    <SwipeCardBody strategy={toCardData(strategy)} compact={false} />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
           </div>
         ) : (
-          /* ── Mobile: 3 horizontal auto-scroll rows ─────────────────────── */
-          <div className="flex flex-col gap-5">
-            <ScrollRow strategies={row1} pxPerSec={35} onSelect={handleSelect} />
-            <ScrollRow strategies={row2} pxPerSec={25} onSelect={handleSelect} />
-            <ScrollRow strategies={row3} pxPerSec={45} onSelect={handleSelect} />
-            <p className="text-right text-xs text-white/20 pr-2">
+          /* ── Mobile: DEX Screener-style table ───────────────────────────── */
+          <div>
+            {/* Table header */}
+            <div className="flex items-center gap-3 px-4 py-2 border-y border-white/[0.07] bg-[#030303]/95 backdrop-blur-sm sticky top-0 z-10">
+              <span className="w-5 shrink-0" />
+              <span className="w-8 shrink-0 text-[9px] font-bold uppercase tracking-widest text-white/20">
+                Creator
+              </span>
+              <span className="flex-1 text-[9px] font-bold uppercase tracking-widest text-white/20">
+                Strategy
+              </span>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-white/20 pr-6">
+                TVL
+              </span>
+            </div>
+
+            <AnimatePresence mode="popLayout">
+              {filteredStrategies.map((strategy, i) => (
+                <TableRow key={strategy.id} strategy={strategy} index={i} onSelect={handleSelect} />
+              ))}
+            </AnimatePresence>
+
+            <div className="py-6 text-center text-xs text-white/15">
               {filteredStrategies.length} strategies
-            </p>
+            </div>
           </div>
         )}
       </div>
@@ -703,7 +622,7 @@ const EmptyState = () => (
   <motion.div
     initial={{ opacity: 0, scale: 0.95 }}
     animate={{ opacity: 1, scale: 1 }}
-    className="flex flex-col items-center justify-center py-20 text-center"
+    className="flex flex-col items-center justify-center py-20 text-center px-4"
   >
     <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-6">
       <span className="text-4xl">🍕</span>

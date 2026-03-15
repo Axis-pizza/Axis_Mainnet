@@ -577,7 +577,7 @@ const SuccessOverlay = ({
         transition={{ type: 'spring', damping: 14, stiffness: 100, delay: 0.1 }}
         className="relative mb-10 z-20 text-center"
       >
-        <h1 className="text-5xl md:text-7xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-yellow-200 to-orange-500 drop-shadow-[0_0_30px_rgba(234,88,12,0.8)] transform -rotate-3 leading-none tracking-tight">
+        <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-yellow-200 to-orange-500 drop-shadow-[0_0_30px_rgba(234,88,12,0.8)] transform -rotate-3 leading-none tracking-tight">
           READY FOR
           <br />
           TAKEOFF
@@ -677,6 +677,9 @@ const SuccessOverlay = ({
   );
 };
 
+// Module-level: survives React unmount/remount within the same session
+let _savedSwipeIndex = 0;
+
 // --- Main View Component ---
 
 export const SwipeDiscoverView = ({
@@ -691,7 +694,7 @@ export const SwipeDiscoverView = ({
   const { showToast } = useToast();
 
   const [strategies, setStrategies] = useState<any[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(_savedSwipeIndex);
   const [loading, setLoading] = useState(true);
   const [matchedStrategy, setMatchedStrategy] = useState<any | null>(null);
   const lastSwipeTime = useRef(0);
@@ -760,7 +763,8 @@ export const SwipeDiscoverView = ({
 
         const myApiStrats = myRes.strategies || myRes || [];
         const publicStrats = publicRes.strategies || [];
-        const combined = [...myApiStrats, ...publicStrats];
+        // Public strategies first — prevents user's own ETFs from always appearing at the top
+        const combined = [...publicStrats, ...myApiStrats];
 
         const uniqueMap = new Map();
         combined.forEach((item) => {
@@ -928,6 +932,7 @@ export const SwipeDiscoverView = ({
     if (enrichedStrategies.length === 0) return;
     const idx = enrichedStrategies.findIndex((s) => s.id === focusedStrategyId);
     if (idx >= 0) {
+      _savedSwipeIndex = idx;
       setCurrentIndex(idx);
       appliedFocusRef.current = focusedStrategyId;
     }
@@ -940,7 +945,11 @@ export const SwipeDiscoverView = ({
       const now = Date.now();
       if (now - lastSwipeTime.current < 50) return;
       lastSwipeTime.current = now;
-      setCurrentIndex((prev) => prev + 1);
+      setCurrentIndex((prev) => {
+        const next = prev + 1;
+        _savedSwipeIndex = next;
+        return next;
+      });
       if (direction === 'right') {
         setMatchedStrategy(strategy);
       }
@@ -1115,8 +1124,8 @@ export const SwipeDiscoverView = ({
   if (loading) {
     return (
       <div className="relative w-full h-[100dvh] bg-[#030303] overflow-hidden flex flex-col">
-        <div className="flex-1 w-full flex items-center justify-center px-4 pb-53 pt-12 md:pb-24 relative">
-          <div className="relative w-full max-w-sm h-full max-h-[70vh] md:max-h-[600px] z-10">
+        <div className="flex-1 w-full flex items-center justify-center px-4 pb-36 pt-12 md:pb-24 relative">
+          <div className="relative w-full max-w-sm h-full max-h-[78vh] md:max-h-[600px] z-10">
             {/* スケルトンを3枚スタック表示 */}
             {[0, 1, 2].map((i) => (
               <SwipeCardSkeleton key={i} index={i} />
@@ -1157,7 +1166,7 @@ export const SwipeDiscoverView = ({
           </div>
           <h3 className="text-xl font-bold text-white mb-2">That's all for now!</h3>
           <button
-            onClick={() => setCurrentIndex(0)}
+            onClick={() => { _savedSwipeIndex = 0; setCurrentIndex(0); }}
             className="px-6 py-3 bg-[#B8863F] text-white font-bold rounded-xl flex items-center gap-2 mx-auto mt-4"
           >
             <RefreshCw className="w-4 h-4" /> Start Over
@@ -1180,7 +1189,7 @@ export const SwipeDiscoverView = ({
         )}
       </AnimatePresence>
 
-      <div className="flex-1 w-full flex items-center justify-center px-4 pb-53 pt-12 md:pb-24 relative">
+      <div className="flex-1 w-full flex items-center justify-center px-4 pb-36 pt-12 md:pb-24 relative">
         {/* Left Button (Pass) */}
         <motion.button
           initial={{ opacity: 0, x: 20 }}
@@ -1195,7 +1204,7 @@ export const SwipeDiscoverView = ({
         </motion.button>
 
         {/* Card Stack */}
-        <div className="relative w-full max-w-sm h-full max-h-[70vh] md:max-h-[600px] z-10">
+        <div className="relative w-full max-w-sm h-full max-h-[78vh] md:max-h-[600px] z-10">
           <AnimatePresence>
             {enrichedStrategies
               .slice(currentIndex, currentIndex + 3)

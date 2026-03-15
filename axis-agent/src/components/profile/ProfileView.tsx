@@ -803,7 +803,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                     : 'bg-[#140E08] border-[rgba(212,175,55,0.2)]'
                   } overflow-hidden`}
                 >
-                  <span className="absolute top-4 left-5 font-black italic text-2xl bg-gradient-to-br from-[#FFF5C3] via-[#D4AF37] to-[#996515] text-transparent bg-clip-text drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                  <span className="absolute top-4 left-5 font-black text-2xl bg-gradient-to-br from-[#FFF5C3] via-[#D4AF37] to-[#996515] text-transparent bg-clip-text drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
                     #1
                   </span>
 
@@ -849,7 +849,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                         : 'bg-[#140E08] border-[rgba(255,255,255,0.05)]'
                       }`}
                     >
-                      <span className={`absolute top-3 left-4 font-black italic text-xl bg-gradient-to-br ${badgeGradient} text-transparent bg-clip-text drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)]`}>
+                      <span className={`absolute top-3 left-4 font-black text-xl bg-gradient-to-br ${badgeGradient} text-transparent bg-clip-text drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)]`}>
                         #{rank}
                       </span>
 

@@ -19,7 +19,8 @@
    .vscode/settings.json → "css.lint.unknownAtRules": "ignore"
    ─────────────────────────────────────────────────────────────────────────── */
 @theme {
-  --font-sans: 'Times New Roman', Times, serif;
+  --font-sans: 'Lora', 'Times New Roman', Times, serif;
+  --font-serif: 'Lora', 'Times New Roman', Times, serif;
 
   /* ── Void Backgrounds ───────────────────────────────────────────────── */
   --color-black:    #020201;    /* cinema void — warm absolute black */
@@ -215,7 +216,7 @@ html {
 body {
   background-color: #020201;
   color: #e8ddd4;
-  font-family: 'Times New Roman', Times, serif;
+  font-family: 'Lora', 'Times New Roman', Times, serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: 0.02em;

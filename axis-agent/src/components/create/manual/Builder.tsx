@@ -33,16 +33,38 @@ import { PredictionEventCard, type PredictionGroup } from './PredictionEventCard
 
 const STEP_AMOUNT = 1;
 
+// ─── Brand copper-gold scale (Axis amber palette) ────────────────────────────
+// Core: #C77D36 = 18K Rose-Bronze. Light → #F4DFBE. Shadow → #1A0A04.
+const AXIS_GOLD = '#C77D36';           // amber-400 — primary accent
+const AXIS_GOLD_DIM = '#6B3716';       // amber-700 — shadow / border
+const AXIS_GOLD_GLOW = 'rgba(199, 125, 54, ';  // base for rgba glow
+
+// Legend dot colors — amber scale only (unified family)
+const PORTFOLIO_COLORS = [
+  '#C77D36', // amber-400 — core
+  '#D9A05B', // amber-300 — satin copper
+  '#E8C28A', // amber-200 — bright lit face
+  '#B0652B', // amber-500 — heavy bronze
+  '#F4DFBE', // amber-100 — champagne specular
+  '#8E4D1F', // amber-600 — deep pressed
+  '#6B3716', // amber-700 — shadow edge
+  '#4A230F', // amber-800 — reddish void
+];
+
 // ─── Mobile: Weight Control ───────────────────────────────────────────────────
 const MobileWeightControl = memo(
   ({
     value,
     onChange,
     totalWeight,
+    accentColor = '#c9a84c',
+    hidePercentage = false,
   }: {
     value: number;
     onChange: (v: number) => void;
     totalWeight: number;
+    accentColor?: string;
+    hidePercentage?: boolean;
   }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [inputValue, setInputValue] = useState(value.toString());
@@ -65,91 +87,98 @@ const MobileWeightControl = memo(
     };
 
     const isOverLimit = totalWeight > 100;
+    const fillColor = isOverLimit ? '#ef4444' : accentColor;
 
     return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 relative h-12 flex items-center">
-            <div className="absolute inset-x-0 h-3 bg-white/10 rounded-full overflow-hidden">
-              <motion.div
-                className={`h-full rounded-full ${isOverLimit ? 'bg-red-500' : 'bg-gradient-to-r from-amber-500 to-amber-300'}`}
-                animate={{ width: `${Math.min(100, value)}%` }}
-                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              />
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={value}
-              onChange={(e) => handleChange(parseInt(e.target.value))}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            />
+      <div className="space-y-2.5">
+        {/* Slider */}
+        <div className="relative h-10 flex items-center">
+          <div className="absolute inset-x-0 h-1.5 bg-white/8 rounded-full overflow-hidden">
             <motion.div
-              className="absolute top-1/2 -translate-y-1/2 pointer-events-none"
-              animate={{ left: `calc(${Math.min(100, value)}% - 14px)` }}
+              className="h-full rounded-full"
+              style={{ backgroundColor: fillColor, opacity: 0.85 }}
+              animate={{ width: `${Math.min(100, value)}%` }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            >
-              <div
-                className={`w-7 h-7 rounded-full border-2 shadow-lg ${isOverLimit ? 'bg-red-500 border-red-400' : 'bg-amber-400 border-amber-300'}`}
-              />
-            </motion.div>
-          </div>
-
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              inputMode="numeric"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value.replace(/[^0-9]/g, ''))}
-              onBlur={handleInputBlur}
-              onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.blur()}
-              className={`w-20 h-12 bg-black/50 border-2 rounded-xl text-center text-xl font-bold outline-none ${isOverLimit ? 'border-red-500 text-red-400' : 'border-amber-400 text-white'}`}
-              style={{ fontFamily: '"Times New Roman", serif' }}
-              maxLength={3}
-              autoFocus
             />
-          ) : (
-            <button
-              onClick={() => {
-                setIsEditing(true);
-                setInputValue(value.toString());
-              }}
-              className={`w-20 h-12 rounded-xl font-bold text-xl transition-all active:scale-95 ${isOverLimit ? 'bg-red-500/20 text-red-400' : 'bg-amber-900/30 text-amber-400'}`}
-              style={{ fontFamily: '"Times New Roman", serif' }}
-            >
-              {value}%
-            </button>
-          )}
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={value}
+            onChange={(e) => handleChange(parseInt(e.target.value))}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          />
+          <motion.div
+            className="absolute top-1/2 -translate-y-1/2 pointer-events-none"
+            animate={{ left: `calc(${Math.min(100, value)}% - 11px)` }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          >
+            <div
+              className="w-[22px] h-[22px] rounded-full border-2 shadow-md"
+              style={{ backgroundColor: fillColor, borderColor: `${fillColor}bb` }}
+            />
+          </motion.div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Quick buttons + stepper + (optional) percentage */}
+        <div className="flex items-center gap-1.5">
           {[10, 25, 50].map((qv) => (
             <button
               key={qv}
               onClick={() => handleChange(qv)}
-              className={`flex-1 h-11 rounded-xl text-sm font-bold transition-all active:scale-95 ${value === qv ? 'btn-glass-gold' : 'btn-glass text-white/50'}`}
+              className="flex-1 h-8 rounded-lg text-xs font-semibold transition-all active:scale-95 bg-white/5 text-white/35"
+              style={value === qv ? { backgroundColor: `${accentColor}22`, color: accentColor } : {}}
             >
               {qv}%
             </button>
           ))}
-          <div className="w-2" />
+          <div className="w-1" />
           <button
             onClick={() => handleChange(value - STEP_AMOUNT)}
             disabled={value <= 0}
-            className="w-12 h-11 rounded-xl bg-white/5 flex items-center justify-center text-white/50 active:bg-red-500/20 active:text-red-400 disabled:opacity-30 transition-all active:scale-95"
+            className="w-9 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/35 active:bg-red-500/15 active:text-red-400 disabled:opacity-20 transition-all active:scale-95"
           >
-            <Minus size={20} />
+            <Minus size={14} />
           </button>
           <button
             onClick={() => handleChange(value + STEP_AMOUNT)}
             disabled={value >= 100}
-            className="w-12 h-11 rounded-xl bg-white/5 flex items-center justify-center text-white/50 active:bg-green-500/20 active:text-green-400 disabled:opacity-30 transition-all active:scale-95"
+            className="w-9 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/35 active:bg-emerald-500/15 active:text-emerald-400 disabled:opacity-20 transition-all active:scale-95"
           >
-            <Plus size={20} />
+            <Plus size={14} />
           </button>
+
+          {/* Percentage input — hidden when card header handles it */}
+          {!hidePercentage && (
+            <>
+              <div className="w-1" />
+              {isEditing ? (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  inputMode="numeric"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value.replace(/[^0-9]/g, ''))}
+                  onBlur={handleInputBlur}
+                  onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.blur()}
+                  className="w-14 h-8 bg-black/50 border rounded-lg text-center text-sm font-bold outline-none text-white"
+                  style={{ borderColor: fillColor }}
+                  maxLength={3}
+                  autoFocus
+                />
+              ) : (
+                <button
+                  onClick={() => { setIsEditing(true); setInputValue(value.toString()); }}
+                  className="w-14 h-8 rounded-lg text-sm font-bold transition-all active:scale-95 bg-white/5"
+                  style={{ color: fillColor }}
+                >
+                  {value}%
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     );
@@ -362,49 +391,143 @@ const MobileTokenListItem = memo(
 const MobileAssetCard = memo(
   ({
     item,
+    colorIndex,
     totalWeight,
     onUpdateWeight,
     onRemove,
   }: {
     item: AssetItem;
+    colorIndex: number;
     totalWeight: number;
     onUpdateWeight: (address: string, value: number) => void;
     onRemove: (address: string) => void;
-  }) => (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.95, y: 20 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.9, x: -50 }}
-      className="relative overflow-hidden rounded-3xl border border-amber-900/20"
-    >
-      <div className="absolute inset-0 bg-gradient-to-br from-[#0a0a0a] via-[#111] to-amber-950/20" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(180,83,9,0.1),transparent_50%)]" />
-      <div className="relative p-5">
-        <div className="flex items-center gap-4 mb-5">
-          <TokenImage
-            src={item.token.logoURI}
-            className="w-14 h-14 rounded-full flex-none ring-2 ring-amber-900/30"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-white text-lg">{item.token.symbol}</div>
-            <div className="text-sm text-white/40 truncate">{item.token.name}</div>
-          </div>
-          <button
-            onClick={() => onRemove(item.token.address)}
-            className="w-12 h-12 flex items-center justify-center text-white/30 active:text-red-400 active:bg-red-500/10 rounded-2xl transition-colors"
-          >
-            <X size={24} />
-          </button>
-        </div>
-        <MobileWeightControl
-          value={item.weight}
-          onChange={(val) => onUpdateWeight(item.token.address, val)}
-          totalWeight={totalWeight}
+  }) => {
+    const [isEditingWeight, setIsEditingWeight] = useState(false);
+    const [inputValue, setInputValue] = useState(item.weight.toString());
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+      if (!isEditingWeight) setInputValue(item.weight.toString());
+    }, [item.weight, isEditingWeight]);
+
+    const isOverLimit = totalWeight > 100;
+    const displayColor = isOverLimit ? '#ef4444' : AXIS_GOLD;
+
+    const handleWeightCommit = () => {
+      setIsEditingWeight(false);
+      const v = parseInt(inputValue);
+      if (!isNaN(v)) onUpdateWeight(item.token.address, Math.min(100, Math.max(0, v)));
+      else setInputValue(item.weight.toString());
+    };
+
+    return (
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, x: -30, scale: 0.96 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        className="relative overflow-hidden rounded-2xl"
+        style={{
+          background: '#0e0906',
+          boxShadow: `0 2px 16px rgba(0,0,0,0.6), 0 0 0 1px ${AXIS_GOLD_GLOW}0.10)`,
+        }}
+      >
+        {/* Left accent stripe — brand copper gold */}
+        <div
+          className="absolute left-0 top-0 bottom-0 w-[3px]"
+          style={{ background: `linear-gradient(180deg, ${AXIS_GOLD_DIM}, ${AXIS_GOLD}, ${AXIS_GOLD_DIM})` }}
         />
-      </div>
-    </motion.div>
-  )
+        {/* Ambient copper glow from left */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: `radial-gradient(ellipse at -5% 50%, ${AXIS_GOLD_GLOW}0.10), transparent 50%)` }}
+        />
+
+        <div className="pl-5 pr-4 pt-4 pb-3">
+          {/* Header: logo + name + BIG weight + remove */}
+          <div className="flex items-center gap-3 mb-3">
+            {/* Logo with copper halo */}
+            <div className="relative flex-none">
+              <div
+                className="absolute inset-0 rounded-full blur-lg"
+                style={{ backgroundColor: AXIS_GOLD, opacity: 0.20, transform: 'scale(1.5)' }}
+              />
+              <TokenImage
+                src={item.token.logoURI}
+                className="relative w-11 h-11 rounded-full"
+              />
+            </div>
+
+            {/* Symbol + name */}
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-white text-[15px] tracking-wide leading-tight">
+                {item.token.symbol}
+              </div>
+              <div className="text-[11px] truncate mt-0.5" style={{ color: `${AXIS_GOLD_GLOW}0.45)` }}>
+                {item.token.name}
+              </div>
+            </div>
+
+            {/* Tappable weight — sole percentage display */}
+            {isEditingWeight ? (
+              <input
+                ref={inputRef}
+                type="text"
+                inputMode="numeric"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value.replace(/[^0-9]/g, ''))}
+                onBlur={handleWeightCommit}
+                onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.blur()}
+                className="w-[72px] h-11 border-2 rounded-xl text-center text-2xl font-bold outline-none tabular-nums"
+                style={{
+                  background: 'rgba(10,5,2,0.7)',
+                  borderColor: AXIS_GOLD,
+                  color: AXIS_GOLD,
+                  fontFamily: "'Lora', 'Times New Roman', serif",
+                }}
+                maxLength={3}
+                autoFocus
+              />
+            ) : (
+              <button
+                onClick={() => { setIsEditingWeight(true); setInputValue(item.weight.toString()); }}
+                className="flex items-baseline gap-0.5 active:opacity-60 transition-opacity"
+              >
+                <span
+                  className="text-[32px] font-bold tabular-nums leading-none"
+                  style={{
+                    color: isOverLimit ? '#ef4444' : AXIS_GOLD,
+                    fontFamily: "'Lora', 'Times New Roman', serif",
+                  }}
+                >
+                  {item.weight}
+                </span>
+                <span className="text-base font-bold" style={{ color: displayColor }}>%</span>
+              </button>
+            )}
+
+            {/* Remove */}
+            <button
+              onClick={() => onRemove(item.token.address)}
+              className="w-8 h-8 flex items-center justify-center text-white/15 active:text-red-400 active:bg-red-500/10 rounded-xl transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Slider — no duplicate percentage */}
+          <MobileWeightControl
+            value={item.weight}
+            onChange={(val) => onUpdateWeight(item.token.address, val)}
+            totalWeight={totalWeight}
+            accentColor={displayColor}
+            hidePercentage
+          />
+        </div>
+      </motion.div>
+    );
+  }
 );
 
 // ─── Desktop: Token List Item ─────────────────────────────────────────────────
@@ -490,40 +613,192 @@ const DesktopTokenListItem = ({
 // ─── Desktop: Asset Card ──────────────────────────────────────────────────────
 const DesktopAssetCard = ({
   item,
+  colorIndex,
   totalWeight,
   onUpdateWeight,
   onRemove,
 }: {
   item: AssetItem;
+  colorIndex: number;
   totalWeight: number;
   onUpdateWeight: (address: string, value: number) => void;
   onRemove: (address: string) => void;
-}) => (
-  <div className="relative overflow-hidden rounded-2xl border border-amber-900/20 bg-gradient-to-br from-[#0a0a0a] via-[#111] to-amber-950/10">
-    <div className="p-4">
-      <div className="flex items-center gap-3 mb-3">
-        <TokenImage
-          src={item.token.logoURI}
-          className="w-10 h-10 rounded-full flex-none ring-1 ring-amber-900/30"
-        />
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-white text-sm">{item.token.symbol}</div>
-          <div className="text-xs text-white/40 truncate">{item.token.name}</div>
-        </div>
-        <button
-          onClick={() => onRemove(item.token.address)}
-          className="w-8 h-8 flex items-center justify-center text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
-        >
-          <X size={16} />
-        </button>
-      </div>
-      <WeightControl
-        value={item.weight}
-        onChange={(val) => onUpdateWeight(item.token.address, val)}
-        totalWeight={totalWeight}
+}) => {
+  const isOverLimit = totalWeight > 100;
+  const displayColor = isOverLimit ? '#ef4444' : AXIS_GOLD;
+  return (
+    <div
+      className="relative overflow-hidden rounded-2xl"
+      style={{
+        background: '#0e0906',
+        boxShadow: `0 1px 10px rgba(0,0,0,0.5), 0 0 0 1px ${AXIS_GOLD_GLOW}0.08)`,
+      }}
+    >
+      {/* Left accent stripe — brand gradient */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-[3px]"
+        style={{ background: `linear-gradient(180deg, ${AXIS_GOLD_DIM}, ${AXIS_GOLD}, ${AXIS_GOLD_DIM})` }}
       />
+      {/* Ambient copper glow */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: `radial-gradient(ellipse at -5% 50%, ${AXIS_GOLD_GLOW}0.08), transparent 50%)` }}
+      />
+      <div className="pl-5 pr-4 py-3">
+        <div className="flex items-center gap-3 mb-3">
+          {/* Logo with copper halo */}
+          <div className="relative flex-none">
+            <div
+              className="absolute inset-0 rounded-full blur-md"
+              style={{ backgroundColor: AXIS_GOLD, opacity: 0.18, transform: 'scale(1.5)' }}
+            />
+            <TokenImage src={item.token.logoURI} className="relative w-9 h-9 rounded-full" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-white text-sm tracking-wide">{item.token.symbol}</div>
+            <div className="text-[11px] truncate mt-0.5" style={{ color: `${AXIS_GOLD_GLOW}0.40)` }}>
+              {item.token.name}
+            </div>
+          </div>
+          {/* Weight — sole percentage display */}
+          <div
+            className="text-xl font-bold tabular-nums mr-1"
+            style={{ color: displayColor, fontFamily: '"Times New Roman", serif' }}
+          >
+            {item.weight}%
+          </div>
+          <button
+            onClick={() => onRemove(item.token.address)}
+            className="w-7 h-7 flex items-center justify-center text-white/15 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <WeightControl
+          value={item.weight}
+          onChange={(val) => onUpdateWeight(item.token.address, val)}
+          totalWeight={totalWeight}
+        />
+      </div>
     </div>
-  </div>
+  );
+};
+
+// ─── Portfolio Progress Bar (shared) ─────────────────────────────────────────
+const PortfolioProgressBar = memo(
+  ({
+    portfolio,
+    totalWeight,
+    onDistributeEvenly,
+  }: {
+    portfolio: AssetItem[];
+    totalWeight: number;
+    onDistributeEvenly: () => void;
+  }) => {
+    const isComplete = totalWeight === 100;
+    const isOver = totalWeight > 100;
+
+    return (
+      <div className="px-4 py-3 space-y-2.5">
+        {/* Top row: stacked avatars + status + equal button */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Stacked token avatars */}
+            <div className="flex items-center">
+              {portfolio.length === 0 ? (
+                <div className="w-8 h-8 rounded-full ring-2 ring-dashed ring-white/10 bg-white/5 flex items-center justify-center">
+                  <Plus size={12} className="text-white/20" />
+                </div>
+              ) : (
+                <>
+                  {portfolio.slice(0, 6).map((asset, i) => (
+                    <div
+                      key={asset.token.address}
+                      className="relative w-8 h-8 rounded-full ring-2 ring-[#030303] overflow-hidden bg-[#1a1a1a] flex-none"
+                      style={{ marginLeft: i === 0 ? 0 : -10, zIndex: portfolio.length - i }}
+                    >
+                      <TokenImage src={asset.token.logoURI} className="w-full h-full" />
+                    </div>
+                  ))}
+                  {portfolio.length > 6 && (
+                    <div
+                      className="relative w-8 h-8 rounded-full ring-2 ring-[#030303] bg-white/10 flex items-center justify-center text-[10px] text-white/50 font-bold flex-none"
+                      style={{ marginLeft: -10 }}
+                    >
+                      +{portfolio.length - 6}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {/* Status */}
+            <div className="text-sm">
+              {isComplete ? (
+                <span className="font-bold flex items-center gap-1" style={{ color: '#D9A05B' }}>
+                  <Check size={13} /> Ready
+                </span>
+              ) : isOver ? (
+                <span className="font-bold text-red-400">+{totalWeight - 100}% over</span>
+              ) : (
+                <span style={{ color: `${AXIS_GOLD_GLOW}0.45)` }}>
+                  <span className="font-bold" style={{ color: AXIS_GOLD }}>{totalWeight}</span>% / 100%
+                </span>
+              )}
+            </div>
+          </div>
+          {/* Equal button */}
+          {portfolio.length >= 2 && (
+            <button
+              onClick={onDistributeEvenly}
+              className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                background: `${AXIS_GOLD_GLOW}0.08)`,
+                border: `1px solid ${AXIS_GOLD_GLOW}0.20)`,
+                color: '#D9A05B',
+              }}
+            >
+              <Percent size={11} /> Equal
+            </button>
+          )}
+        </div>
+
+        {/* Progress bar — brand copper-gold gradient */}
+        <div
+          className="relative h-2 rounded-full overflow-hidden"
+          style={{ background: 'rgba(199,125,54,0.08)' }}
+        >
+          <motion.div
+            className="absolute inset-y-0 left-0 rounded-full"
+            style={{
+              background: isOver
+                ? '#ef4444'
+                : isComplete
+                  ? 'linear-gradient(90deg, #4A230F, #8E4D1F, #C77D36, #D9A05B, #E8C28A)'
+                  : 'linear-gradient(90deg, #4A230F, #8E4D1F, #C77D36, #D9A05B)',
+              boxShadow: isOver ? 'none' : `0 0 8px 1px ${AXIS_GOLD_GLOW}0.35)`,
+            }}
+            animate={{ width: `${Math.min(totalWeight, 100)}%` }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          />
+        </div>
+
+        {/* Token legend */}
+        {portfolio.length > 0 && (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+            {portfolio.map((asset, i) => (
+              <div key={asset.token.address} className="flex items-center gap-1">
+                <div
+                  className="w-1.5 h-1.5 rounded-full flex-none"
+                  style={{ backgroundColor: PORTFOLIO_COLORS[i % PORTFOLIO_COLORS.length] }}
+                />
+                <span className="text-[10px] text-white/35">{asset.token.symbol} {asset.weight}%</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -624,19 +899,19 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
         transition={{ delay: 0.3 }}
         className="absolute top-0 left-0 right-0 z-30 bg-[#030303]/90 backdrop-blur-md border-b border-white/5 safe-area-top"
       >
-        <div className="px-4 py-3 flex items-center justify-between">
+        <div className="px-4 py-3 flex items-center">
           <button
             onClick={onBack}
             className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center active:bg-white/10 transition-colors"
           >
             <ArrowLeft size={20} className="text-white" />
           </button>
-          <button
-            onClick={() => setIsSelectorOpen(true)}
-            className="btn-glass-gold w-10 h-10 rounded-full flex items-center justify-center transition-colors"
+          <h2
+            className="ml-3 text-base text-white/70 font-medium tracking-wide"
+            style={{ fontFamily: '"Times New Roman", serif' }}
           >
-            <Plus size={20} />
-          </button>
+            Build Strategy
+          </h2>
         </div>
       </motion.div>
 
@@ -645,52 +920,12 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
         <div className="h-[64px] safe-area-top" />
 
         {/* Stats Header */}
-        <div className="sticky top-0 z-20 bg-[#030303]/95 border-b border-white/5 backdrop-blur-sm shadow-lg shadow-black/20 px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div
-              className={`relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center overflow-hidden border ${
-                totalWeight === 100
-                  ? 'bg-emerald-900/20 border-emerald-500/30'
-                  : totalWeight > 100
-                    ? 'bg-red-900/20 border-red-500/30'
-                    : 'bg-amber-900/10 border-amber-500/20'
-              }`}
-            >
-              <span
-                className={`text-2xl font-bold ${
-                  totalWeight === 100 ? 'text-emerald-400' : totalWeight > 100 ? 'text-red-400' : 'text-amber-500'
-                }`}
-              >
-                {totalWeight}
-              </span>
-              <span className="text-[10px] text-white/40 -mt-1">%</span>
-            </div>
-            <div>
-              <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Allocation</div>
-              <div className="text-sm font-medium mt-0.5">
-                {totalWeight === 100 ? (
-                  <span className="text-emerald-400 flex items-center gap-1"><Check size={14} /> Ready</span>
-                ) : totalWeight > 100 ? (
-                  <span className="text-red-400">Over limit</span>
-                ) : (
-                  <span className="text-amber-500/80">{100 - totalWeight}% remaining</span>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-2">
-            {portfolio.length >= 2 && (
-              <button
-                onClick={distributeEvenly}
-                className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg bg-white/5 text-white/70 active:bg-white/10 transition-colors"
-              >
-                <Percent size={12} /> Equal
-              </button>
-            )}
-            <div className="text-xs text-white/30 font-mono">
-              {portfolio.length} Asset{portfolio.length !== 1 ? 's' : ''}
-            </div>
-          </div>
+        <div className="sticky top-0 z-20 bg-[#030303]/95 border-b border-white/5 backdrop-blur-sm shadow-lg shadow-black/20">
+          <PortfolioProgressBar
+            portfolio={portfolio}
+            totalWeight={totalWeight}
+            onDistributeEvenly={distributeEvenly}
+          />
         </div>
 
         {/* Portfolio List */}
@@ -711,10 +946,11 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
           </AnimatePresence>
 
           <AnimatePresence mode="popLayout">
-            {portfolio.map((item) => (
+            {portfolio.map((item, index) => (
               <MobileAssetCard
                 key={item.token.address}
                 item={item}
+                colorIndex={index}
                 totalWeight={totalWeight}
                 onUpdateWeight={updateWeight}
                 onRemove={removeToken}
@@ -725,27 +961,18 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
           <motion.button
             layout
             onClick={() => setIsSelectorOpen(true)}
-            className="w-full py-6 rounded-3xl border border-dashed border-white/10 flex flex-col items-center justify-center gap-2 text-white/30 active:bg-white/5 transition-colors bg-white/[0.02]"
+            className="w-full py-5 rounded-2xl flex items-center justify-center gap-3 transition-colors active:opacity-70"
+            style={{
+              background: `${AXIS_GOLD_GLOW}0.04)`,
+              border: `1.5px dashed ${AXIS_GOLD_GLOW}0.18)`,
+              color: `${AXIS_GOLD_GLOW}0.55)`,
+            }}
           >
-            <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center shadow-inner">
-              <Plus size={24} />
-            </div>
-            <span className="text-sm font-medium">Tap to add asset</span>
+            <Plus size={18} />
+            <span className="text-sm font-semibold tracking-wide">Add asset</span>
           </motion.button>
         </div>
       </div>
-
-      {/* FAB - Add Token */}
-      {!isSelectorOpen && (
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="fixed bottom-6 right-6 z-40 safe-area-bottom">
-          <button
-            onClick={() => setIsSelectorOpen(true)}
-            className="btn-gold w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-transform [background:var(--gold-button)] shadow-[var(--glow-sm)]"
-          >
-            <Plus size={28} />
-          </button>
-        </motion.div>
-      )}
 
       {/* Next Step FAB */}
       <div className="fixed bottom-0 left-0 right-0 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] z-30 pointer-events-none">
@@ -1006,51 +1233,12 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
       <div className="flex-1 flex min-h-0">
         {/* Left Panel: Portfolio */}
         <div className="w-[55%] flex flex-col min-h-0 border-r border-white/5">
-          <div className="px-6 py-4 flex justify-between items-center border-b border-amber-900/10 bg-gradient-to-r from-[#050505] to-amber-950/5">
-            <div className="flex items-center gap-4">
-              <div
-                className={`relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center overflow-hidden ${
-                  totalWeight === 100
-                    ? 'bg-gradient-to-br from-emerald-900/50 to-emerald-950/80 ring-1 ring-emerald-700/30'
-                    : totalWeight > 100
-                      ? 'bg-gradient-to-br from-red-900/50 to-red-950/80 ring-1 ring-red-700/30'
-                      : 'bg-gradient-to-br from-amber-900/30 to-[#0a0a0a] ring-1 ring-amber-800/20'
-                }`}
-              >
-                <span
-                  className={`text-2xl ${totalWeight === 100 ? 'text-emerald-400' : totalWeight > 100 ? 'text-red-400' : 'text-amber-500'}`}
-                  style={{ fontFamily: '"Times New Roman", serif' }}
-                >
-                  {totalWeight}
-                </span>
-                <span className="text-[10px] text-white/40 -mt-1">%</span>
-              </div>
-              <div>
-                <div className="text-xs text-amber-700/70 font-medium uppercase tracking-wider">Total</div>
-                <div className="text-sm mt-1">
-                  {totalWeight === 100 ? (
-                    <span className="text-emerald-400 flex items-center gap-1.5"><Check size={14} /> Complete</span>
-                  ) : totalWeight > 100 ? (
-                    <span className="text-red-400">+{totalWeight - 100}% over</span>
-                  ) : (
-                    <span className="text-white/50">{100 - totalWeight}% left</span>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              {portfolio.length >= 2 && (
-                <button
-                  onClick={distributeEvenly}
-                  className="btn-glass-gold flex items-center gap-2 text-sm px-4 py-2 rounded-xl"
-                >
-                  <Percent size={14} /> Equal
-                </button>
-              )}
-              <div className="text-sm text-amber-300/50" style={{ fontFamily: '"Times New Roman", serif' }}>
-                {portfolio.length} asset{portfolio.length !== 1 ? 's' : ''}
-              </div>
-            </div>
+          <div className="border-b border-white/5">
+            <PortfolioProgressBar
+              portfolio={portfolio}
+              totalWeight={totalWeight}
+              onDistributeEvenly={distributeEvenly}
+            />
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
@@ -1063,10 +1251,11 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
               )}
             </AnimatePresence>
 
-            {portfolio.map((item) => (
+            {portfolio.map((item, index) => (
               <DesktopAssetCard
                 key={item.token.address}
                 item={item}
+                colorIndex={index}
                 totalWeight={totalWeight}
                 onUpdateWeight={updateWeight}
                 onRemove={removeToken}
