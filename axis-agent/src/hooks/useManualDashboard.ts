@@ -12,6 +12,63 @@ import type {
   TabType,
 } from '../components/create/manual/types';
 
+// ETF / fund alternative search keywords (ticker → common search terms not in name/symbol)
+const ETF_ALIASES: Record<string, string[]> = {
+  QQQ:  ['nasdaq', 'invesco qqq', 'tech index'],
+  SPY:  ['s&p 500', 'sp500', 's&p500', 'standard poor'],
+  VOO:  ['vanguard s&p', 'vanguard 500'],
+  VTI:  ['vanguard total', 'total market'],
+  VGT:  ['vanguard tech', 'information technology'],
+  IWM:  ['russell 2000', 'small cap'],
+  GLD:  ['gold etf', 'gold fund', 'precious metal'],
+  SLV:  ['silver etf', 'silver fund'],
+  XLF:  ['financials', 'banking sector'],
+  XLK:  ['tech sector', 'technology sector'],
+  XLE:  ['energy sector'],
+  XLV:  ['healthcare sector', 'health sector'],
+  XLI:  ['industrials'],
+  XLP:  ['consumer staples'],
+  XLY:  ['consumer discretionary'],
+  XLU:  ['utilities'],
+  XLRE: ['real estate', 'reit'],
+  TLT:  ['long bond', 'treasury bond', '20 year'],
+  HYG:  ['high yield', 'junk bond', 'credit'],
+  BTC:  ['bitcoin'],
+  ETH:  ['ethereum'],
+  SOL:  ['solana'],
+};
+
+// Score a token against a query — higher = better match
+function scoreTokenMatch(token: JupiterToken, q: string): number {
+  const sym  = token.symbol.toLowerCase();
+  const name = token.name.toLowerCase();
+  let score  = 0;
+
+  // Symbol matches (highest priority)
+  if (sym === q)             score += 120;
+  else if (sym.startsWith(q)) score += 80;
+  else if (sym.includes(q))   score += 45;
+
+  // Name matches
+  if (name === q)              score += 100;
+  else if (name.startsWith(q)) score += 65;
+  else if (name.includes(q))   score += 28;
+
+  // ETF alias dictionary
+  const aliases = ETF_ALIASES[token.symbol.toUpperCase()];
+  if (aliases?.some((a) => a.includes(q) || q.includes(a))) score += 55;
+
+  // Boost verified / stock tokens
+  if (token.isVerified)           score += 6;
+  if (token.source === 'stock')   score += 4;
+
+  // Boost by liquidity (log scale so it doesn't overwhelm text matches)
+  if (token.marketCap && score > 0)
+    score += Math.min(8, Math.log10(token.marketCap + 1));
+
+  return score;
+}
+
 const POPULAR_SYMBOLS = [
   'SOL',
   'USDC',
@@ -49,9 +106,7 @@ export const useManualDashboard = ({
     'all' | 'crypto' | 'stock' | 'commodity' | 'prediction'
   >('all');
   
-  // Prediction market sort option
-  type PredictionSortOption = 'volume' | 'close-race' | 'ending-soon' | 'recent';
-  const [predictionSortBy, setPredictionSortBy] = useState<PredictionSortOption>('volume');
+  // Prediction markets are always sorted by volume
 
   const [config, setConfig] = useState<StrategyConfig>({
     name: initialConfig?.name || '',
@@ -84,27 +139,26 @@ export const useManualDashboard = ({
     if (searchQuery.trim()) {
       const lowerQ = searchQuery.trim().toLowerCase();
 
-      // 1. Local Search (手元の全リストから検索) - これが最速かつ情報リッチ
-      // Predictionトークン(source='dflow')は通常の検索結果には混ぜない（ノイズになるため）
-      const localMatches = allTokens.filter((t) => {
-        if (t.source === 'dflow') return false;
-        return (
-          t.symbol.toLowerCase().includes(lowerQ) ||
-          t.name.toLowerCase().includes(lowerQ) ||
-          t.address === searchQuery // アドレス完全一致
-        );
-      });
+      // 1. Local scored search — filters by any match (score > 0) then ranks
+      const localMatches = allTokens
+        .filter((t) => {
+          if (t.source === 'dflow') return false;
+          if (t.address === searchQuery) return true; // exact CA
+          return scoreTokenMatch(t, lowerQ) > 0;
+        })
+        .map((t) => ({ token: t, score: scoreTokenMatch(t, lowerQ) }))
+        .sort((a, b) => b.score - a.score)
+        .map((r) => r.token);
 
-      // 2. API Results (searchResults) - ローカルにないものだけ追加
-      // これにより、Memeコインなどの「手元にないトークン」もAPI経由で表示される
+      // 2. API results not already in local list (e.g. obscure meme coins)
       const uniqueApiResults = searchResults.filter(
         (apiToken) => !localMatches.some((local) => local.address === apiToken.address)
       );
 
-      // 3. Merge & Address Search
+      // 3. Merge: ranked local first, then unranked API tail
       const combined = [...localMatches, ...uniqueApiResults];
 
-      // アドレス検索でヒットしたフォールバックがあれば先頭に追加
+      // CA fallback token at top if not already present
       if (caFallbackToken && !combined.find((t) => t.address === caFallbackToken.address)) {
         combined.unshift(caFallbackToken);
       }
@@ -219,72 +273,11 @@ export const useManualDashboard = ({
       );
     }
 
-    // Apply sorting based on predictionSortBy
-    switch (predictionSortBy) {
-      case 'volume':
-        result.sort((a: any, b: any) => (b.totalVolume || 0) - (a.totalVolume || 0));
-        break;
-      case 'close-race':
-        // Sort by how close the race is (markets near 50-50)
-        result.sort((a: any, b: any) => {
-          const aDiff = Math.abs(0.5 - (a.yesToken?.price || 0.5));
-          const bDiff = Math.abs(0.5 - (b.yesToken?.price || 0.5));
-          return aDiff - bDiff; // Closer to 50% comes first
-        });
-        break;
-      case 'ending-soon':
-        // Sort by expiry date (soonest first)
-        result.sort((a: any, b: any) => {
-          const aEnd = new Date(a.expiry || '2099-12-31').getTime();
-          const bEnd = new Date(b.expiry || '2099-12-31').getTime();
-          return aEnd - bEnd; // Earlier dates first
-        });
-        break;
-      case 'recent':
-        // Sort by creation date (newest first)
-        result.sort((a: any, b: any) => {
-          const aCreated = new Date(a.createdAt || 0).getTime();
-          const bCreated = new Date(b.createdAt || 0).getTime();
-          return bCreated - aCreated; // Newer dates first
-        });
-        break;
-    }
+    // Always sort by volume (highest first)
+    result.sort((a: any, b: any) => (b.totalVolume || 0) - (a.totalVolume || 0));
 
-    // 【追加】画像の多様性を確保（volumeソート時のみ）
-    if (predictionSortBy === 'volume') {
-      const diversifyPredictions = (markets: typeof result) => {
-        if (markets.length <= 10) return markets;
-        
-        const topTen = markets.slice(0, 10);
-        const remaining = markets.slice(10);
-        
-        // 画像URLでグループ化
-        const byImage = remaining.reduce((acc, market) => {
-          const key = market.image || 'unknown';
-          if (!acc[key]) acc[key] = [];
-          acc[key].push(market);
-          return acc;
-        }, {} as Record<string, typeof result>);
-        
-        // ラウンドロビン方式で交互配置
-        const diversified: typeof result = [];
-        const imageGroups = Object.values(byImage);
-        const maxLength = Math.max(...imageGroups.map((g: any) => g.length));
-        
-        for (let i = 0; i < maxLength; i++) {
-          for (const group of imageGroups) {
-            if ((group as any)[i]) diversified.push((group as any)[i]);
-          }
-        }
-        
-        return [...topTen, ...diversified];
-      };
-
-      result = diversifyPredictions(result);
-    }
-    
     return result;
-  }, [allTokens, searchQuery, activeTab, predictionSortBy]);
+  }, [allTokens, searchQuery, activeTab]);
 
   // C. その他の計算
   const selectedIds = useMemo(() => new Set(portfolio.map((p) => p.token.address)), [portfolio]);
@@ -594,8 +587,6 @@ export const useManualDashboard = ({
     setTokenFilter,
     connected,
     groupedPredictions,
-    predictionSortBy,
-    setPredictionSortBy,
     handleToIdentity,
     handleBackToBuilder,
     handleDeploy,

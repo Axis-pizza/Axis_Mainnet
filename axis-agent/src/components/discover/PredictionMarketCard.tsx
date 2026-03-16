@@ -11,7 +11,7 @@
  */
 
 import React, { memo } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, BarChart2 } from 'lucide-react';
 import { TokenImage } from '../common/TokenImage';
 import { ProbabilityBar } from './ProbabilityBar';
 import { inferCategory, getCategoryIcon } from '../../utils/categoryInference';
@@ -87,7 +87,7 @@ export const PredictionMarketCard = memo<PredictionMarketCardProps>(
             <span className={styles.categoryLabel}>{category}</span>
           </div>
           <div className={styles.volume}>
-            <span className={styles.volumeIcon}>⭐</span>
+            <BarChart2 size={13} style={{ opacity: 0.5 }} />
             <span className={styles.volumeText}>{formattedVolume}</span>
           </div>
         </div>

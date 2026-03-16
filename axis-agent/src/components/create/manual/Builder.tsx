@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect, useRef, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import {
   Search,
   ArrowLeft,
   ChevronRight,
   Check,
-  Loader2,
+
   AlertCircle,
   Percent,
   X,
@@ -25,18 +26,47 @@ import { StockTokenCard } from './StockTokenCard';
 import { formatCompactUSD, abbreviateAddress } from '../../../utils/formatNumber';
 import type { JupiterToken } from '../../../services/jupiter';
 import type { AssetItem, BuilderProps } from './types';
-import { PredictionSelectModal } from './PredictionSelectModal';
-import { PredictionEventCard, type PredictionGroup } from './PredictionEventCard';
-import { PredictionMarketCard } from '../../discover/PredictionMarketCard';
-import { ProbabilitySlider } from '../../discover/ProbabilitySlider';
-import { DateFilter, type DateFilterValue } from '../../discover/DateFilter';
-import { SortDropdown, type SortOption } from '../../discover/SortDropdown';
+import { PredictionListModal } from './PredictionListModal';
+import type { PredictionGroup } from './PredictionEventCard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared sub-components
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STEP_AMOUNT = 1;
+
+// ─── SVG Spinner (replaces Loader2 for all loading states) ───────────────────
+const AxisSpinner = ({ size = 32, className = '' }: { size?: number; className?: string }) => (
+  <motion.svg
+    width={size}
+    height={size}
+    viewBox="0 0 32 32"
+    fill="none"
+    className={className}
+    animate={{ rotate: 360 }}
+    transition={{ duration: 1.1, repeat: Infinity, ease: 'linear' }}
+    style={{ display: 'inline-block' }}
+  >
+    {/* Track */}
+    <circle cx="16" cy="16" r="12" stroke="rgba(201,168,76,0.12)" strokeWidth="2.5" />
+    {/* Arc */}
+    <circle
+      cx="16"
+      cy="16"
+      r="12"
+      stroke="url(#axisSpinnerGrad)"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeDasharray="28 48"
+    />
+    <defs>
+      <linearGradient id="axisSpinnerGrad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#e8ca80" />
+        <stop offset="100%" stopColor="#c9a84c" stopOpacity="0.3" />
+      </linearGradient>
+    </defs>
+  </motion.svg>
+);
 
 // ─── Brand copper-gold scale (Axis amber palette) ────────────────────────────
 // Core: #C77D36 = 18K Rose-Bronze. Light → #F4DFBE. Shadow → #1A0A04.
@@ -318,7 +348,7 @@ const FavoriteStar = memo(function FavoriteStar({
   );
 });
 
-// ─── Mobile: Token List Item (swipe-right to add, swipe-left to remove, tap for detail) ──
+// ─── Mobile: Token List Item (tap = detail, swipe right = add, swipe left = remove) ───
 const MobileTokenListItem = memo(
   function MobileTokenListItem({
     token,
@@ -338,128 +368,122 @@ const MobileTokenListItem = memo(
     onToggleFav: (e: React.MouseEvent) => void;
   }) {
     const x = useMotionValue(0);
-    const addOpacity = useTransform(x, [0, 56], [0, 1]);
-    const removeOpacity = useTransform(x, [-56, 0], [1, 0]);
-    const isDragging = useRef(false);
+    const THRESHOLD = 64;
 
-    // Flash glow when token is first selected
-    const [justAdded, setJustAdded] = useState(false);
-    const prevSelected = useRef(isSelected);
-    useEffect(() => {
-      if (isSelected && !prevSelected.current) {
-        setJustAdded(true);
-        const t = setTimeout(() => setJustAdded(false), 700);
-        return () => clearTimeout(t);
+    // Hint backgrounds revealed as user drags
+    const addOpacity = useTransform(x, [0, THRESHOLD], [0, 1]);
+    const removeOpacity = useTransform(x, [-THRESHOLD, 0], [1, 0]);
+
+    const handleDragEnd = (_: PointerEvent, info: { offset: { x: number } }) => {
+      const dx = info.offset.x;
+      if (dx > THRESHOLD && !isSelected) {
+        onAdd();
+      } else if (dx < -THRESHOLD && isSelected) {
+        onRemove?.();
       }
-      prevSelected.current = isSelected;
-    }, [isSelected]);
+      // Snap back
+      animate(x, 0, { type: 'spring', stiffness: 500, damping: 35 });
+    };
 
     return (
       <div className="relative overflow-hidden rounded-xl">
-        {/* right-swipe hint — add */}
-        <motion.div
-          style={{ opacity: addOpacity, background: 'rgba(199,125,54,0.12)' }}
-          className="absolute inset-0 flex items-center justify-end pr-4 pointer-events-none"
-        >
-          <div className="flex items-center gap-1.5 text-amber-400">
-            <Plus size={15} />
-            <span className="text-xs font-normal">Add</span>
-          </div>
-        </motion.div>
-
-        {/* left-swipe hint — remove */}
-        {isSelected && onRemove && (
+        {/* Add hint — revealed on right swipe */}
+        {!isSelected && (
           <motion.div
-            style={{ opacity: removeOpacity, background: 'rgba(239,68,68,0.12)' }}
-            className="absolute inset-0 flex items-center justify-start pl-4 pointer-events-none"
+            className="absolute inset-0 flex items-center pl-5 rounded-xl pointer-events-none"
+            style={{ background: 'rgba(48,164,108,0.18)', opacity: addOpacity }}
           >
-            <div className="flex items-center gap-1.5 text-red-400">
-              <X size={15} />
-              <span className="text-xs font-normal">Remove</span>
-            </div>
+            <Plus size={22} className="text-emerald-400" strokeWidth={2.5} />
+            <span className="ml-2 text-sm text-emerald-400 font-normal">Add</span>
+          </motion.div>
+        )}
+        {/* Remove hint — revealed on left swipe */}
+        {isSelected && (
+          <motion.div
+            className="absolute inset-0 flex items-center justify-end pr-5 rounded-xl pointer-events-none"
+            style={{ background: 'rgba(229,77,46,0.18)', opacity: removeOpacity }}
+          >
+            <span className="mr-2 text-sm text-red-400 font-normal">Remove</span>
+            <Minus size={22} className="text-red-400" strokeWidth={2.5} />
           </motion.div>
         )}
 
-        {/* selection flash overlay */}
-        {justAdded && (
-          <motion.div
-            initial={{ opacity: 0.6 }}
-            animate={{ opacity: 0 }}
-            transition={{ duration: 0.6 }}
-            className="absolute inset-0 rounded-xl pointer-events-none"
-            style={{ background: 'radial-gradient(ellipse, rgba(251,191,36,0.25) 0%, transparent 70%)' }}
-          />
-        )}
-
-        {/* draggable row */}
+        {/* Draggable row — onTap fires only when not dragging */}
         <motion.div
           drag="x"
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={{ left: isSelected && onRemove ? 0.3 : 0.03, right: 0.3 }}
-          style={{ x }}
-          onDragStart={() => { isDragging.current = true; }}
-          onDragEnd={(_, info) => {
-            if (info.offset.x > 56 && !isSelected) onAdd();
-            else if (info.offset.x < -56 && isSelected && onRemove) onRemove();
-            animate(x, 0, { type: 'spring', stiffness: 400, damping: 40 });
-            setTimeout(() => { isDragging.current = false; }, 80);
+          dragConstraints={{
+            left: isSelected ? -THRESHOLD * 1.6 : 0,
+            right: isSelected ? 0 : THRESHOLD * 1.6,
           }}
-          onTap={() => { if (!isDragging.current) onDetail(); }}
-          className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl min-h-[58px] select-none touch-pan-y transition-shadow ${
-            justAdded ? 'shadow-[0_0_16px_rgba(251,191,36,0.2)]' : ''
-          } ${
+          dragElastic={0.12}
+          dragMomentum={false}
+          dragDirectionLock
+          style={{ x, touchAction: 'pan-y' }}
+          onTap={onDetail}
+          onDragEnd={handleDragEnd}
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl min-h-[64px] ${
             isSelected
-              ? 'bg-gradient-to-r from-amber-950/60 to-amber-900/40 border border-amber-800/40'
+              ? 'bg-gradient-to-r from-amber-950/60 to-amber-900/30 border border-amber-800/35'
               : 'bg-[#181818]'
           }`}
         >
-          {/* logo */}
-          <div className="relative flex-none">
-            <motion.div
-              animate={justAdded ? { scale: [1, 1.15, 1] } : {}}
-              transition={{ duration: 0.35, ease: 'backOut' }}
-            >
-              <TokenImage src={token.logoURI} className="w-9 h-9 rounded-full bg-white/10" />
-            </motion.div>
+          {/* Logo */}
+          <div className="w-10 h-10 rounded-full bg-amber-900/25 flex items-center justify-center relative overflow-hidden flex-none">
+            <span className="absolute text-[14px] font-normal text-amber-400/40 select-none">
+              {token.symbol.charAt(0)}
+            </span>
+            <TokenImage src={token.logoURI} disableLazyLoad className="w-full h-full rounded-full object-cover absolute inset-0 z-10" />
             {token.isVerified && (
-              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center ring-1 ring-[#181818]">
-                <Check size={8} className="text-white" />
+              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 z-20 rounded-full bg-emerald-500 flex items-center justify-center ring-1 ring-[#181818]">
+                <Check size={7} className="text-white" />
               </div>
             )}
           </div>
 
-          {/* name */}
-          <div className="flex-1 min-w-0 text-left">
+          {/* Text */}
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <span className={`font-normal text-sm ${isSelected ? 'text-amber-400' : 'text-white'}`}>
+              <span className={`font-normal text-base leading-none ${isSelected ? 'text-amber-400' : 'text-white'}`}>
                 {token.symbol}
               </span>
-              {token.tags?.includes('meme') && <Sparkles size={9} className="text-pink-400" />}
+              {token.tags?.includes('meme') && <Sparkles size={11} className="text-pink-400" />}
             </div>
-            <div className="text-[11px] text-white/30 truncate">{token.name}</div>
+            <div className="text-[11px] text-white/40 truncate mt-1 font-mono">{formatCompactUSD(token.marketCap)}</div>
           </div>
 
-          {/* mc */}
-          <div className="text-right flex-none">
-            <div className="text-[9px] text-white/25 uppercase leading-none mb-0.5">MC</div>
-            <div className="text-[11px] text-white/50 font-mono leading-none">{formatCompactUSD(token.marketCap)}</div>
+          {/* Status badge */}
+          <div className="flex-none w-8 flex justify-center">
+            <AnimatePresence mode="wait" initial={false}>
+              {isSelected ? (
+                <motion.div
+                  key="check"
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                  className="w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-600"
+                >
+                  <Check size={14} className="text-zinc-950" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="plus"
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                  className="w-7 h-7 rounded-full border-2 border-white/15 flex items-center justify-center"
+                >
+                  <Plus size={14} className="text-white/40" />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-
-          {/* added indicator */}
-          {isSelected && (
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 25 }}
-              className="flex-none w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-700"
-            >
-              <Check size={13} className="text-zinc-950" />
-            </motion.div>
-          )}
         </motion.div>
       </div>
     );
   },
+
   (prev, next) =>
     prev.token.address === next.token.address &&
     prev.isSelected === next.isSelected &&
@@ -888,6 +912,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
     portfolio,
     searchQuery,
     setSearchQuery,
+    isSearching,
     isLoading,
     totalWeight,
     selectedIds,
@@ -912,12 +937,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [selectedDetailToken, setSelectedDetailToken] = useState<JupiterToken | null>(null);
   const mobileScrollRef = useRef<HTMLDivElement>(null);
-  const [selectedPredictionGroup, setSelectedPredictionGroup] = useState<PredictionGroup | null>(null);
-  
-  // Phase 2: Filter states
-  const [probabilityRange, setProbabilityRange] = useState<[number, number]>([0, 100]);
-  const [dateFilter, setDateFilter] = useState<DateFilterValue>('any-time');
-  const [sortOption, setSortOption] = useState<SortOption>('volume');
+  const [isPredictionListOpen, setIsPredictionListOpen] = useState(false);
 
   const mobileVirtualizer = useVirtualizer({
     count: sortedVisibleTokens.length,
@@ -1140,15 +1160,22 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
       </div>
 
 
-      {/* Token Selector Modal */}
-      {isSelectorOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            onClick={() => setIsSelectorOpen(false)}
-          />
-          <div className="relative w-full px-2 pointer-events-auto safe-area-bottom safe-area-top">
-            <div className="w-full bg-[#121212] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[82vh]">
+      {/* Token Selector Modal — portal to body so no parent overflow/transform interference */}
+      {isSelectorOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm px-3"
+          onClick={() => setIsSelectorOpen(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 8 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+            className="relative w-full max-w-lg pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full bg-[#121212] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+              style={{ maxHeight: 'min(88vh, 680px)' }}>
               <div className="shrink-0 bg-[#121212] border-b border-white/5 p-3 pb-2">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="relative flex-1">
@@ -1192,50 +1219,37 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
                 </div>
                 <TabSelector activeTab={activeTab} setActiveTab={setActiveTab} isWalletConnected={!!publicKey} />
                 
-                {/* Phase 2: Filter Panel (for prediction tab) */}
-                {activeTab === 'prediction' && (
-                  <div className="mt-3 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1">
-                        <SortDropdown value={sortOption} onChange={setSortOption} />
-                      </div>
-                      <div className="flex-1">
-                        <DateFilter value={dateFilter} onChange={setDateFilter} />
-                      </div>
-                    </div>
-                    <ProbabilitySlider value={probabilityRange} onChange={setProbabilityRange} />
-                  </div>
-                )}
               </div>
 
-              <div ref={mobileScrollRef} className="flex-1 overflow-y-auto bg-[#121212] custom-scrollbar">
+              <div ref={mobileScrollRef} className="flex-1 overflow-y-auto bg-[#121212] custom-scrollbar" style={{ touchAction: 'pan-y' }}>
                 {isLoading ? (
-                  <div className="flex flex-col items-center justify-center h-48 gap-3">
-                    <Loader2 className="w-8 h-8 text-amber-300 animate-spin" />
+                  <div className="flex flex-col items-center justify-center h-48 gap-4">
+                    <AxisSpinner size={36} />
                     <span className="text-sm text-white/30">Loading tokens...</span>
                   </div>
+                ) : isSearching ? (
+                  <div className="flex flex-col items-center justify-center h-48 gap-4">
+                    <AxisSpinner size={30} />
+                    <span className="text-sm text-white/30">Searching...</span>
+                  </div>
                 ) : activeTab === 'prediction' ? (
-                  <div className="px-1 pt-3 pb-10">
-                  {groupedPredictions.map((group) => {
-                    let selectedSide: 'YES' | 'NO' | undefined = undefined;
-                    if (group.yesToken && selectedIds.has(group.yesToken.address)) selectedSide = 'YES';
-                    if (group.noToken && selectedIds.has(group.noToken.address)) selectedSide = 'NO';
-
-                    return (
-                      <PredictionMarketCard
-                        key={`pred-${group.marketId}`}
-                        group={group}
-                        selectedSide={selectedSide}
-                        onAddClick={(g: PredictionGroup, side: 'YES' | 'NO') => {
-                          const token = side === 'YES' ? g.yesToken : g.noToken;
-                          if (token) addTokenToComposition(token, side);
-                        }}
-                      />
-                    );
-                  })}
-                    {groupedPredictions.length === 0 && (
-                      <div className="text-center py-20 text-white/20 text-sm">No predictions found</div>
-                    )}
+                  <div className="flex flex-col items-center justify-center h-full min-h-[200px] gap-4 px-6">
+                    <p className="text-xs text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                      {groupedPredictions.length} markets available · sorted by volume
+                    </p>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => setIsPredictionListOpen(true)}
+                      className="w-full py-3.5 rounded-2xl text-sm font-normal"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(201,168,76,0.15), rgba(201,168,76,0.08))',
+                        border: '1px solid rgba(201,168,76,0.25)',
+                        color: '#c9a84c',
+                      }}
+                    >
+                      Browse Prediction Markets
+                    </motion.button>
                   </div>
                 ) : sortedVisibleTokens.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-48 gap-3 text-white/20">
@@ -1270,21 +1284,24 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
                 )}
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
-      )}
+      , document.body)}
 
-      {/* Token Detail Modal */}
-      <AnimatePresence>
-        {selectedDetailToken && (
-          <TokenDetailModal
-            token={selectedDetailToken}
-            isSelected={selectedIds.has(selectedDetailToken.address)}
-            onAdd={() => handleTokenSelect(selectedDetailToken)}
-            onClose={() => setSelectedDetailToken(null)}
-          />
-        )}
-      </AnimatePresence>
+      {/* Token Detail Modal — portal to body */}
+      {createPortal(
+        <AnimatePresence>
+          {selectedDetailToken && (
+            <TokenDetailModal
+              token={selectedDetailToken}
+              isSelected={selectedIds.has(selectedDetailToken.address)}
+              onAdd={() => handleTokenSelect(selectedDetailToken)}
+              onClose={() => setSelectedDetailToken(null)}
+            />
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* Flying Particle */}
       <AnimatePresence>
@@ -1305,18 +1322,12 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
         )}
       </AnimatePresence>
 
-      <PredictionSelectModal
-        isOpen={selectedPredictionGroup !== null}
-        group={selectedPredictionGroup}
-        onClose={() => setSelectedPredictionGroup(null)}
+      <PredictionListModal
+        isOpen={isPredictionListOpen}
+        onClose={() => setIsPredictionListOpen(false)}
+        groups={groupedPredictions}
+        selectedIds={selectedIds}
         onSelect={handleTokenSelect}
-        selectedTokenAddress={
-          selectedPredictionGroup?.yesToken && selectedIds.has(selectedPredictionGroup.yesToken.address)
-            ? selectedPredictionGroup.yesToken.address
-            : selectedPredictionGroup?.noToken && selectedIds.has(selectedPredictionGroup.noToken.address)
-            ? selectedPredictionGroup.noToken.address
-            : undefined
-        }
       />
     </div>
   );
@@ -1351,12 +1362,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
 
   const { publicKey } = useWallet();
 
-  const [selectedPredictionGroup, setSelectedPredictionGroup] = useState<PredictionGroup | null>(null);
-  
-  // Phase 2: Filter states
-  const [probabilityRange, setProbabilityRange] = useState<[number, number]>([0, 100]);
-  const [dateFilter, setDateFilter] = useState<DateFilterValue>('any-time');
-  const [sortOption, setSortOption] = useState<SortOption>('volume');
+  const [isPredictionListOpen, setIsPredictionListOpen] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -1500,7 +1506,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 className="w-full bg-white/[0.04] border border-white/8 rounded-xl pl-11 pr-24 py-3 text-sm focus:border-amber-400/40 focus:bg-white/[0.06] outline-none transition-all placeholder:text-white/20 text-white"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {isSearching && <Loader2 className="text-amber-300 animate-spin" size={14} />}
+                {isSearching && <AxisSpinner size={16} />}
                 {searchQuery ? (
                   <button
                     onClick={() => setSearchQuery('')}
@@ -1572,50 +1578,37 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
               </label>
             </div>
             
-            {/* Phase 2: Filter Panel (for prediction tab) */}
-            {activeTab === 'prediction' && (
-              <div className="mt-3 space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1">
-                    <SortDropdown value={sortOption} onChange={setSortOption} />
-                  </div>
-                  <div className="flex-1">
-                    <DateFilter value={dateFilter} onChange={setDateFilter} />
-                  </div>
-                </div>
-                <ProbabilitySlider value={probabilityRange} onChange={setProbabilityRange} />
-              </div>
-            )}
           </div>
 
           <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 pb-4 custom-scrollbar">
             {isLoading ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-3">
-                <Loader2 className="w-8 h-8 text-amber-300 animate-spin" />
+              <div className="flex flex-col items-center justify-center h-40 gap-4">
+                <AxisSpinner size={32} />
                 <span className="text-sm text-white/30">Loading tokens...</span>
               </div>
+            ) : isSearching ? (
+              <div className="flex flex-col items-center justify-center h-40 gap-4">
+                <AxisSpinner size={26} />
+                <span className="text-sm text-white/30">Searching...</span>
+              </div>
             ) : activeTab === 'prediction' ? (
-              <div className="px-2 pt-4">
-                {groupedPredictions.map((group) => {
-                let selectedSide: 'YES' | 'NO' | undefined = undefined;
-                if (group.yesToken && selectedIds.has(group.yesToken.address)) selectedSide = 'YES';
-                if (group.noToken && selectedIds.has(group.noToken.address)) selectedSide = 'NO';
-
-                return (
-                  <PredictionMarketCard
-                    key={`pred-${group.marketId}`}
-                    group={group}
-                    selectedSide={selectedSide}
-                    onAddClick={(g: PredictionGroup, side: 'YES' | 'NO') => {
-                      const token = side === 'YES' ? g.yesToken : g.noToken;
-                      if (token) addTokenToComposition(token, side);
-                    }}
-                  />
-                );
-              })}
-                {groupedPredictions.length === 0 && (
-                  <div className="text-center py-20 text-white/20 text-sm">No predictions found</div>
-                )}
+              <div className="flex flex-col items-center justify-center h-full min-h-[180px] gap-4 px-4">
+                <p className="text-xs text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  {groupedPredictions.length} markets · sorted by volume
+                </p>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setIsPredictionListOpen(true)}
+                  className="w-full py-3 rounded-xl text-sm font-normal"
+                  style={{
+                    background: 'rgba(201,168,76,0.1)',
+                    border: '1px solid rgba(201,168,76,0.2)',
+                    color: '#c9a84c',
+                  }}
+                >
+                  Browse Prediction Markets
+                </motion.button>
               </div>
             ) : activeTab === 'stock' ? (
               <div className="px-2 pt-4">
@@ -1672,18 +1665,12 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 </div>
               </>
             )}
-            <PredictionSelectModal
-              isOpen={selectedPredictionGroup !== null}
-              group={selectedPredictionGroup}
-              onClose={() => setSelectedPredictionGroup(null)}
+            <PredictionListModal
+              isOpen={isPredictionListOpen}
+              onClose={() => setIsPredictionListOpen(false)}
+              groups={groupedPredictions}
+              selectedIds={selectedIds}
               onSelect={handleTokenSelect}
-              selectedTokenAddress={
-                selectedPredictionGroup?.yesToken && selectedIds.has(selectedPredictionGroup.yesToken.address)
-                  ? selectedPredictionGroup.yesToken.address
-                  : selectedPredictionGroup?.noToken && selectedIds.has(selectedPredictionGroup.noToken.address)
-                  ? selectedPredictionGroup.noToken.address
-                  : undefined
-              }
             />
           </div>
         </div>
