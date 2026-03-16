@@ -7,10 +7,12 @@ export const TokenImage = ({
   src,
   alt = '',
   className,
+  disableLazyLoad = false,
 }: {
   src?: string;
   alt?: string;
   className?: string;
+  disableLazyLoad?: boolean;
 }) => {
   const [imgSrc, setImgSrc] = useState(src || FALLBACK_IMAGE);
   const [loaded, setLoaded] = useState(false);
@@ -30,7 +32,7 @@ export const TokenImage = ({
       style={{ opacity: loaded ? 1 : 0, transition: 'opacity 0.2s ease' }}
       onLoad={() => setLoaded(true)}
       onError={() => { setImgSrc(FALLBACK_IMAGE); setLoaded(true); }}
-      loading="lazy"
+      loading={disableLazyLoad ? 'eager' : 'lazy'}
     />
   );
 };

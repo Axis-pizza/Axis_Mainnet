@@ -230,7 +230,10 @@ const SortHeader = ({
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
-const PAGE_SIZE = 50;
+// Fetch all strategies at once so client-side search covers the full dataset.
+// At ~1700 strategies the payload is ~1.7 MB which is acceptable.
+const FETCH_ALL_LIMIT = 2000;
+const PAGE_SIZE = 50; // kept for infinite-scroll of display (not fetching)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Enrich a raw strategy object
@@ -280,17 +283,13 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
   const [tokenDataMap, setTokenDataMap] = useState<Record<string, { logoURI?: string }>>({});
   const [userMap, setUserMap] = useState<Record<string, any>>({});
 
-  const [loading, setLoading] = useState(true);       // initial load
-  const [loadingMore, setLoadingMore] = useState(false); // subsequent pages
-  const [hasMore, setHasMore] = useState(true);
-  const offsetRef = useRef(0);
-  const fetchingRef = useRef(false); // guard against duplicate fetches
+  const [loading, setLoading] = useState(true);
+  const fetchingRef = useRef(false); // StrictMode guard
 
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('tvl');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
 
   // ── Merge raw items into the shared Map, return updated array ─────────────
   const mergeRaw = useCallback((items: any[]) => {
@@ -301,41 +300,20 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
     return Array.from(rawMapRef.current.values());
   }, []);
 
-  // ── Fetch one page of public strategies ──────────────────────────────────
-  const fetchPage = useCallback(async (offset: number, cancelled: { v: boolean }) => {
-    if (fetchingRef.current || cancelled.v) return;
-    fetchingRef.current = true;
-
-    try {
-      const res = await api.discoverStrategies(PAGE_SIZE, offset).catch(() => ({ strategies: [] }));
-      if (cancelled.v) return;
-
-      const incoming: any[] = res.strategies || [];
-      const updated = mergeRaw(incoming);
-      setRawStrategies(updated);
-
-      // If fewer items than PAGE_SIZE came back, we've hit the end
-      if (incoming.length < PAGE_SIZE) setHasMore(false);
-
-      offsetRef.current = offset + incoming.length;
-    } finally {
-      fetchingRef.current = false;
-    }
-  }, [mergeRaw]);
-
-  // ── Initial load ──────────────────────────────────────────────────────────
+  // ── Initial load — fetch ALL strategies in one request ────────────────────
   useEffect(() => {
     let cancelled = { v: false };
-    rawMapRef.current = new Map(); // reset on wallet change
-    offsetRef.current = 0;
-    setHasMore(true);
+    // Reset on each mount (handles StrictMode double-mount correctly)
+    rawMapRef.current = new Map();
+    fetchingRef.current = false;
     setLoading(true);
 
     const init = async () => {
+      if (fetchingRef.current) return;
+      fetchingRef.current = true;
       try {
-        // Parallel: first page + my strategies + token metadata
-        const [, myRes, tokensRes] = await Promise.all([
-          fetchPage(0, cancelled),
+        const [allRes, myRes, tokensRes] = await Promise.all([
+          api.discoverStrategies(FETCH_ALL_LIMIT, 0).catch(() => ({ strategies: [] })),
           publicKey
             ? api.getUserStrategies(publicKey.toBase58()).catch(() => ({ strategies: [] }))
             : Promise.resolve({ strategies: [] }),
@@ -343,23 +321,25 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
         ]);
         if (cancelled.v) return;
 
+        // Merge all public strategies
+        const allStrats: any[] = (allRes as any).strategies || [];
+        mergeRaw(allStrats);
+
+        // Merge own strategies (may not be in public list yet)
+        const myStrats: any[] = (myRes as any).strategies || (myRes as any) || [];
+        if (Array.isArray(myStrats) && myStrats.length > 0) mergeRaw(myStrats);
+
+        setRawStrategies(Array.from(rawMapRef.current.values()));
+
         // Token logo map
         const tokenMap: Record<string, { logoURI?: string }> = {};
-        (tokensRes.tokens || []).forEach((t: any) => {
+        ((tokensRes as any).tokens || []).forEach((t: any) => {
           if (t.mint) tokenMap[t.mint] = { logoURI: t.logoURI };
         });
-
-        // Merge own strategies
-        const myStrats: any[] = myRes.strategies || myRes || [];
-        if (Array.isArray(myStrats) && myStrats.length > 0) {
-          const updated = mergeRaw(myStrats);
-          setRawStrategies(updated);
-        }
-
         setTokenDataMap(tokenMap);
         setLoading(false);
 
-        // Background: creator profiles for first batch
+        // Background: creator profiles for top creators
         const topCreators = Array.from(
           new Set(
             Array.from(rawMapRef.current.values())
@@ -372,7 +352,7 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
         if (!cancelled.v && topCreators.length > 0) {
           const results = await Promise.all(
             topCreators.map((pubkey) =>
-              api.getUser(pubkey).then((r) => (r.success ? r.user : null)).catch(() => null)
+              api.getUser(pubkey).then((r: any) => (r.success ? r.user : null)).catch(() => null)
             )
           );
           if (!cancelled.v) {
@@ -383,33 +363,14 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
         }
       } catch {
         if (!cancelled.v) setLoading(false);
+      } finally {
+        fetchingRef.current = false;
       }
     };
 
     init();
     return () => { cancelled.v = true; };
-  }, [publicKey, fetchPage, mergeRaw]);
-
-  // ── Infinite scroll via IntersectionObserver ──────────────────────────────
-  useEffect(() => {
-    if (!sentinelRef.current) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
-          setLoadingMore(true);
-          const cancelled = { v: false };
-          fetchPage(offsetRef.current, cancelled).finally(() => {
-            if (!cancelled.v) setLoadingMore(false);
-          });
-        }
-      },
-      { rootMargin: '200px' }
-    );
-
-    observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
-  }, [hasMore, loadingMore, loading, fetchPage]);
+  }, [publicKey, mergeRaw]);
 
   // ── Enrich strategies (memoised, recalcs when raw/token/user data updates) ─
   const strategies = useMemo<DiscoveredStrategy[]>(
@@ -557,29 +518,12 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
             ))}
           </AnimatePresence>
 
-          {/* Infinite scroll sentinel */}
-          <div ref={sentinelRef} className="h-1" />
-
-          {/* Loading more indicator */}
-          {loadingMore && (
-            <div className="py-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <SkeletonRow key={i} delay={i * 0.05} />
-              ))}
-            </div>
-          )}
-
-          {/* End of list */}
-          {!hasMore && !searchQuery && (
-            <div className="py-8 text-center text-[11px] text-white/15 font-mono">
-              {displayed.length} ETFs total
-            </div>
-          )}
-          {searchQuery && (
-            <div className="py-6 text-center text-[11px] text-white/15 font-mono">
-              {displayed.length} matched "{searchQuery}"
-            </div>
-          )}
+          {/* Footer count */}
+          <div className="py-8 text-center text-[11px] text-white/15 font-mono">
+            {searchQuery
+              ? `${displayed.length} matched "${searchQuery}"`
+              : `${displayed.length} ETFs`}
+          </div>
         </div>
       )}
     </div>
