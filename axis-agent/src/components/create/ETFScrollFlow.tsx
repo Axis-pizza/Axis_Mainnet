@@ -23,7 +23,9 @@ import { DeploymentBlueprint } from './DeploymentBlueprint';
 // 3D Background (reused from CreateLanding)
 // ─────────────────────────────────────────────────────────────────────────────
 const TOKENS = ['SOL', 'BTC', 'ETH', 'USDC', 'JUP', 'AXIS'];
+const TOKENS_MOBILE = ['SOL', 'BTC', 'ETH'];
 const COINS_PER_TOKEN = 50;
+const COINS_PER_TOKEN_MOBILE = 15;
 const FIELD_SIZE = 10;
 const FIELD_DEPTH = 5;
 const GOLD_CORE = '#C77D36';
@@ -52,7 +54,7 @@ function createCoinTexture(symbol: string) {
   return texture;
 }
 
-function TokenSwarm({ symbol }: { symbol: string }) {
+function TokenSwarm({ symbol, count = COINS_PER_TOKEN }: { symbol: string; count?: number }) {
   const meshRef = useRef<THREE.InstancedMesh>(null!);
   const dummy = useRef(new THREE.Object3D()).current;
   const { geometry, materials, motionData } = useRef((() => {
@@ -61,7 +63,7 @@ function TokenSwarm({ symbol }: { symbol: string }) {
     const faceTex = createCoinTexture(symbol);
     const sideMat = new THREE.MeshStandardMaterial({ color: GOLD_CORE, metalness: 1.0, roughness: 0.3 });
     const faceMat = new THREE.MeshStandardMaterial({ map: faceTex, metalness: 0.8, roughness: 0.4 });
-    const data = Array.from({ length: COINS_PER_TOKEN }, () => ({
+    const data = Array.from({ length: count }, () => ({
       pos: new THREE.Vector3(
         (Math.random() - 0.5) * FIELD_SIZE,
         (Math.random() - 0.5) * FIELD_SIZE,
@@ -103,7 +105,7 @@ function TokenSwarm({ symbol }: { symbol: string }) {
     meshRef.current.instanceMatrix.needsUpdate = true;
   });
 
-  return <instancedMesh ref={meshRef} args={[geometry, materials, COINS_PER_TOKEN]} castShadow receiveShadow />;
+  return <instancedMesh ref={meshRef} args={[geometry, materials, count]} castShadow receiveShadow />;
 }
 
 function SweepLight() {
@@ -118,14 +120,16 @@ function SweepLight() {
   return <pointLight ref={lightRef} position={[0, 0, 2]} color="#FFE4B8" distance={10} decay={1.5} />;
 }
 
-function Scene() {
+function Scene({ mobile }: { mobile: boolean }) {
+  const tokens = mobile ? TOKENS_MOBILE : TOKENS;
+  const coinCount = mobile ? COINS_PER_TOKEN_MOBILE : COINS_PER_TOKEN;
   return (
     <>
       <ambientLight intensity={0.15} color="#C8D4E0" />
       <directionalLight position={[4, 5, 4]} intensity={1.5} color="#C77D36" castShadow />
       <SweepLight />
-      {TOKENS.map((token) => (
-        <TokenSwarm key={token} symbol={token} />
+      {tokens.map((token) => (
+        <TokenSwarm key={token} symbol={token} count={coinCount} />
       ))}
     </>
   );
@@ -399,13 +403,13 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
   return (
     <div className="relative bg-[#050301] overflow-x-hidden">
       {/* ── Fixed 3D Background ───────────────────────────────────────────── */}
-      <div className="fixed inset-0 z-0 pointer-events-none">
+      <div className="fixed inset-0 z-0 pointer-events-none" style={{ background: '#050301' }}>
         <Canvas
           camera={{ position: [0, 0, 5.0], fov: 45 }}
-          gl={{ antialias: true, alpha: true }}
-          dpr={[1, 2]}
+          gl={{ antialias: !isMobile, alpha: true }}
+          dpr={isMobile ? 1 : [1, 1.5]}
         >
-          <Scene />
+          <Scene mobile={isMobile} />
         </Canvas>
         {/* Subtle vignette at bottom so text is readable */}
         <div

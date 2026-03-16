@@ -7,7 +7,7 @@ import { useWallet } from '../../hooks/useWallet';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../services/api';
 import { SERVER_WALLET_PUBKEY } from '../../config/constants';
-import { getOrCreateUsdcAta, createUsdcTransferIx } from '../../services/usdc';
+import { getOrCreateUsdcAta, createUsdcTransferIx, getUsdcBalance } from '../../services/usdc';
 
 interface DeploymentBlueprintProps {
   strategyName: string;
@@ -38,7 +38,7 @@ export const DeploymentBlueprint = ({
   onComplete,
   onDeploySuccess,
 }: DeploymentBlueprintProps) => {
-  // tokensチェックは残しつつ、空の早期リターンはしないように修正（propsでデフォルト値を入れているため）
+  // Default values handle the null case; no early return needed
   if (!tokens) {
     // logging or handling if needed
   }
@@ -48,16 +48,23 @@ export const DeploymentBlueprint = ({
   const { showToast } = useToast();
 
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState(initialTvl ? initialTvl.toString() : '1.0');
+  const [depositAmount, setDepositAmount] = useState('0');
   const [depositAsset, setDepositAsset] = useState<'SOL' | 'USDC'>('USDC');
   const [isDeploying, setIsDeploying] = useState(false);
+  const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
+
+  // Fetch balance when modal opens
+  const handleInitialDeployClickWithBalance = async () => {
+    setIsDepositModalOpen(true);
+    if (wallet.publicKey) {
+      const bal = await getUsdcBalance(connection, wallet.publicKey);
+      setUsdcBalance(bal);
+    }
+  };
 
   const safeSymbol = info?.symbol || 'ETF';
   const safeTokens = Array.isArray(tokens) ? tokens : [];
 
-  const handleInitialDeployClick = () => {
-    setIsDepositModalOpen(true);
-  };
 
   const handleConfirmDeploy = async () => {
     if (!depositAmount) return;
@@ -71,44 +78,83 @@ export const DeploymentBlueprint = ({
     try {
       const amountUsdc = parseFloat(depositAmount);
 
-      // 1. USDC送金
+      // 1. Transfer USDC
       let txSignature = '';
       if (amountUsdc > 0) {
-        showToast(`Sending ${amountUsdc} USDC to Vault...`, 'info');
-        const transaction = new Transaction();
+        // Pre-check balance to surface a clear error before wallet rejects
+        const balance = await getUsdcBalance(connection, wallet.publicKey);
+        if (balance < amountUsdc) {
+          showToast(
+            `Insufficient USDC: you have ${balance.toFixed(2)} but need ${amountUsdc} USDC. Use the faucet to get devnet USDC.`,
+            'error'
+          );
+          setIsDeploying(false);
+          return;
+        }
 
+        showToast(`Sending ${amountUsdc} USDC to Vault...`, 'info');
+
+        // Derive ATA addresses
         const { ata: fromAta, instruction: createFromIx } = await getOrCreateUsdcAta(
-          connection,
-          wallet.publicKey,
-          wallet.publicKey
+          connection, wallet.publicKey, wallet.publicKey
         );
         const { ata: toAta, instruction: createToIx } = await getOrCreateUsdcAta(
-          connection,
-          wallet.publicKey,
-          SERVER_WALLET_PUBKEY
+          connection, wallet.publicKey, SERVER_WALLET_PUBKEY
         );
-        if (createFromIx) transaction.add(createFromIx);
-        if (createToIx) transaction.add(createToIx);
+
+        // Check ATA existence — only add create instruction if missing
+        const [fromAtaInfo, toAtaInfo] = await Promise.all([
+          connection.getAccountInfo(fromAta),
+          connection.getAccountInfo(toAta),
+        ]);
+
+        if (!fromAtaInfo) {
+          throw new Error(
+            'USDC token account not found. Please get Axis devnet USDC from the faucet first.\n' +
+            `(USDC mint: Gh9ZwEmd...)`
+          );
+        }
+
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+
+        const transaction = new Transaction();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = wallet.publicKey;
+
+        // Only add ATA creation if it doesn't exist yet
+        if (!toAtaInfo) transaction.add(createToIx);
+        void createFromIx; // fromAta already exists
 
         transaction.add(createUsdcTransferIx(fromAta, toAta, wallet.publicKey, amountUsdc));
 
-        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-        transaction.recentBlockhash = blockhash;
-        transaction.feePayer = wallet.publicKey;
-        const signedTx = await wallet.signTransaction(transaction);
-        txSignature = await connection.sendRawTransaction(signedTx.serialize(), {
-          skipPreflight: false,
-          preflightCommitment: 'confirmed',
-          maxRetries: 3,
+        // Sign first, then simulate the signed transaction (simulation requires signatures)
+        const signed = await wallet.signTransaction(transaction);
+
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
+        const sim = await connection.simulateTransaction(signed);
+        if (sim.value.err) {
+          const logs = sim.value.logs?.join('\n') ?? '(no logs)';
+          console.error('[Simulation failed]', sim.value.err, '\nLogs:\n', logs);
+          throw new Error(`Preflight failed: ${JSON.stringify(sim.value.err)}\n\n${logs}`);
+        }
+        console.log('[Simulation passed]', sim.value.logs);
+
+        txSignature = await connection.sendRawTransaction(signed.serialize(), {
+          skipPreflight: true,
+          maxRetries: 5,
         });
-        showToast('Confirming Transaction...', 'info');
-        await connection.confirmTransaction(
+        showToast('Confirming transaction...', 'info');
+        const confirmation = await connection.confirmTransaction(
           { signature: txSignature, blockhash, lastValidBlockHeight },
           'confirmed'
         );
+        if (confirmation.value.err) {
+          console.error('[Transaction failed on-chain]', confirmation.value.err);
+          throw new Error(`Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
+        }
       }
 
-      // 2. APIコール
+      // 2. API call
       showToast('🚀 Minting ETF Tokens...', 'info');
       const strategyData = {
         ownerPubkey: wallet.publicKey.toBase58(),
@@ -228,7 +274,7 @@ export const DeploymentBlueprint = ({
           whileHover={{ scale: 1.01, boxShadow: '0 0 28px rgba(201,168,76,0.3)' }}
           whileTap={{ scale: 0.98 }}
           transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-          onClick={handleInitialDeployClick}
+          onClick={handleInitialDeployClickWithBalance}
           disabled={isDeploying}
           className="flex-1 py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#080503] font-normal rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20"
         >
@@ -253,19 +299,39 @@ export const DeploymentBlueprint = ({
               className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-[#140E08] border border-[rgba(184,134,63,0.15)] rounded-3xl p-6 z-50 shadow-2xl"
             >
               <h3 className="text-xl font-normal text-[#F2E0C8] mb-4">Initial Liquidity</h3>
-              <div className="mb-6">
+
+              {/* USDC残高表示 */}
+              <div className="flex items-center justify-between mb-3 px-1">
+                <span className="text-xs text-[#B89860]">Your USDC Balance</span>
+                <span className={`text-xs font-mono font-normal ${usdcBalance === 0 ? 'text-red-400' : 'text-[#F2E0C8]'}`}>
+                  {usdcBalance === null ? '...' : `${usdcBalance.toFixed(2)} USDC`}
+                </span>
+              </div>
+
+              <div className="mb-4">
                 <label className="text-xs text-[#B89860] mb-1 block">Deposit Amount (USDC)</label>
                 <input
                   type="number"
+                  min="0"
                   value={depositAmount}
                   onChange={(e) => setDepositAmount(e.target.value)}
                   className="w-full p-4 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-xl font-normal text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
                 />
+                <p className="text-[11px] text-white/30 mt-1.5 px-1">
+                  You can mint with 0 USDC and deposit later.
+                </p>
               </div>
+
+              {usdcBalance === 0 && (
+                <div className="mb-4 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400">
+                  No devnet USDC found. Mint with 0 USDC or get some from the faucet first.
+                </div>
+              )}
+
               <button
                 onClick={handleConfirmDeploy}
                 disabled={isDeploying}
-                className="w-full py-4 bg-gradient-to-b from-[#F2E0C8] to-[#D4A261] text-[#080503] font-normal rounded-xl flex justify-center gap-2 hover:brightness-110 transition-all"
+                className="w-full py-4 bg-gradient-to-b from-[#F2E0C8] to-[#D4A261] text-[#080503] font-normal rounded-xl flex justify-center gap-2 hover:brightness-110 transition-all disabled:opacity-50"
               >
                 {isDeploying ? <Loader2 className="animate-spin" /> : 'Confirm & Mint'}
               </button>
