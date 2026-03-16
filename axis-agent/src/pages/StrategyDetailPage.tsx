@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { PublicKey } from '@solana/web3.js';
-import { useConnection } from '@solana/wallet-adapter-react';
+import { useConnection } from '../hooks/useWallet';
 import { StrategyDetailView } from '../components/discover/StrategyDetailView';
 import { getStrategyInfo } from '../services/kagemusha'; // On-chain fetch
 import { api } from '../services/api'; // Fallback API

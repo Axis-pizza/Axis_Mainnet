@@ -15,8 +15,7 @@ import {
   Share2,
   Coins,
 } from 'lucide-react';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { useWallet } from '../../hooks/useWallet';
+import { useWallet, useLoginModal } from '../../hooks/useWallet';
 import { api } from '../../services/api';
 import { useToast } from '../../context/ToastContext';
 import { ProfileEditModal } from './ProfileEditModal';
@@ -116,7 +115,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isWalletModalPending, setIsWalletModalPending] = useState(false);
-  const { setVisible, visible: walletModalVisible } = useWalletModal();
+  const { setVisible, visible: walletModalVisible } = useLoginModal();
   const { publicKey, disconnect, connected } = useWallet();
 
   const resetUserData = useCallback(() => {
@@ -181,18 +180,16 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
   };
 
   const handleDisconnect = async () => {
+    setIsDisconnecting(true);
     try {
-      setIsDisconnecting(true);
-      await disconnect();
       resetUserData();
       onClose();
-      showToast('Wallet disconnected', 'info');
+      await disconnect();
     } catch (error) {
-      console.error('Disconnect error:', error);
-      showToast('Failed to disconnect wallet', 'error');
-    } finally {
-      setIsDisconnecting(false);
+      console.error('Logout error:', error);
     }
+    setIsDisconnecting(false);
+    showToast('Logged out', 'info');
   };
 
   const handleCheckIn = async () => {
@@ -433,7 +430,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
               </div>
 
               {/* Disconnect Footer */}
-              {!showConnectView && publicKey && (
+              {connected && (
                 <div className="mt-auto shrink-0 p-6 pt-0">
                   <button
                     onClick={handleDisconnect}
@@ -445,7 +442,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                     ) : (
                       <LogOut className="h-4 w-4" />
                     )}
-                    {isDisconnecting ? 'Disconnecting...' : 'Disconnect Wallet'}
+                    {isDisconnecting ? 'Logging out...' : 'Log Out'}
                   </button>
                 </div>
               )}

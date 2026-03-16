@@ -4,8 +4,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useWallet, useConnection } from './hooks/useWallet';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useWallet, useConnection, useLoginModal } from './hooks/useWallet';
 import { FloatingNav, type ViewState } from './components/common/FloatingNav';
 import { TutorialOverlay } from './components/common/TutorialOverlay';
 import { KagemushaFlow } from './components/create';
@@ -38,7 +37,7 @@ export default function Home() {
 
   const { connected, publicKey } = useWallet();
   const { connection } = useConnection();
-  const { setVisible: setWalletModalVisible } = useWalletModal();
+  const { setVisible: setWalletModalVisible } = useLoginModal();
   const [balance, setBalance] = useState<number | null>(null);
 
   // Fetch wallet balance (USDC)

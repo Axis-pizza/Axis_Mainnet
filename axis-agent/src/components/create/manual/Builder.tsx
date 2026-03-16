@@ -17,7 +17,7 @@ import {
   Copy,
   Star,
 } from 'lucide-react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '../../../hooks/useWallet';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { TokenImage } from '../../common/TokenImage';
 import { WeightControl } from './WeightControl';

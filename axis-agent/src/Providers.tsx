@@ -1,24 +1,50 @@
 import { useMemo } from 'react';
 import type { FC, ReactNode } from 'react';
-import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
-// 削除: import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
-import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
-import { clusterApiUrl } from '@solana/web3.js';
+import { PrivyProvider } from '@privy-io/react-auth';
+import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana';
+import { Connection, clusterApiUrl } from '@solana/web3.js';
+import { ConnectionContext } from './context/ConnectionContext';
 
-import '@solana/wallet-adapter-react-ui/styles.css';
+const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID || 'cmmtfgqr3009b0ejokozel5gx';
+
+const solanaConnectors = toSolanaWalletConnectors({
+  shouldAutoConnect: false,
+});
 
 export const Providers: FC<{ children: ReactNode }> = ({ children }) => {
-  const network = WalletAdapterNetwork.Devnet;
-  const endpoint = useMemo(() => import.meta.env.VITE_RPC_URL || clusterApiUrl(network), [network]);
-
-  const wallets = useMemo(() => [], []);
+  const endpoint = useMemo(
+    () => import.meta.env.VITE_RPC_URL || clusterApiUrl('devnet'),
+    []
+  );
+  const connection = useMemo(() => new Connection(endpoint), [endpoint]);
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect={true}>
-        <WalletModalProvider>{children}</WalletModalProvider>
-      </WalletProvider>
-    </ConnectionProvider>
+    <PrivyProvider
+      appId={PRIVY_APP_ID}
+      config={{
+        appearance: {
+          theme: 'dark',
+          accentColor: '#D97706',
+          logo: '/AxisLogoo.png',
+          walletChainType: 'solana-only',
+          walletList: ['detected_solana_wallets'],
+        },
+        loginMethods: ['wallet', 'email'],
+        embeddedWallets: {
+          solana: {
+            createOnLogin: 'users-without-wallets',
+          },
+        },
+        externalWallets: {
+          solana: {
+            connectors: solanaConnectors,
+          },
+        },
+      }}
+    >
+      <ConnectionContext.Provider value={{ connection }}>
+        {children}
+      </ConnectionContext.Provider>
+    </PrivyProvider>
   );
 };

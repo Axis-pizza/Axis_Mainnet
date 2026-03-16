@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useWallet, useConnection, useLoginModal } from './useWallet';
 import { JupiterService, WalletService, type JupiterToken } from '../services/jupiter';
 import { fetchPredictionTokens, fetchStockTokens, fetchCommodityTokens } from '../services/dflow';
 import { fetchMarketCapMap } from '../services/coingecko';
@@ -120,7 +119,7 @@ export const useManualDashboard = ({
 
   const { connected, publicKey } = useWallet();
   const { connection } = useConnection();
-  const { setVisible } = useWalletModal();
+  const { setVisible } = useLoginModal();
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const caFetchRef = useRef<string | null>(null);
 
