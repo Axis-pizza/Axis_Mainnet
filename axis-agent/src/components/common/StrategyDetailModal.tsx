@@ -78,11 +78,11 @@ export const StrategyDetailModal = ({ isOpen, onClose, strategy }: StrategyDetai
               >
                 <div className="flex justify-between items-start mb-6">
                   <div>
-                    <h3 className="text-2xl font-serif font-bold text-white mb-1">
+                    <h3 className="text-2xl font-serif font-normal text-white mb-1">
                       {strategy.name}
                     </h3>
                     <div className="flex items-center gap-2 text-sm text-[#7A5A30]">
-                      <span className="px-2 py-0.5 bg-white/5 rounded text-xs font-bold tracking-wider">
+                      <span className="px-2 py-0.5 bg-white/5 rounded text-xs font-normal tracking-wider">
                         {strategy.type || 'STRATEGY'}
                       </span>
                       <span>•</span>
@@ -113,7 +113,7 @@ export const StrategyDetailModal = ({ isOpen, onClose, strategy }: StrategyDetai
                     <div className="flex items-center gap-2 text-xs text-[#7A5A30] mb-1">
                       <Activity className="w-3 h-3" /> APY (Est.)
                     </div>
-                    <p className="text-xl font-bold text-[#B8863F]">
+                    <p className="text-xl font-normal text-[#B8863F]">
                       {((strategy.roi || 0) * 12).toFixed(1)}%
                     </p>
                   </div>
@@ -122,7 +122,7 @@ export const StrategyDetailModal = ({ isOpen, onClose, strategy }: StrategyDetai
                       <TrendingUp className="w-3 h-3" /> 24h Change
                     </div>
                     <p
-                      className={`text-xl font-bold ${(strategy.roi || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                      className={`text-xl font-normal ${(strategy.roi || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}
                     >
                       {(strategy.roi || 0).toFixed(2)}%
                     </p>
@@ -131,14 +131,14 @@ export const StrategyDetailModal = ({ isOpen, onClose, strategy }: StrategyDetai
                     <div className="flex items-center gap-2 text-xs text-[#7A5A30] mb-1">
                       <Wallet className="w-3 h-3" /> TVL
                     </div>
-                    <p className="text-xl font-bold text-white">
+                    <p className="text-xl font-normal text-white">
                       {strategy.tvl ? strategy.tvl.toLocaleString() : '0'} USDC
                     </p>
                   </div>
                 </div>
 
                 <div className="bg-[#080503] p-4 rounded-xl border border-[rgba(184,134,63,0.08)]">
-                  <label className="text-xs text-[#7A5A30] font-bold uppercase mb-2 block">
+                  <label className="text-xs text-[#7A5A30] font-normal uppercase mb-2 block">
                     Deposit Amount (USDC)
                   </label>
                   <div className="flex gap-3">
@@ -147,12 +147,12 @@ export const StrategyDetailModal = ({ isOpen, onClose, strategy }: StrategyDetai
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
                       placeholder="0.0"
-                      className="flex-1 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg px-4 py-3 text-[#F2E0C8] font-bold outline-none focus:border-[#B8863F]"
+                      className="flex-1 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg px-4 py-3 text-[#F2E0C8] font-normal outline-none focus:border-[#B8863F]"
                     />
                     <button
                       onClick={handleDeposit}
                       disabled={loading || !amount}
-                      className="px-8 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#140D07] font-bold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[0_0_12px_rgba(184,134,63,0.35)]"
+                      className="px-8 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#140D07] font-normal rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[0_0_12px_rgba(184,134,63,0.35)]"
                     >
                       {loading ? 'Sending...' : 'Invest'}
                     </button>

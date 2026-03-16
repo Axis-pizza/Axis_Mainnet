@@ -94,7 +94,7 @@ export const PriceChart = ({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <span
-              className={`text-lg font-bold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}
+              className={`text-lg font-normal ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}
             >
               {isPositive ? '+' : ''}
               {change.toFixed(2)}%

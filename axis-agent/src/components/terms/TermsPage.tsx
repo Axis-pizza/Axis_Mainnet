@@ -15,7 +15,7 @@ export const TermsPage = () => {
           >
             <ArrowLeft size={20} className="text-white/70" />
           </button>
-          <h1 className="text-lg font-semibold tracking-tight">Terms of Service (Devnet Beta)</h1>
+          <h1 className="text-lg font-normal tracking-tight">Terms of Service (Devnet Beta)</h1>
         </div>
       </div>
 
@@ -42,7 +42,7 @@ export const TermsPage = () => {
 
         <div className="space-y-10 text-white/70 text-sm leading-relaxed">
           <section>
-            <h2 className="text-white text-base font-semibold mb-3">1. Acceptance of Terms</h2>
+            <h2 className="text-white text-base font-normal mb-3">1. Acceptance of Terms</h2>
             <p>
               By accessing or using the Axis Devnet platform ("Service"), you acknowledge that this
               is a beta version intended solely for testing and demonstration. You agree to be bound
@@ -51,7 +51,7 @@ export const TermsPage = () => {
           </section>
 
           <section>
-            <h2 className="text-white text-base font-semibold mb-3">
+            <h2 className="text-white text-base font-normal mb-3">
               2. Nature of Service (Testnet/Devnet)
             </h2>
             <p>
@@ -75,7 +75,7 @@ export const TermsPage = () => {
           </section>
 
           <section>
-            <h2 className="text-white text-base font-semibold mb-3">
+            <h2 className="text-white text-base font-normal mb-3">
               3. No Financial Advice or Service
             </h2>
             <p>
@@ -86,7 +86,7 @@ export const TermsPage = () => {
           </section>
 
           <section>
-            <h2 className="text-white text-base font-semibold mb-3">4. User Responsibilities</h2>
+            <h2 className="text-white text-base font-normal mb-3">4. User Responsibilities</h2>
             <p>
               You agree not to treat this Service as a live trading platform. You are responsible
               for ensuring that you are connected to the correct network (Solana Devnet) and
@@ -96,7 +96,7 @@ export const TermsPage = () => {
           </section>
 
           <section>
-            <h2 className="text-white text-base font-semibold mb-3">5. Disclaimer of Warranties</h2>
+            <h2 className="text-white text-base font-normal mb-3">5. Disclaimer of Warranties</h2>
             <p>
               The Service is provided "as is" and "as available" without warranties of any kind. We
               do not guarantee that the Service will be secure, error-free, or uninterrupted. Smart
@@ -105,7 +105,7 @@ export const TermsPage = () => {
           </section>
 
           <section>
-            <h2 className="text-white text-base font-semibold mb-3">6. Limitation of Liability</h2>
+            <h2 className="text-white text-base font-normal mb-3">6. Limitation of Liability</h2>
             <p>
               Axis shall not be liable for any damages arising from your use of the Service,
               including but not limited to data loss, service interruptions, or confusion regarding
@@ -115,7 +115,7 @@ export const TermsPage = () => {
           </section>
 
           <section>
-            <h2 className="text-white text-base font-semibold mb-3">
+            <h2 className="text-white text-base font-normal mb-3">
               7. Feedback & Intellectual Property
             </h2>
             <p>
@@ -126,7 +126,7 @@ export const TermsPage = () => {
           </section>
 
           <section>
-            <h2 className="text-white text-base font-semibold mb-3">8. Changes to Terms</h2>
+            <h2 className="text-white text-base font-normal mb-3">8. Changes to Terms</h2>
             <p>
               We reserve the right to update these Terms or the functionality of the Devnet
               prototype at any time.

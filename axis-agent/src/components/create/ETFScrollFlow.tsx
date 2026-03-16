@@ -181,7 +181,7 @@ function InlineIdentityStep({
     <div className="max-w-md mx-auto px-5 py-10 space-y-6">
       {/* Section header */}
       <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-sm font-medium uppercase tracking-wider mb-3">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-sm font-normal uppercase tracking-wider mb-3">
           <Fingerprint size={14} /> Identity
         </div>
         <h2
@@ -202,7 +202,7 @@ function InlineIdentityStep({
         }`}
       >
         <div
-          className={`flex items-center gap-2 mb-3 text-xs font-bold uppercase tracking-wider ${focusedField === 'ticker' ? 'text-amber-600' : 'text-white/30'}`}
+          className={`flex items-center gap-2 mb-3 text-xs font-normal uppercase tracking-wider ${focusedField === 'ticker' ? 'text-amber-600' : 'text-white/30'}`}
         >
           <Sparkles size={14} /> Ticker
         </div>
@@ -245,7 +245,7 @@ function InlineIdentityStep({
         }`}
       >
         <div
-          className={`flex items-center gap-2 mb-3 text-xs font-bold uppercase tracking-wider ${focusedField === 'name' ? 'text-amber-600' : 'text-white/30'}`}
+          className={`flex items-center gap-2 mb-3 text-xs font-normal uppercase tracking-wider ${focusedField === 'name' ? 'text-amber-600' : 'text-white/30'}`}
         >
           <Type size={14} /> Name
         </div>
@@ -270,7 +270,7 @@ function InlineIdentityStep({
         }`}
       >
         <div
-          className={`flex items-center gap-2 mb-3 text-xs font-bold uppercase tracking-wider ${focusedField === 'desc' ? 'text-amber-600' : 'text-white/30'}`}
+          className={`flex items-center gap-2 mb-3 text-xs font-normal uppercase tracking-wider ${focusedField === 'desc' ? 'text-amber-600' : 'text-white/30'}`}
         >
           <FileText size={14} /> Description
         </div>
@@ -287,13 +287,13 @@ function InlineIdentityStep({
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 pt-2">
         <div className="relative overflow-hidden bg-gradient-to-br from-[#0a0a0a] to-amber-950/20 p-5 rounded-2xl border border-amber-900/20">
-          <div className="text-xs text-amber-700/50 uppercase font-medium">Fee</div>
+          <div className="text-xs text-amber-700/50 uppercase font-normal">Fee</div>
           <div className="text-2xl text-amber-500 mt-1" style={{ fontFamily: '"Times New Roman", serif' }}>
             0.5%
           </div>
         </div>
         <div className="relative overflow-hidden bg-gradient-to-br from-[#0a0a0a] to-amber-950/20 p-5 rounded-2xl border border-amber-900/20">
-          <div className="text-xs text-amber-700/50 uppercase font-medium">Assets</div>
+          <div className="text-xs text-amber-700/50 uppercase font-normal">Assets</div>
           <div className="text-2xl text-white mt-1" style={{ fontFamily: '"Times New Roman", serif' }}>
             {portfolioCount}
           </div>
@@ -308,7 +308,7 @@ function InlineIdentityStep({
           transition={{ type: 'spring', stiffness: 400, damping: 20 }}
           onClick={onDeploy}
           disabled={!config.ticker || !config.name}
-          className={`w-full py-5 rounded-2xl font-bold text-xl flex items-center justify-center gap-3 shadow-2xl ${
+          className={`w-full py-5 rounded-2xl font-normal text-xl flex items-center justify-center gap-3 shadow-2xl ${
             !config.ticker || !config.name
               ? 'bg-[#222] text-white/20 cursor-not-allowed'
               : 'bg-gradient-to-r from-amber-700 via-amber-600 to-amber-700 text-black'
@@ -422,7 +422,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-            className="font-black leading-[0.9] tracking-tighter text-white"
+            className="font-normal leading-[0.9] tracking-tighter text-white"
             style={{ fontSize: 'clamp(4rem, 10vw, 8rem)' }}
           >
             Your Idea.
@@ -434,7 +434,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5, duration: 0.6 }}
-            className="font-medium leading-relaxed max-w-sm mx-auto mt-5"
+            className="font-normal leading-relaxed max-w-sm mx-auto mt-5"
             style={{ fontSize: 'clamp(0.95rem, 2.2vw, 1.1rem)', color: 'rgba(232,194,138,0.55)' }}
           >
             Build, manage, and scale your on-chain index fund in seconds.
@@ -448,7 +448,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
             className="flex flex-col items-center gap-2 mt-12 cursor-pointer select-none"
             onClick={() => scrollTo(builderRef)}
           >
-            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-600/50">
+            <span className="text-[11px] font-normal uppercase tracking-[0.2em] text-amber-600/50">
               Scroll to build
             </span>
             <div className="flex flex-col items-center -space-y-2">
@@ -472,7 +472,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
           {/* Section label */}
           <div className="flex-none px-4 pt-4 pb-2">
             <div className="flex items-center justify-between">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-xs font-medium uppercase tracking-wider">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-800/20 text-amber-600 text-xs font-normal uppercase tracking-wider">
                 Step 1 · Select Tokens
               </div>
               <div className="text-xs text-white/30">

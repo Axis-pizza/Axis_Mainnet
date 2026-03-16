@@ -133,7 +133,7 @@ const MobileWeightControl = memo(
             <button
               key={qv}
               onClick={() => handleChange(qv)}
-              className="flex-1 h-8 rounded-lg text-xs font-semibold transition-all active:scale-95 bg-white/5 text-white/35"
+              className="flex-1 h-8 rounded-lg text-xs font-normal transition-all active:scale-95 bg-white/5 text-white/35"
               style={value === qv ? { backgroundColor: `${accentColor}22`, color: accentColor } : {}}
             >
               {qv}%
@@ -168,7 +168,7 @@ const MobileWeightControl = memo(
                   onChange={(e) => setInputValue(e.target.value.replace(/[^0-9]/g, ''))}
                   onBlur={handleInputBlur}
                   onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.blur()}
-                  className="w-14 h-8 bg-black/50 border rounded-lg text-center text-sm font-bold outline-none text-white"
+                  className="w-14 h-8 bg-black/50 border rounded-lg text-center text-sm font-normal outline-none text-white"
                   style={{ borderColor: fillColor }}
                   maxLength={3}
                   autoFocus
@@ -176,7 +176,7 @@ const MobileWeightControl = memo(
               ) : (
                 <button
                   onClick={() => { setIsEditing(true); setInputValue(value.toString()); }}
-                  className="w-14 h-8 rounded-lg text-sm font-bold transition-all active:scale-95 bg-white/5"
+                  className="w-14 h-8 rounded-lg text-sm font-normal transition-all active:scale-95 bg-white/5"
                   style={{ color: fillColor }}
                 >
                   {value}%
@@ -227,16 +227,16 @@ const TokenDetailModal = ({
           <TokenImage src={token.logoURI} className="w-14 h-14 rounded-full bg-white/10 flex-none" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xl font-black text-white">{token.symbol}</span>
+              <span className="text-xl font-normal text-white">{token.symbol}</span>
               {token.isVerified && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold">Verified</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-normal">Verified</span>
               )}
               {token.tags?.includes('meme') && <Sparkles size={13} className="text-pink-400" />}
             </div>
             <div className="text-sm text-white/40 truncate">{token.name}</div>
           </div>
           {isSelected && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-400 text-xs font-bold flex-none">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-400 text-xs font-normal flex-none">
               <Check size={12} />Added
             </div>
           )}
@@ -265,7 +265,7 @@ const TokenDetailModal = ({
           ].map(({ label, value }) => (
             <div key={label} className="bg-white/5 rounded-xl p-3">
               <div className="text-[9px] text-white/30 uppercase tracking-wide mb-1">{label}</div>
-              <div className="text-sm font-bold text-white">{value ?? '—'}</div>
+              <div className="text-sm font-normal text-white">{value ?? '—'}</div>
             </div>
           ))}
         </div>
@@ -274,7 +274,7 @@ const TokenDetailModal = ({
         {!isSelected && (
           <button
             onClick={() => { onAdd(); onClose(); }}
-            className="w-full btn-glass-gold rounded-2xl py-4 font-black text-base"
+            className="w-full btn-glass-gold rounded-2xl py-4 font-normal text-base"
           >
             Add to ETF
           </button>
@@ -363,7 +363,7 @@ const MobileTokenListItem = memo(
         >
           <div className="flex items-center gap-1.5 text-amber-400">
             <Plus size={15} />
-            <span className="text-xs font-bold">Add</span>
+            <span className="text-xs font-normal">Add</span>
           </div>
         </motion.div>
 
@@ -375,7 +375,7 @@ const MobileTokenListItem = memo(
           >
             <div className="flex items-center gap-1.5 text-red-400">
               <X size={15} />
-              <span className="text-xs font-bold">Remove</span>
+              <span className="text-xs font-normal">Remove</span>
             </div>
           </motion.div>
         )}
@@ -431,7 +431,7 @@ const MobileTokenListItem = memo(
           {/* name */}
           <div className="flex-1 min-w-0 text-left">
             <div className="flex items-center gap-1.5">
-              <span className={`font-bold text-sm ${isSelected ? 'text-amber-400' : 'text-white'}`}>
+              <span className={`font-normal text-sm ${isSelected ? 'text-amber-400' : 'text-white'}`}>
                 {token.symbol}
               </span>
               {token.tags?.includes('meme') && <Sparkles size={9} className="text-pink-400" />}
@@ -540,7 +540,7 @@ const MobileAssetCard = memo(
 
             {/* Symbol + name */}
             <div className="flex-1 min-w-0">
-              <div className="font-bold text-white text-[15px] tracking-wide leading-tight">
+              <div className="font-normal text-white text-[15px] tracking-wide leading-tight">
                 {item.token.symbol}
               </div>
               <div className="text-[11px] truncate mt-0.5" style={{ color: `${AXIS_GOLD_GLOW}0.45)` }}>
@@ -558,7 +558,7 @@ const MobileAssetCard = memo(
                 onChange={(e) => setInputValue(e.target.value.replace(/[^0-9]/g, ''))}
                 onBlur={handleWeightCommit}
                 onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.blur()}
-                className="w-[72px] h-11 border-2 rounded-xl text-center text-2xl font-bold outline-none tabular-nums"
+                className="w-[72px] h-11 border-2 rounded-xl text-center text-2xl font-normal outline-none tabular-nums"
                 style={{
                   background: 'rgba(10,5,2,0.7)',
                   borderColor: AXIS_GOLD,
@@ -574,7 +574,7 @@ const MobileAssetCard = memo(
                 className="flex items-baseline gap-0.5 active:opacity-60 transition-opacity"
               >
                 <span
-                  className="text-[32px] font-bold tabular-nums leading-none"
+                  className="text-[32px] font-normal tabular-nums leading-none"
                   style={{
                     color: isOverLimit ? '#ef4444' : AXIS_GOLD,
                     fontFamily: "'Lora', 'Times New Roman', serif",
@@ -582,7 +582,7 @@ const MobileAssetCard = memo(
                 >
                   {item.weight}
                 </span>
-                <span className="text-base font-bold" style={{ color: displayColor }}>%</span>
+                <span className="text-base font-normal" style={{ color: displayColor }}>%</span>
               </button>
             )}
 
@@ -636,7 +636,7 @@ const DesktopTokenListItem = ({
     </div>
     <div className="flex-1 min-w-0 text-left">
       <div className="flex items-center gap-1.5">
-        <span className={`font-bold text-sm ${isSelected ? 'text-amber-400' : 'text-white'}`}>
+        <span className={`font-normal text-sm ${isSelected ? 'text-amber-400' : 'text-white'}`}>
           {token.symbol}
         </span>
         {token.tags?.includes('meme') && <Sparkles size={10} className="text-pink-400" />}
@@ -734,14 +734,14 @@ const DesktopAssetCard = ({
             <TokenImage src={item.token.logoURI} className="relative w-9 h-9 rounded-full" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="font-bold text-white text-sm tracking-wide">{item.token.symbol}</div>
+            <div className="font-normal text-white text-sm tracking-wide">{item.token.symbol}</div>
             <div className="text-[11px] truncate mt-0.5" style={{ color: `${AXIS_GOLD_GLOW}0.40)` }}>
               {item.token.name}
             </div>
           </div>
           {/* Weight — sole percentage display */}
           <div
-            className="text-xl font-bold tabular-nums mr-1"
+            className="text-xl font-normal tabular-nums mr-1"
             style={{ color: displayColor, fontFamily: '"Times New Roman", serif' }}
           >
             {item.weight}%
@@ -801,7 +801,7 @@ const PortfolioProgressBar = memo(
                   ))}
                   {portfolio.length > 6 && (
                     <div
-                      className="relative w-8 h-8 rounded-full ring-2 ring-[#030303] bg-white/10 flex items-center justify-center text-[10px] text-white/50 font-bold flex-none"
+                      className="relative w-8 h-8 rounded-full ring-2 ring-[#030303] bg-white/10 flex items-center justify-center text-[10px] text-white/50 font-normal flex-none"
                       style={{ marginLeft: -10 }}
                     >
                       +{portfolio.length - 6}
@@ -813,14 +813,14 @@ const PortfolioProgressBar = memo(
             {/* Status */}
             <div className="text-sm">
               {isComplete ? (
-                <span className="font-bold flex items-center gap-1" style={{ color: '#D9A05B' }}>
+                <span className="font-normal flex items-center gap-1" style={{ color: '#D9A05B' }}>
                   <Check size={13} /> Ready
                 </span>
               ) : isOver ? (
-                <span className="font-bold text-red-400">+{totalWeight - 100}% over</span>
+                <span className="font-normal text-red-400">+{totalWeight - 100}% over</span>
               ) : (
                 <span style={{ color: `${AXIS_GOLD_GLOW}0.45)` }}>
-                  <span className="font-bold" style={{ color: AXIS_GOLD }}>{totalWeight}</span>% / 100%
+                  <span className="font-normal" style={{ color: AXIS_GOLD }}>{totalWeight}</span>% / 100%
                 </span>
               )}
             </div>
@@ -829,7 +829,7 @@ const PortfolioProgressBar = memo(
           {portfolio.length >= 2 && (
             <button
               onClick={onDistributeEvenly}
-              className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+              className="flex items-center gap-1 text-xs font-normal px-3 py-1.5 rounded-lg transition-colors"
               style={{
                 background: `${AXIS_GOLD_GLOW}0.08)`,
                 border: `1px solid ${AXIS_GOLD_GLOW}0.20)`,
@@ -1011,7 +1011,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
           <div className="sticky top-0 z-20 backdrop-blur-sm bg-black/50 px-4 py-2.5 flex items-center gap-3">
             {/* Allocation pill */}
             <motion.div
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-normal ${
                 totalWeight === 100
                   ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/30'
                   : totalWeight > 100
@@ -1041,7 +1041,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
             {portfolio.length >= 2 && (
               <button
                 onClick={distributeEvenly}
-                className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white/5 text-white/50 active:bg-white/10 transition-colors"
+                className="flex items-center gap-1 text-[11px] font-normal px-2.5 py-1.5 rounded-lg bg-white/5 text-white/50 active:bg-white/10 transition-colors"
               >
                 <Percent size={10} /> Equal
               </button>
@@ -1050,7 +1050,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
             {/* Add token button */}
             <button
               onClick={() => setIsSelectorOpen(true)}
-              className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full btn-glass-gold transition-colors"
+              className="flex items-center gap-1.5 text-[11px] font-normal px-3 py-1.5 rounded-full btn-glass-gold transition-colors"
             >
               <Plus size={12} /> Add
             </button>
@@ -1068,14 +1068,14 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
                       : 'bg-amber-900/10 border-amber-500/20'
                 }`}
               >
-                <span className={`text-2xl font-bold ${totalWeight === 100 ? 'text-emerald-400' : totalWeight > 100 ? 'text-red-400' : 'text-amber-500'}`}>
+                <span className={`text-2xl font-normal ${totalWeight === 100 ? 'text-emerald-400' : totalWeight > 100 ? 'text-red-400' : 'text-amber-500'}`}>
                   {totalWeight}
                 </span>
                 <span className="text-[10px] text-white/40 -mt-1">%</span>
               </div>
               <div>
-                <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Allocation</div>
-                <div className="text-sm font-medium mt-0.5">
+                <div className="text-[10px] text-white/40 font-normal uppercase tracking-wider">Allocation</div>
+                <div className="text-sm font-normal mt-0.5">
                   {totalWeight === 100 ? (
                     <span className="text-emerald-400 flex items-center gap-1"><Check size={14} /> Ready</span>
                   ) : totalWeight > 100 ? (
@@ -1088,7 +1088,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
             </div>
             <div className="flex flex-col items-end gap-2">
               {portfolio.length >= 2 && (
-                <button onClick={distributeEvenly} className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg bg-white/5 text-white/70 active:bg-white/10 transition-colors">
+                <button onClick={distributeEvenly} className="flex items-center gap-1.5 text-xs font-normal px-3 py-2 rounded-lg bg-white/5 text-white/70 active:bg-white/10 transition-colors">
                   <Percent size={12} /> Equal
                 </button>
               )}
@@ -1106,7 +1106,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium mb-2"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-normal mb-2"
               >
                 <AlertCircle size={16} />
                 <span>Allocation exceeds 100%</span>
@@ -1134,7 +1134,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
             className="w-full py-4 rounded-2xl border border-dashed border-white/[0.08] flex items-center justify-center gap-2.5 text-white/25 active:bg-white/5 active:text-white/50 transition-colors"
           >
             <Plus size={17} />
-            <span className="text-sm font-medium">Add token</span>
+            <span className="text-sm font-normal">Add token</span>
           </motion.button>
         </div>
       </div>
@@ -1428,7 +1428,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 <span className="text-[10px] text-white/40 -mt-1">%</span>
               </div>
               <div>
-                <div className="text-xs text-amber-700/70 font-medium uppercase tracking-wider">Total</div>
+                <div className="text-xs text-amber-700/70 font-normal uppercase tracking-wider">Total</div>
                 <div className="text-sm mt-1">
                   {totalWeight === 100 ? (
                     <span className="text-emerald-400 flex items-center gap-1.5"><Check size={14} /> Complete</span>
@@ -1511,7 +1511,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 ) : (
                   <button
                     onClick={handlePasteCA}
-                    className="btn-glass-gold flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold"
+                    className="btn-glass-gold flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-normal"
                   >
                     <ClipboardPaste size={11} /> Paste
                   </button>
@@ -1522,7 +1522,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
             {!searchQuery && preferences.searchHistory.length > 0 && (
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1.5 px-1">
-                  <span className="text-[10px] text-white/25 uppercase tracking-wider font-bold">Recent</span>
+                  <span className="text-[10px] text-white/25 uppercase tracking-wider font-normal">Recent</span>
                   <button
                     onClick={preferences.clearSearchHistory}
                     className="text-[10px] text-white/30 hover:text-amber-300 transition-colors"
@@ -1538,7 +1538,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                       className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 shrink-0 hover:bg-white/10 border border-white/5 transition-colors"
                     >
                       <TokenImage src={item.logoURI} className="w-3.5 h-3.5 rounded-full" />
-                      <span className="text-[10px] text-white/60 font-medium">{item.symbol}</span>
+                      <span className="text-[10px] text-white/60 font-normal">{item.symbol}</span>
                     </button>
                   ))}
                 </div>
@@ -1558,7 +1558,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
 
             <div className="flex items-center justify-between mt-2">
               <label className="flex items-center gap-1.5 cursor-pointer shrink-0 ml-2">
-                <span className="text-[10px] text-white/30 font-bold">Verified</span>
+                <span className="text-[10px] text-white/30 font-normal">Verified</span>
                 <div
                   className={`relative w-7 h-4 rounded-full transition-colors ${preferences.verifiedOnly ? 'bg-amber-400' : 'bg-white/10'}`}
                   onClick={() => preferences.setVerifiedOnly(!preferences.verifiedOnly)}

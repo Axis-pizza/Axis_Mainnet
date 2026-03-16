@@ -42,11 +42,11 @@ export const TokenCard = ({
         {token.logoURI ? (
           <img src={token.logoURI} alt={token.symbol} className="w-6 h-6 rounded-full" />
         ) : (
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-[10px] font-bold">
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center text-[10px] font-normal">
             {token.symbol.charAt(0)}
           </div>
         )}
-        <span className="font-medium text-sm">{token.symbol}</span>
+        <span className="font-normal text-sm">{token.symbol}</span>
         {selected && <Check className="w-4 h-4 text-emerald-400 ml-auto" />}
       </motion.button>
     );
@@ -80,14 +80,14 @@ export const TokenCard = ({
         {token.logoURI ? (
           <img src={token.logoURI} alt={token.symbol} className="w-10 h-10 rounded-full" />
         ) : (
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center font-bold">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-400 to-pink-500 flex items-center justify-center font-normal">
             {token.symbol.charAt(0)}
           </div>
         )}
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-bold">{token.symbol}</span>
+            <span className="font-normal">{token.symbol}</span>
             {token.sector && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/50">
                 {token.sector}
@@ -100,7 +100,7 @@ export const TokenCard = ({
 
       {showPrice && (
         <div className="mt-3 flex items-end justify-between">
-          <span className="text-lg font-bold">
+          <span className="text-lg font-normal">
             ${token.priceFormatted || token.price?.toFixed(2) || '—'}
           </span>
           {change !== 0 && (

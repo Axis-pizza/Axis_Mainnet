@@ -157,7 +157,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
                         <span className="text-white font-serif text-xl tracking-wide">
                           Muse
                         </span>
-                        <span className="px-2 py-0.5 bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[9px] font-bold rounded-sm tracking-widest">
+                        <span className="px-2 py-0.5 bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[9px] font-normal rounded-sm tracking-widest">
                           FOUNDER
                         </span>
                       </div>
@@ -201,7 +201,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
               ) : (
                 <form onSubmit={submitReport} className="space-y-5">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] text-orange-500/70 uppercase tracking-widest font-sans font-bold pl-1">
+                    <label className="text-[10px] text-orange-500/70 uppercase tracking-widest font-sans font-normal pl-1">
                       Your ID
                     </label>
                     <div className="relative group">
@@ -221,7 +221,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] text-orange-500/70 uppercase tracking-widest font-sans font-bold pl-1">
+                    <label className="text-[10px] text-orange-500/70 uppercase tracking-widest font-sans font-normal pl-1">
                       Message
                     </label>
                     <textarea
@@ -294,7 +294,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
                     whileTap={{ scale: 0.96 }}
                     disabled={isSending}
                     type="submit"
-                    className="w-full bg-white text-black py-3.5 rounded-xl font-serif text-lg font-bold flex items-center justify-center gap-3 shadow-[0_0_15px_rgba(255,255,255,0.05)] transition-all disabled:opacity-50 mt-4"
+                    className="w-full bg-white text-black py-3.5 rounded-xl font-serif text-lg font-normal flex items-center justify-center gap-3 shadow-[0_0_15px_rgba(255,255,255,0.05)] transition-all disabled:opacity-50 mt-4"
                   >
                     {isSending ? (
                       <Loader2 className="animate-spin" size={20} />

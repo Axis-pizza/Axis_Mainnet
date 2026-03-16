@@ -73,7 +73,7 @@ export const TierBadge = ({ tier, size = 'sm' }: TierBadgeProps) => {
   return (
     <div
       className={`
-        inline-flex items-center rounded-full font-bold
+        inline-flex items-center rounded-full font-normal
         bg-gradient-to-r ${config.gradient}
         border ${config.border}
         ${config.glow}

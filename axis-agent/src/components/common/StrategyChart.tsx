@@ -68,7 +68,7 @@ export const StrategyChart = ({ strategyId, refreshTrigger }: StrategyChartProps
             {date.toLocaleDateString()}{' '}
             {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>
-          <p className="font-bold text-white text-sm">
+          <p className="font-normal text-white text-sm">
             ${val.toFixed(2)}
             <span className={`ml-2 ${pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               ({pnl >= 0 ? '+' : ''}
@@ -102,16 +102,16 @@ export const StrategyChart = ({ strategyId, refreshTrigger }: StrategyChartProps
     <div className="w-full">
       <div className="flex items-end justify-between mb-4 px-2">
         <div>
-          <p className="text-xs text-white/50 font-bold uppercase tracking-wider mb-1">
+          <p className="text-xs text-white/50 font-normal uppercase tracking-wider mb-1">
             Performance
           </p>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-serif font-bold text-white">
+            <span className="text-3xl font-serif font-normal text-white">
               {percentChange >= 0 ? '+' : ''}
               {percentChange.toFixed(2)}%
             </span>
             <span
-              className={`text-xs font-bold px-1.5 py-0.5 rounded ${isPositive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}
+              className={`text-xs font-normal px-1.5 py-0.5 rounded ${isPositive ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}
             >
               {TIMEFRAMES.find((t) => t.value === period)?.label}
             </span>
@@ -123,7 +123,7 @@ export const StrategyChart = ({ strategyId, refreshTrigger }: StrategyChartProps
             <button
               key={tf.value}
               onClick={() => setPeriod(tf.value)}
-              className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
+              className={`px-3 py-1 text-[10px] font-normal rounded-md transition-all ${
                 period === tf.value
                   ? 'bg-white/10 text-white shadow-sm'
                   : 'text-white/30 hover:text-white/60'

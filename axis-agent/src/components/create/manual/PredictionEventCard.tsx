@@ -51,22 +51,22 @@ export const PredictionEventCard = memo(
           <TokenImage src={group.image} className="w-12 h-12 rounded-xl flex-none bg-white/5 object-cover" />
           <div className="flex-1 min-w-0">
             <div className="flex justify-between items-start mb-1">
-              <div className="text-[10px] text-amber-500 font-bold uppercase tracking-wider line-clamp-1">
+              <div className="text-[10px] text-amber-500 font-normal uppercase tracking-wider line-clamp-1">
                 {group.eventTitle}
               </div>
             </div>
 
-            <h3 className="text-sm font-semibold text-white leading-snug line-clamp-2">
+            <h3 className="text-sm font-normal text-white leading-snug line-clamp-2">
               {group.marketQuestion}
             </h3>
 
             <div className="mt-2 flex items-center justify-between">
               <div className="text-[10px] text-white/40 flex items-center gap-1">
                 <span className="text-white/20">Expires:</span>
-                <span className="text-white/60 font-medium font-mono">{formattedDate}</span>
+                <span className="text-white/60 font-normal font-mono">{formattedDate}</span>
               </div>
               
-              <div className="text-[10px] font-mono font-bold flex gap-2 bg-black/40 px-2 py-1 rounded-md">
+              <div className="text-[10px] font-mono font-normal flex gap-2 bg-black/40 px-2 py-1 rounded-md">
                 <span className="text-emerald-400">Y: {yesProb}%</span>
                 <span className="text-white/20">|</span>
                 <span className="text-red-400">N: {noProb}%</span>
@@ -80,7 +80,7 @@ export const PredictionEventCard = memo(
         </div>
 
         {selectedSide && (
-          <div className="mb-3 flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded w-max">
+          <div className="mb-3 flex items-center gap-1 text-[10px] font-normal text-amber-400 bg-amber-500/10 px-2 py-1 rounded w-max">
             <Check size={12} />
             {selectedSide} INCLUDED
           </div>

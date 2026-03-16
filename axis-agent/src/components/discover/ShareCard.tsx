@@ -95,21 +95,21 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(({ strategy 
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-6">
             <div
-              className="w-20 h-20 rounded-full bg-[#B8863F] flex items-center justify-center text-3xl font-bold text-black shadow-2xl"
+              className="w-20 h-20 rounded-full bg-[#B8863F] flex items-center justify-center text-3xl font-normal text-black shadow-2xl"
               style={{ border: `4px solid ${borderGold30}` }}
             >
               {strategy.ticker[0]}
             </div>
             <div>
               <h1
-                className="text-5xl font-bold mb-2 tracking-tight"
+                className="text-5xl font-normal mb-2 tracking-tight"
                 style={{ fontFamily: "'Lora', serif" }}
               >
                 {strategy.name}
               </h1>
               <div className="flex items-center gap-3">
                 <span
-                  className="text-[#B8863F] px-4 py-1 rounded-full text-xl font-bold"
+                  className="text-[#B8863F] px-4 py-1 rounded-full text-xl font-normal"
                   style={{ background: bgGold20, border: `1px solid ${borderGold30}` }}
                 >
                   {strategy.ticker}
@@ -123,7 +123,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(({ strategy 
 
           <div className="text-right">
             <h2
-              className="text-4xl font-bold text-[#B8863F] tracking-widest"
+              className="text-4xl font-normal text-[#B8863F] tracking-widest"
               style={{ fontFamily: "'Lora', serif" }}
             >
               AXIS
@@ -139,10 +139,10 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(({ strategy 
           {/* Chart */}
           <div className="flex-1 h-64 relative">
             <div className="absolute top-0 left-0">
-              <p className="text-6xl font-bold tabular-nums" style={{ fontFamily: "'Lora', serif" }}>
+              <p className="text-6xl font-normal tabular-nums" style={{ fontFamily: "'Lora', serif" }}>
                 ${strategy.price.toFixed(2)}
               </p>
-              <p className="text-3xl font-bold mt-2" style={{ color: color }}>
+              <p className="text-3xl font-normal mt-2" style={{ color: color }}>
                 {isPositive ? '+' : ''}
                 {(((strategy.price - (data[0]?.value || 1)) / (data[0]?.value || 1)) * 100).toFixed(
                   2
@@ -192,7 +192,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(({ strategy 
                 <p className="text-xs uppercase tracking-widest" style={{ color: textGray }}>
                   Yield
                 </p>
-                <p className="text-[#B8863F] text-3xl font-bold">{strategy.apy}%</p>
+                <p className="text-[#B8863F] text-3xl font-normal">{strategy.apy}%</p>
               </div>
             </div>
           </div>
@@ -208,7 +208,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(({ strategy 
               <p className="text-sm uppercase tracking-widest mb-1" style={{ color: textGray }}>
                 TVL
               </p>
-              <p className="text-2xl font-bold">${strategy.tvl}</p>
+              <p className="text-2xl font-normal">${strategy.tvl}</p>
             </div>
             <div>
               <p className="text-sm uppercase tracking-widest mb-1" style={{ color: textGray }}>
