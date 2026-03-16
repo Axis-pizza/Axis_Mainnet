@@ -48,7 +48,7 @@ export const Toast = ({ message, type }: ToastProps) => {
         className={`fixed top-4 left-4 z-[9999] flex items-center gap-3 px-4 py-3 rounded-xl border ${bgColors[type]} shadow-2xl backdrop-blur-md min-w-[300px]`}
       >
         {icons[type]}
-        <span className="font-medium text-zinc-300 text-sm">{message}</span>
+        <span className="font-normal text-zinc-300 text-sm">{message}</span>
       </motion.div>
     </AnimatePresence>
   );

@@ -53,7 +53,7 @@ export const LeaderboardView = () => {
   return (
     <div className="flex flex-col h-full bg-[#050505] pt-12 px-6 safe-area-bottom pb-24">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-1">Vault Rankings</h1>
+        <h1 className="text-3xl font-normal mb-1">Vault Rankings</h1>
         <p className="text-white/40 text-xs uppercase tracking-widest">Top Performing Strategies</p>
       </div>
 
@@ -69,7 +69,7 @@ export const LeaderboardView = () => {
             <div className="flex items-center gap-4">
               <div
                 className={`
-                                w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm
+                                w-8 h-8 rounded-lg flex items-center justify-center font-normal text-sm
                                 ${
                                   vault.rank === 1
                                     ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30'
@@ -84,7 +84,7 @@ export const LeaderboardView = () => {
                 {vault.rank}
               </div>
               <div>
-                <h3 className="font-bold text-sm">{vault.name}</h3>
+                <h3 className="font-normal text-sm">{vault.name}</h3>
                 <div className="flex items-center gap-2 text-[10px] text-white/40">
                   <span className="flex items-center gap-1">
                     <Users className="w-3 h-3" /> {vault.creator}
@@ -108,7 +108,7 @@ export const LeaderboardView = () => {
             </div>
 
             <div className="text-right">
-              <div className="text-green-400 font-mono font-bold">{vault.roi}</div>
+              <div className="text-green-400 font-mono font-normal">{vault.roi}</div>
               <div className="text-[10px] text-white/30">TVL {vault.tvl}</div>
             </div>
           </motion.div>

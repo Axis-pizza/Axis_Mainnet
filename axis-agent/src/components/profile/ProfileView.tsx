@@ -125,7 +125,7 @@ const InviteModal = ({
           <X className="w-6 h-6" />
         </button>
 
-        <h3 className="mb-2 text-2xl font-serif font-bold text-[#F2E0C8] tracking-tight">
+        <h3 className="mb-2 text-2xl font-serif font-normal text-[#F2E0C8] tracking-tight">
           Invite & Earn
         </h3>
         <p className="mb-8 text-sm text-[#7A5A30]">Share your link to earn referral XP.</p>
@@ -137,14 +137,14 @@ const InviteModal = ({
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={handleCopy}
-            className="flex items-center justify-center gap-2 rounded-xl bg-[#221509] py-3.5 text-sm font-bold text-[#F2E0C8] transition-all hover:bg-[#221509] active:scale-95 border border-[rgba(184,134,63,0.08)]"
+            className="flex items-center justify-center gap-2 rounded-xl bg-[#221509] py-3.5 text-sm font-normal text-[#F2E0C8] transition-all hover:bg-[#221509] active:scale-95 border border-[rgba(184,134,63,0.08)]"
           >
             <Copy className="w-4 h-4" /> Copy Link
           </button>
 
           <button
             onClick={handleShareX}
-            className="group flex items-center justify-center gap-2 rounded-xl bg-black py-3.5 text-sm font-bold text-[#F2E0C8] transition-all hover:border-[#B8863F]/35 border border-[#B8863F]/15 active:scale-95"
+            className="group flex items-center justify-center gap-2 rounded-xl bg-black py-3.5 text-sm font-normal text-[#F2E0C8] transition-all hover:border-[#B8863F]/35 border border-[#B8863F]/15 active:scale-95"
           >
             <Share2 className="w-4 h-4 group-hover:text-[#B8863F] transition-colors" /> Post on X
           </button>
@@ -486,7 +486,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
         <div className="w-20 h-20 bg-[#140E08] rounded-full flex items-center justify-center border border-[rgba(184,134,63,0.15)] mb-6 animate-pulse">
           <Wallet className="w-8 h-8 text-white/50" />
         </div>
-        <h2 className="text-2xl font-serif font-bold text-white mb-2">Connect Wallet</h2>
+        <h2 className="text-2xl font-serif font-normal text-white mb-2">Connect Wallet</h2>
         <p className="text-white/40 text-sm max-w-xs mx-auto mb-8">
           Access your portfolio, track referrals, and climb the leaderboard.
         </p>
@@ -497,7 +497,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
               justifyContent: 'center',
               background: 'linear-gradient(135deg, #6B4420, #B8863F, #E8C890)',
               borderRadius: '12px',
-              fontWeight: 'bold',
+              fontWeight: 'normal',
             }}
           />
         </div>
@@ -541,7 +541,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
             {/* Info */}
             <div className="flex-1 min-w-0 pt-1">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-lg font-bold text-[#F2E0C8] truncate">
+                <h2 className="text-lg font-normal text-[#F2E0C8] truncate">
                   {userProfile?.username || formatAddress(publicKey.toBase58())}
                 </h2>
                 {userProfile?.is_vip && <OGBadge size="sm" />}
@@ -549,7 +549,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
 
               {/* XP with flash animation */}
               <div className="relative inline-block mt-0.5">
-                <p className={`text-sm font-serif font-bold transition-colors duration-300 ${xpFlash ? 'text-emerald-400' : 'text-[#B8863F]'}`}>
+                <p className={`text-sm font-serif font-normal transition-colors duration-300 ${xpFlash ? 'text-emerald-400' : 'text-[#B8863F]'}`}>
                   XP: {userProfile?.totalPoints.toLocaleString() || 0}
                 </p>
                 <AnimatePresence>
@@ -559,7 +559,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                       animate={{ opacity: 1, y: -16, scale: 1 }}
                       exit={{ opacity: 0, y: -32, scale: 0.8 }}
                       transition={{ duration: 0.9, ease: 'easeOut' }}
-                      className="absolute -top-1 left-full ml-2 text-emerald-400 font-bold text-xs whitespace-nowrap pointer-events-none"
+                      className="absolute -top-1 left-full ml-2 text-emerald-400 font-normal text-xs whitespace-nowrap pointer-events-none"
                     >
                       +{earnedXp} XP
                     </motion.span>
@@ -598,15 +598,15 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           {/* Net Worth separator */}
           <div className="mt-4 pt-4 border-t border-[rgba(184,134,63,0.1)] flex items-center justify-between">
             <div>
-              <p className="text-[10px] text-white/40 uppercase font-bold tracking-widest mb-1">
+              <p className="text-[10px] text-white/40 uppercase font-normal tracking-widest mb-1">
                 Net Worth
               </p>
-              <h3 className="text-2xl font-bold text-white font-serif">
+              <h3 className="text-2xl font-normal text-white font-serif">
                 {isHidden ? '••••••' : formatCurrency(displayValue, currencyMode)}
               </h3>
               {pnlVal !== 0 && (
                 <div
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold mt-1 border border-[rgba(184,134,63,0.15)] ${isPos ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-normal mt-1 border border-[rgba(184,134,63,0.15)] ${isPos ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}
                 >
                   {isPos ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                   <span className="font-mono">
@@ -618,7 +618,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
             <div className="flex gap-2 items-center">
               <button
                 onClick={() => setCurrencyMode((m) => (m === 'USD' ? 'USDC' : 'USD'))}
-                className="text-[10px] font-bold bg-black/40 px-2 py-1 rounded text-white/70 border border-[rgba(184,134,63,0.15)]"
+                className="text-[10px] font-normal bg-black/40 px-2 py-1 rounded text-white/70 border border-[rgba(184,134,63,0.15)]"
               >
                 {currencyMode}
               </button>
@@ -636,7 +636,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
         <button
           onClick={handleCheckIn}
           disabled={checkInLoading || checkedIn}
-          className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 font-bold shadow-lg transition-all ${
+          className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 font-normal shadow-lg transition-all ${
             checkedIn
               ? 'bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 cursor-default'
               : 'bg-[#B8863F] text-black shadow-[#6B4420]/20 active:scale-95 hover:brightness-110 disabled:opacity-50'
@@ -658,7 +658,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           <button
             onClick={handleFaucet}
             disabled={faucetLoading || faucetClaimed}
-            className={`py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
+            className={`py-3 rounded-2xl font-normal flex items-center justify-center gap-2 transition-all ${
               faucetClaimed
                 ? 'bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 cursor-default'
                 : faucetLoading
@@ -677,7 +677,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
 
           <button
             onClick={() => setIsInviteOpen(true)}
-            className="group flex items-center justify-center gap-2 rounded-2xl border border-[rgba(184,134,63,0.15)] bg-[#140E08] py-3 font-bold text-[#F2E0C8] text-sm transition-all active:scale-95 hover:bg-[#221509]"
+            className="group flex items-center justify-center gap-2 rounded-2xl border border-[rgba(184,134,63,0.15)] bg-[#140E08] py-3 font-normal text-[#F2E0C8] text-sm transition-all active:scale-95 hover:bg-[#221509]"
           >
             <QrCode className="h-4 w-4 text-[#7A5A30] transition-colors group-hover:text-[#F2E0C8]" />
             Invite & Earn
@@ -691,7 +691,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           <button
             key={t}
             onClick={() => setActiveTab(t as any)}
-            className={`flex-1 pb-3 font-bold text-sm capitalize transition-colors ${activeTab === t ? 'text-white border-b-2 border-[#B8863F]' : 'text-white/40 hover:text-white/60'}`}
+            className={`flex-1 pb-3 font-normal text-sm capitalize transition-colors ${activeTab === t ? 'text-white border-b-2 border-[#B8863F]' : 'text-white/40 hover:text-white/60'}`}
           >
             {t}
           </button>
@@ -803,7 +803,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                     : 'bg-[#140E08] border-[rgba(212,175,55,0.2)]'
                   } overflow-hidden`}
                 >
-                  <span className="absolute top-4 left-5 font-black text-2xl bg-gradient-to-br from-[#FFF5C3] via-[#D4AF37] to-[#996515] text-transparent bg-clip-text drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                  <span className="absolute top-4 left-5 font-normal text-2xl bg-gradient-to-br from-[#FFF5C3] via-[#D4AF37] to-[#996515] text-transparent bg-clip-text drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
                     #1
                   </span>
 
@@ -812,13 +812,13 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                       {leaderboardData[0].avatar_url ? (
                         <img src={api.getProxyUrl(leaderboardData[0].avatar_url)} className="w-full h-full object-cover" alt="Rank 1" />
                       ) : (
-                        <span className="text-2xl font-bold text-white/50">{leaderboardData[0].username.charAt(0).toUpperCase()}</span>
+                        <span className="text-2xl font-normal text-white/50">{leaderboardData[0].username.charAt(0).toUpperCase()}</span>
                       )}
                     </div>
                   </div>
 
-                  <p className="font-bold text-white text-lg mb-1">{leaderboardData[0].username}</p>
-                  <div className="flex items-center gap-1.5 text-[#D4AF37] font-bold">
+                  <p className="font-normal text-white text-lg mb-1">{leaderboardData[0].username}</p>
+                  <div className="flex items-center gap-1.5 text-[#D4AF37] font-normal">
                     {leaderboardTab === 'created' ? (
                       <><Trophy className="w-4 h-4" />{leaderboardData[0].value.toLocaleString()} ETFs</>
                     ) : (
@@ -849,7 +849,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                         : 'bg-[#140E08] border-[rgba(255,255,255,0.05)]'
                       }`}
                     >
-                      <span className={`absolute top-3 left-4 font-black text-xl bg-gradient-to-br ${badgeGradient} text-transparent bg-clip-text drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)]`}>
+                      <span className={`absolute top-3 left-4 font-normal text-xl bg-gradient-to-br ${badgeGradient} text-transparent bg-clip-text drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)]`}>
                         #{rank}
                       </span>
 
@@ -857,12 +857,12 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                         {user.avatar_url ? (
                           <img src={api.getProxyUrl(user.avatar_url)} className="w-full h-full object-cover" alt={`Rank ${rank}`} />
                         ) : (
-                          <span className="text-xl font-bold text-white/50">{user.username.charAt(0).toUpperCase()}</span>
+                          <span className="text-xl font-normal text-white/50">{user.username.charAt(0).toUpperCase()}</span>
                         )}
                       </div>
 
-                      <p className="font-bold text-white text-sm mb-1 w-full text-center truncate">{user.username}</p>
-                      <div className={`flex items-center gap-1 font-bold text-sm ${textColor}`}>
+                      <p className="font-normal text-white text-sm mb-1 w-full text-center truncate">{user.username}</p>
+                      <div className={`flex items-center gap-1 font-normal text-sm ${textColor}`}>
                         {leaderboardTab === 'created' ? (
                           <><Trophy className="w-3.5 h-3.5" />{user.value.toLocaleString()} ETFs</>
                         ) : (
@@ -888,23 +888,23 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                         {user.avatar_url ? (
                           <img src={api.getProxyUrl(user.avatar_url)} className="w-full h-full object-cover" alt="Player" />
                         ) : (
-                          <span className="text-sm font-bold text-white/50">{user.username.charAt(0).toUpperCase()}</span>
+                          <span className="text-sm font-normal text-white/50">{user.username.charAt(0).toUpperCase()}</span>
                         )}
                       </div>
 
                       <div className="flex-1 min-w-0 flex flex-col justify-center">
-                        <p className="text-[11px] text-white/40 mb-0.5 font-mono font-bold">#{user.rank}</p>
+                        <p className="text-[11px] text-white/40 mb-0.5 font-mono font-normal">#{user.rank}</p>
                         <div className="flex items-center gap-2">
-                          <p className={`font-bold text-sm truncate ${user.isMe ? 'text-[#B8863F]' : 'text-white/90'}`}>
+                          <p className={`font-normal text-sm truncate ${user.isMe ? 'text-[#B8863F]' : 'text-white/90'}`}>
                             {user.username}
                           </p>
                           {user.isMe && (
-                            <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#B8863F]/20 text-[#B8863F] uppercase tracking-wider font-bold">You</span>
+                            <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#B8863F]/20 text-[#B8863F] uppercase tracking-wider font-normal">You</span>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 text-white/70 font-bold">
+                      <div className="flex items-center gap-1.5 text-white/70 font-normal">
                         {leaderboardTab === 'created' ? (
                           <><Trophy className="w-3.5 h-3.5" />{user.value.toLocaleString()} ETFs</>
                         ) : (
@@ -925,7 +925,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
         <button
           onClick={handleDisconnect}
           disabled={isDisconnecting}
-          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2 text-sm font-bold text-red-500/80 transition-colors hover:bg-red-500/5 hover:text-red-500 disabled:opacity-50"
+          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2 text-sm font-normal text-red-500/80 transition-colors hover:bg-red-500/5 hover:text-red-500 disabled:opacity-50"
         >
           {isDisconnecting ? (
             <Sparkles className="h-4 w-4 animate-spin" />
@@ -969,7 +969,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
 const FilterChip = memo(({ label, active, onClick, icon }: any) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${active ? 'bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#140D07]' : 'bg-[#140E08] border border-[rgba(184,134,63,0.08)] text-white/50 hover:bg-white/5'}`}
+    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-normal whitespace-nowrap transition-colors ${active ? 'bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#140D07]' : 'bg-[#140E08] border border-[rgba(184,134,63,0.08)] text-white/50 hover:bg-white/5'}`}
   >
     {icon} {label}
   </button>
@@ -978,7 +978,7 @@ const FilterChip = memo(({ label, active, onClick, icon }: any) => (
 const EmptyState = memo(({ icon: Icon, title, sub }: any) => (
   <div className="flex flex-col items-center justify-center py-12 text-white/20 border border-dashed border-[rgba(184,134,63,0.08)] rounded-2xl">
     <Icon className="w-10 h-10 mb-3 opacity-20" />
-    <p className="text-sm font-bold text-white/40">{title}</p>
+    <p className="text-sm font-normal text-white/40">{title}</p>
     <p className="text-xs">{sub}</p>
   </div>
 ));
@@ -997,7 +997,7 @@ const StrategyCard = memo(
       >
         <div className="flex justify-between items-start mb-3">
           <div>
-            <p className="text-white font-bold">{strategy.name}</p>
+            <p className="text-white font-normal">{strategy.name}</p>
             <p className="text-white/40 text-xs">{strategy.ticker || strategy.type || ''}</p>
           </div>
           <div className="text-right">
@@ -1022,12 +1022,12 @@ const StrategyCard = memo(
           ))}
           {extraCount > 0 && (
             <div className="w-6 h-6 rounded-full bg-white/10 border-2 border-[#140E08] -ml-1.5 flex items-center justify-center">
-              <span className="text-[8px] text-white/60 font-bold">+{extraCount}</span>
+              <span className="text-[8px] text-white/60 font-normal">+{extraCount}</span>
             </div>
           )}
         </div>
         <div className="flex justify-between items-center pt-3 border-t border-[rgba(184,134,63,0.08)]">
-          <span className="text-[10px] px-2 py-0.5 rounded bg-green-500/10 text-green-400 font-bold">
+          <span className="text-[10px] px-2 py-0.5 rounded bg-green-500/10 text-green-400 font-normal">
             ACTIVE
           </span>
           <span className="text-[10px] text-white/30">

@@ -117,7 +117,7 @@ export const RebalanceFlow = ({
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h2 className="text-xl font-bold">Rebalance Strategy</h2>
+          <h2 className="text-xl font-normal">Rebalance Strategy</h2>
           <p className="text-xs text-white/50">{strategyName}</p>
         </div>
       </div>
@@ -147,7 +147,7 @@ export const RebalanceFlow = ({
             {/* Weight Adjusters */}
             <div className={`p-4 rounded-2xl bg-gradient-to-br ${typeColors[strategyType]} border`}>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold flex items-center gap-2">
+                <h3 className="font-normal flex items-center gap-2">
                   <Sliders className="w-4 h-4" />
                   Adjust Weights
                 </h3>
@@ -260,7 +260,7 @@ export const RebalanceFlow = ({
               <button
                 onClick={handlePreview}
                 disabled={!isValidDistribution || !hasChanges}
-                className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl font-bold text-white flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-4 bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl font-normal text-white flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <RefreshCw className="w-5 h-5" />
                 Preview Rebalance
@@ -270,7 +270,7 @@ export const RebalanceFlow = ({
             {status === 'PREVIEW' && (
               <div className="space-y-3">
                 <div className="p-4 bg-white/5 rounded-xl">
-                  <h4 className="text-sm font-bold mb-2">Rebalance Preview</h4>
+                  <h4 className="text-sm font-normal mb-2">Rebalance Preview</h4>
                   <div className="space-y-2 text-xs">
                     {tokens.map((token, i) => {
                       const diff = token.weight - (currentTokens[i]?.weight || 0);
@@ -290,7 +290,7 @@ export const RebalanceFlow = ({
 
                 <button
                   onClick={handleRebalance}
-                  className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl font-bold text-black flex items-center justify-center gap-2 shadow-lg"
+                  className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl font-normal text-black flex items-center justify-center gap-2 shadow-lg"
                 >
                   <Zap className="w-5 h-5" />
                   Execute Rebalance
@@ -298,7 +298,7 @@ export const RebalanceFlow = ({
 
                 <button
                   onClick={() => setStatus('ADJUST')}
-                  className="w-full py-3 bg-white/10 rounded-xl font-medium text-sm hover:bg-white/20 transition-colors"
+                  className="w-full py-3 bg-white/10 rounded-xl font-normal text-sm hover:bg-white/20 transition-colors"
                 >
                   Back to Adjust
                 </button>
@@ -308,7 +308,7 @@ export const RebalanceFlow = ({
             {status === 'PROCESSING' && (
               <button
                 disabled
-                className="w-full py-4 bg-white/10 rounded-2xl font-bold flex items-center justify-center gap-2"
+                className="w-full py-4 bg-white/10 rounded-2xl font-normal flex items-center justify-center gap-2"
               >
                 <Loader2 className="w-5 h-5 animate-spin" />
                 Executing Rebalance...
@@ -346,7 +346,7 @@ const RebalanceSuccess = ({
         <CheckCircle2 className="w-12 h-12 text-white" />
       </motion.div>
 
-      <h1 className="text-3xl font-bold mb-2">Rebalanced! ⚡</h1>
+      <h1 className="text-3xl font-normal mb-2">Rebalanced! ⚡</h1>
       <p className="text-white/50 mb-8">{strategyName} has been updated</p>
 
       <div className="mb-8">
@@ -354,7 +354,7 @@ const RebalanceSuccess = ({
       </div>
 
       <div className="w-full max-w-sm p-4 bg-white/5 rounded-2xl border border-white/10 mb-8">
-        <h4 className="text-sm font-bold mb-3">New Allocation</h4>
+        <h4 className="text-sm font-normal mb-3">New Allocation</h4>
         <div className="space-y-2">
           {tokens.map((token) => (
             <div key={token.symbol} className="flex justify-between text-sm">
@@ -367,7 +367,7 @@ const RebalanceSuccess = ({
 
       <button
         onClick={onComplete}
-        className="w-full max-w-sm py-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl font-bold text-black flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
+        className="w-full max-w-sm py-4 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl font-normal text-black flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20"
       >
         <TrendingUp className="w-5 h-5" />
         Back to Dashboard

@@ -136,7 +136,7 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
           `}
         >
           {/* ▼▼▼ 修正: ロゴの中身を復活させました ▼▼▼ */}
-          <div className="hidden md:flex items-center gap-2 font-bold text-xl text-white tracking-tight"></div>
+          <div className="hidden md:flex items-center gap-2 font-normal text-xl text-white tracking-tight"></div>
 
           <div className="flex items-center gap-4 md:gap-8">
             <div className="flex items-center gap-2 md:gap-8">
@@ -165,7 +165,7 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
                         strokeWidth={isActive ? 2.5 : 2}
                       />
                       <span
-                        className={`hidden md:block text-sm font-medium ${
+                        className={`hidden md:block text-sm font-normal ${
                           isActive ? 'text-zinc-950' : 'text-amber-300/55 group-hover:text-amber-200'
                         }`}
                       >
@@ -190,7 +190,7 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
                 >
                   <button
                     onClick={() => onDiscoverViewModeChange?.('swipe')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-normal transition-all active:scale-95 ${
                       discoverViewMode === 'swipe'
                         ? 'bg-white/15 text-white'
                         : 'text-amber-700/50 hover:text-amber-400'
@@ -201,7 +201,7 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
                   </button>
                   <button
                     onClick={() => onDiscoverViewModeChange?.('list')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-normal transition-all active:scale-95 ${
                       discoverViewMode === 'list'
                         ? 'bg-white/15 text-white'
                         : 'text-amber-700/50 hover:text-amber-400'

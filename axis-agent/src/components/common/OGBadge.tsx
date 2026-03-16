@@ -18,7 +18,7 @@ export const OGBadge = ({ size = 'sm' }: { size?: 'sm' | 'md' | 'lg' }) => {
   return (
     <div
       className={`
-        inline-flex items-center rounded-full font-bold 
+        inline-flex items-center rounded-full font-normal 
         bg-gradient-to-r from-yellow-600/20 to-amber-500/20 
         border border-yellow-500/50 text-yellow-500 
         shadow-[0_0_10px_rgba(234,179,8,0.2)]

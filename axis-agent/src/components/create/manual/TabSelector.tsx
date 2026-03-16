@@ -24,7 +24,7 @@ export const TabSelector = ({ activeTab, setActiveTab }: TabSelectorProps) => (
         <button
           key={tab.id}
           onClick={() => setActiveTab(tab.id)}
-          className="relative flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all"
+          className="relative flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-normal transition-all"
         >
           {isActive && (
             <motion.div

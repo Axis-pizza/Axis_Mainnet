@@ -316,13 +316,13 @@ const SwipeToConfirm = memo(
           className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
           style={{ opacity: textOpacity }}
         >
-          <span className="font-bold text-xs tracking-[0.2em] text-white/50 animate-pulse">
+          <span className="font-normal text-xs tracking-[0.2em] text-white/50 animate-pulse">
             {isLoading ? 'PROCESSING...' : label}
           </span>
         </motion.div>
 
         {isSuccess && (
-          <div className="absolute inset-0 flex items-center justify-center z-20 text-white font-bold tracking-widest text-sm">
+          <div className="absolute inset-0 flex items-center justify-center z-20 text-white font-normal tracking-widest text-sm">
             SUCCESS
           </div>
         )}
@@ -443,7 +443,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
             <div className="flex bg-[#1C1C1E] p-1 rounded-full border border-white/5">
               <button
                 onClick={() => setMode('BUY')}
-                className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                className={`px-5 py-1.5 rounded-full text-xs font-normal transition-all ${
                   mode === 'BUY' ? 'bg-[#B8863F] text-black' : 'text-[#78716C]'
                 }`}
               >
@@ -451,7 +451,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
               </button>
               <button
                 onClick={() => setMode('SELL')}
-                className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                className={`px-5 py-1.5 rounded-full text-xs font-normal transition-all ${
                   mode === 'SELL' ? 'bg-[#B8863F] text-black' : 'text-[#78716C]'
                 }`}
               >
@@ -467,12 +467,12 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
             <div className="flex flex-col items-center gap-2 mb-8">
               <div className="flex items-baseline justify-center gap-1">
                 <span
-                  className={`font-sans font-medium text-6xl tracking-tight ${amount === '0' ? 'text-[#57534E]' : 'text-white'}`}
+                  className={`font-sans font-normal text-6xl tracking-tight ${amount === '0' ? 'text-[#57534E]' : 'text-white'}`}
                 >
                   {amount}
                 </span>
               </div>
-              <span className="text-[#78716C] font-bold text-lg">
+              <span className="text-[#78716C] font-normal text-lg">
                 {mode === 'BUY' ? 'USDC' : ticker}
               </span>
             </div>
@@ -485,7 +485,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
               </span>
               <button
                 onClick={() => setAmount((currentBalance * (mode === 'BUY' ? 0.95 : 1)).toFixed(4))}
-                className="text-[#B8863F] text-xs font-bold uppercase hover:text-white transition-colors"
+                className="text-[#B8863F] text-xs font-normal uppercase hover:text-white transition-colors"
               >
                 Max
               </button>
@@ -510,7 +510,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
                   <button
                     key={key}
                     onClick={() => handleNum(key.toString())}
-                    className="h-14 text-2xl font-medium text-white hover:bg-white/5 active:bg-white/10 rounded-full transition-all flex items-center justify-center select-none"
+                    className="h-14 text-2xl font-normal text-white hover:bg-white/5 active:bg-white/10 rounded-full transition-all flex items-center justify-center select-none"
                   >
                     {key}
                   </button>
@@ -528,7 +528,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
               {status === 'SIGNING' || status === 'CONFIRMING' || status === 'PROCESSING' ? (
                 <div className="w-full h-16 bg-[#1C1C1E] rounded-full flex items-center justify-center gap-3 border border-white/5">
                   <Loader2 className="w-5 h-5 text-[#B8863F] animate-spin" />
-                  <span className="text-white font-bold tracking-wide text-sm">PROCESSING...</span>
+                  <span className="text-white font-normal tracking-wide text-sm">PROCESSING...</span>
                 </div>
               ) : (
                 <SwipeToConfirm
@@ -577,7 +577,7 @@ const SuccessOverlay = ({
         transition={{ type: 'spring', damping: 14, stiffness: 100, delay: 0.1 }}
         className="relative mb-10 z-20 text-center"
       >
-        <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-yellow-200 to-orange-500 drop-shadow-[0_0_30px_rgba(234,88,12,0.8)] transform -rotate-3 leading-none tracking-tight">
+        <h1 className="text-5xl md:text-7xl font-normal text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-yellow-200 to-orange-500 drop-shadow-[0_0_30px_rgba(234,88,12,0.8)] transform -rotate-3 leading-none tracking-tight">
           READY FOR
           <br />
           TAKEOFF
@@ -601,12 +601,12 @@ const SuccessOverlay = ({
               alt="creator"
               className="w-16 h-16 rounded-full border-2 border-[rgba(184,134,63,0.15)] bg-black object-cover"
             />
-            <div className="absolute -bottom-2 -right-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#140E08] shadow-lg flex items-center gap-1">
+            <div className="absolute -bottom-2 -right-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-[10px] font-normal px-2 py-0.5 rounded-full border border-[#140E08] shadow-lg flex items-center gap-1">
               ROI {(strategy.roi || 0).toFixed(0)}%
             </div>
           </div>
           <div className="min-w-0">
-            <h3 className="font-bold text-white text-xl leading-tight truncate">{strategy.name}</h3>
+            <h3 className="font-normal text-white text-xl leading-tight truncate">{strategy.name}</h3>
             <p className="text-xs text-white/40 font-mono mt-1 flex items-center gap-1">
               By {strategy.creatorAddress?.slice(0, 4)}...{strategy.creatorAddress?.slice(-4)}
             </p>
@@ -625,7 +625,7 @@ const SuccessOverlay = ({
                   className="w-full h-full rounded-full object-cover"
                 />
               ) : (
-                <span className="text-[9px] text-white font-bold">{t.symbol?.[0]}</span>
+                <span className="text-[9px] text-white font-normal">{t.symbol?.[0]}</span>
               )}
             </div>
           ))}
@@ -640,7 +640,7 @@ const SuccessOverlay = ({
           onClick={onBuy}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          className="group w-full py-4 bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-black text-lg rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all flex items-center justify-center gap-2 relative overflow-hidden"
+          className="group w-full py-4 bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-normal text-lg rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all flex items-center justify-center gap-2 relative overflow-hidden"
         >
           <span className="relative z-10 flex items-center gap-2">
             <ShoppingCart className="w-5 h-5" /> Buy Now
@@ -655,7 +655,7 @@ const SuccessOverlay = ({
           onClick={onGoToStrategy}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          className="group w-full py-4 bg-gradient-to-r from-orange-600 to-yellow-600 text-white font-black text-lg rounded-2xl shadow-[0_0_20px_rgba(249,115,22,0.4)] transition-all flex items-center justify-center gap-2 relative overflow-hidden"
+          className="group w-full py-4 bg-gradient-to-r from-orange-600 to-yellow-600 text-white font-normal text-lg rounded-2xl shadow-[0_0_20px_rgba(249,115,22,0.4)] transition-all flex items-center justify-center gap-2 relative overflow-hidden"
         >
           <span className="relative z-10 flex items-center gap-2">
             <Rocket className="w-5 h-5 fill-white" /> LFG (View Detail)
@@ -668,7 +668,7 @@ const SuccessOverlay = ({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.7 }}
           onClick={onClose}
-          className="w-full py-4 bg-white/5 border border-[rgba(184,134,63,0.15)] text-white/60 font-bold text-lg rounded-2xl hover:bg-white/10 hover:text-white active:scale-95 transition-all flex items-center justify-center gap-2"
+          className="w-full py-4 bg-white/5 border border-[rgba(184,134,63,0.15)] text-white/60 font-normal text-lg rounded-2xl hover:bg-white/10 hover:text-white active:scale-95 transition-all flex items-center justify-center gap-2"
         >
           Keep Scouting
         </motion.button>
@@ -1135,7 +1135,7 @@ export const SwipeDiscoverView = ({
             <div className="absolute inset-0 flex flex-col items-center justify-center z-50">
               <div className="bg-[#080503]/80 backdrop-blur-xl p-6 rounded-3xl border border-[rgba(184,134,63,0.15)] shadow-2xl flex flex-col items-center">
                 <Loader2 className="w-8 h-8 text-[#B8863F] animate-spin mb-3" />
-                <p className="text-xs font-bold text-white/50 tracking-widest animate-pulse">
+                <p className="text-xs font-normal text-white/50 tracking-widest animate-pulse">
                   SCOUTING GEMS...
                 </p>
               </div>
@@ -1151,7 +1151,7 @@ export const SwipeDiscoverView = ({
   if (enrichedStrategies.length === 0) {
     return (
       <div className="relative w-full h-[100dvh] bg-[#030303] flex flex-col items-center justify-center p-4">
-        <h3 className="text-xl font-bold text-white mb-2">No Strategies Found</h3>
+        <h3 className="text-xl font-normal text-white mb-2">No Strategies Found</h3>
         <p className="text-white/50 text-sm">Create one to get started.</p>
       </div>
     );
@@ -1164,10 +1164,10 @@ export const SwipeDiscoverView = ({
           <div className="w-20 h-20 bg-[#140E08] rounded-full flex items-center justify-center mx-auto mb-6 border border-[rgba(184,134,63,0.15)]">
             <Sparkles className="w-8 h-8 text-[#B8863F]" />
           </div>
-          <h3 className="text-xl font-bold text-white mb-2">That's all for now!</h3>
+          <h3 className="text-xl font-normal text-white mb-2">That's all for now!</h3>
           <button
             onClick={() => { _savedSwipeIndex = 0; setCurrentIndex(0); }}
-            className="px-6 py-3 bg-[#B8863F] text-white font-bold rounded-xl flex items-center gap-2 mx-auto mt-4"
+            className="px-6 py-3 bg-[#B8863F] text-white font-normal rounded-xl flex items-center gap-2 mx-auto mt-4"
           >
             <RefreshCw className="w-4 h-4" /> Start Over
           </button>

@@ -72,9 +72,9 @@ export const BacktestChart = ({
       {/* Header Stats */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <p className="text-xs text-white/40 mb-1 font-bold uppercase tracking-wider">{label}</p>
+          <p className="text-xs text-white/40 mb-1 font-normal uppercase tracking-wider">{label}</p>
           <span
-            className={`text-2xl font-mono font-bold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}
+            className={`text-2xl font-mono font-normal ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}
           >
             {isPositive ? '+' : ''}
             {change.toFixed(2)}%
@@ -85,13 +85,13 @@ export const BacktestChart = ({
             {data.sharpeRatio !== undefined && (
               <div>
                 <p className="text-[10px] text-white/40 uppercase">Sharpe</p>
-                <p className="text-xs font-bold text-white/80">{data.sharpeRatio.toFixed(2)}</p>
+                <p className="text-xs font-normal text-white/80">{data.sharpeRatio.toFixed(2)}</p>
               </div>
             )}
             {data.maxDrawdown !== undefined && (
               <div>
                 <p className="text-[10px] text-white/40 uppercase">Max DD</p>
-                <p className="text-xs font-bold text-red-400">{data.maxDrawdown.toFixed(1)}%</p>
+                <p className="text-xs font-normal text-red-400">{data.maxDrawdown.toFixed(1)}%</p>
               </div>
             )}
           </div>

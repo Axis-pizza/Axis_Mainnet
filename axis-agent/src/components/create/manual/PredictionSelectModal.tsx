@@ -36,10 +36,10 @@ export const PredictionSelectModal = ({ group, isOpen, onClose, onSelect, select
             {/* ★ group.image をそのまま表示 */}
             <TokenImage src={group.image} className="w-16 h-16 rounded-2xl bg-white/5 flex-none object-cover" />
             <div>
-              <div className="text-xs text-amber-500 font-bold uppercase mb-1 tracking-wider line-clamp-1">
+              <div className="text-xs text-amber-500 font-normal uppercase mb-1 tracking-wider line-clamp-1">
                 {group.eventTitle}
               </div>
-              <h2 className="text-base sm:text-lg font-bold text-white leading-tight">
+              <h2 className="text-base sm:text-lg font-normal text-white leading-tight">
                 {group.marketQuestion}
               </h2>
             </div>
@@ -54,8 +54,8 @@ export const PredictionSelectModal = ({ group, isOpen, onClose, onSelect, select
 
         <div className="mb-8">
           <div className="flex justify-between text-sm font-mono mb-2 px-1">
-            <span className="text-emerald-400 font-bold">YES {yesProb}%</span>
-            <span className="text-red-400 font-bold">NO {noProb}%</span>
+            <span className="text-emerald-400 font-normal">YES {yesProb}%</span>
+            <span className="text-red-400 font-normal">NO {noProb}%</span>
           </div>
           <div className="h-3 w-full bg-white/5 rounded-full overflow-hidden flex">
             <div style={{ width: `${yesProb}%` }} className="h-full bg-emerald-500 transition-all duration-700 ease-out" />
@@ -75,7 +75,7 @@ export const PredictionSelectModal = ({ group, isOpen, onClose, onSelect, select
                 : 'bg-white/5 border-transparent hover:border-emerald-500/30 hover:bg-white/10'
             }`}
           >
-            <span className="text-emerald-400 font-black text-2xl mb-1">YES</span>
+            <span className="text-emerald-400 font-normal text-2xl mb-1">YES</span>
             <span className="text-white font-mono text-xl">{yesProb}%</span>
             {isYesSelected && <div className="absolute top-3 right-3 text-emerald-500"><Check size={20} /></div>}
           </button>
@@ -91,7 +91,7 @@ export const PredictionSelectModal = ({ group, isOpen, onClose, onSelect, select
                 : 'bg-white/5 border-transparent hover:border-red-500/30 hover:bg-white/10'
             }`}
           >
-            <span className="text-red-400 font-black text-2xl mb-1">NO</span>
+            <span className="text-red-400 font-normal text-2xl mb-1">NO</span>
             <span className="text-white font-mono text-xl">{noProb}%</span>
             {isNoSelected && <div className="absolute top-3 right-3 text-red-500"><Check size={20} /></div>}
           </button>

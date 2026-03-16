@@ -1,6 +1,4 @@
-import React from 'react';
-import Slider from 'rc-slider';
-import 'rc-slider/assets/index.css';
+import React, { useRef } from 'react';
 import styles from './ProbabilitySlider.module.css';
 
 interface ProbabilitySliderProps {
@@ -18,70 +16,78 @@ const PRESETS: Record<PresetType, [number, number]> = {
 };
 
 export const ProbabilitySlider: React.FC<ProbabilitySliderProps> = ({ value, onChange }) => {
+  const rangeRef = useRef<HTMLDivElement>(null);
+  const [min, max] = value;
+
   const handlePreset = (preset: PresetType) => {
     onChange(PRESETS[preset]);
   };
 
   const isActivePreset = (preset: PresetType): boolean => {
     const [presetMin, presetMax] = PRESETS[preset];
-    return value[0] === presetMin && value[1] === presetMax;
+    return min === presetMin && max === presetMax;
   };
+
+  const handleMinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newMin = Math.min(Number(e.target.value), max - 1);
+    onChange([newMin, max]);
+  };
+
+  const handleMaxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newMax = Math.max(Number(e.target.value), min + 1);
+    onChange([min, newMax]);
+  };
+
+  const minPercent = min;
+  const maxPercent = max;
 
   return (
     <div className={styles.container}>
       <label className={styles.label}>Probability Range</label>
-      
-      <div className={styles.sliderWrapper}>
-        <Slider
-          range
-          min={0}
-          max={100}
-          value={value}
-          onChange={(val) => {
-            if (Array.isArray(val) && val.length === 2) {
-              onChange([val[0] as number, val[1] as number]);
-            }
-          }}
-          className={styles.slider}
-          trackStyle={[{ backgroundColor: '#22c55e' }]}
-          handleStyle={[
-            { borderColor: '#22c55e', backgroundColor: '#fff' },
-            { borderColor: '#22c55e', backgroundColor: '#fff' },
-          ]}
-          railStyle={{ backgroundColor: '#e5e7eb' }}
-        />
+
+      <div className={styles.sliderWrapper} ref={rangeRef}>
+        <div className={styles.rangeTrack}>
+          <div
+            className={styles.rangeHighlight}
+            style={{ left: `${minPercent}%`, width: `${maxPercent - minPercent}%` }}
+          />
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={min}
+            onChange={handleMinChange}
+            className={styles.rangeInput}
+          />
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={max}
+            onChange={handleMaxChange}
+            className={styles.rangeInput}
+          />
+        </div>
       </div>
 
       <div className={styles.valueDisplay}>
-        <span className={styles.valueLabel}>{value[0]}%</span>
-        <span className={styles.valueLabel}>{value[1]}%</span>
+        <span className={styles.valueLabel}>{min}%</span>
+        <span className={styles.valueLabel}>{max}%</span>
       </div>
 
       <div className={styles.presets}>
-        <button
-          className={`${styles.presetBtn} ${isActivePreset('all') ? styles.active : ''}`}
-          onClick={() => handlePreset('all')}
-        >
-          All
-        </button>
-        <button
-          className={`${styles.presetBtn} ${isActivePreset('close') ? styles.active : ''}`}
-          onClick={() => handlePreset('close')}
-        >
-          Close (45-55%)
-        </button>
-        <button
-          className={`${styles.presetBtn} ${isActivePreset('likely') ? styles.active : ''}`}
-          onClick={() => handlePreset('likely')}
-        >
-          Likely (&gt;70%)
-        </button>
-        <button
-          className={`${styles.presetBtn} ${isActivePreset('unlikely') ? styles.active : ''}`}
-          onClick={() => handlePreset('unlikely')}
-        >
-          Unlikely (&lt;30%)
-        </button>
+        {(['all', 'close', 'likely', 'unlikely'] as PresetType[]).map((preset) => (
+          <button
+            key={preset}
+            className={`${styles.presetBtn} ${isActivePreset(preset) ? styles.active : ''}`}
+            onClick={() => handlePreset(preset)}
+          >
+            {preset === 'all' && 'All'}
+            {preset === 'close' && 'Close (45-55%)'}
+            {preset === 'likely' && 'Likely (>70%)'}
+            {preset === 'unlikely' && 'Unlikely (<30%)'}
+          </button>
+        ))}
       </div>
     </div>
   );

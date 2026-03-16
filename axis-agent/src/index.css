@@ -434,7 +434,7 @@ body {
     0 2px 16px rgba(199, 125, 54, 0.38),         /* warm copper halo */
     0 1px  5px rgba(  0,   0,   0, 0.70);        /* depth shadow */
   color: #1A0A04;     /* deepest void — maximum contrast on copper face */
-  font-weight: 700;
+  font-weight: 400;
   transition: box-shadow 0.18s ease, transform 0.12s ease;
   cursor: pointer;
 }

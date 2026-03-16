@@ -74,7 +74,7 @@ const InviteModal = ({
           <X className="w-6 h-6" />
         </button>
 
-        <h3 className="mb-2 text-2xl font-serif font-bold text-[#F2E0C8] tracking-tight">
+        <h3 className="mb-2 text-2xl font-serif font-normal text-[#F2E0C8] tracking-tight">
           Invite & Earn
         </h3>
         <p className="mb-8 text-sm text-[#7A5A30]">Share your link to earn referral XP.</p>
@@ -86,14 +86,14 @@ const InviteModal = ({
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={handleCopy}
-            className="flex items-center justify-center gap-2 rounded-xl bg-[#221509] py-3.5 text-sm font-bold text-[#F2E0C8] transition-all hover:bg-[#221509] active:scale-95 border border-[rgba(184,134,63,0.08)]"
+            className="flex items-center justify-center gap-2 rounded-xl bg-[#221509] py-3.5 text-sm font-normal text-[#F2E0C8] transition-all hover:bg-[#221509] active:scale-95 border border-[rgba(184,134,63,0.08)]"
           >
             <Copy className="w-4 h-4" /> Copy Link
           </button>
 
           <button
             onClick={handleShareX}
-            className="group flex items-center justify-center gap-2 rounded-xl bg-black py-3.5 text-sm font-bold text-[#F2E0C8] transition-all hover:border-[#B8863F]/35 border border-[#B8863F]/15 active:scale-95"
+            className="group flex items-center justify-center gap-2 rounded-xl bg-black py-3.5 text-sm font-normal text-[#F2E0C8] transition-all hover:border-[#B8863F]/35 border border-[#B8863F]/15 active:scale-95"
           >
             <Share2 className="w-4 h-4 group-hover:text-[#B8863F] transition-colors" /> Post on X
           </button>
@@ -278,7 +278,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
               className={`fixed top-0 right-0 bottom-0 w-[90%] max-w-sm bg-[#080503] border-l border-[rgba(184,134,63,0.15)] ${drawerZIndex} flex flex-col safe-area-top shadow-2xl`}
             >
               <div className="flex justify-between items-center p-6 pb-2 shrink-0">
-                <h2 className="font-serif font-bold text-xl text-[#F2E0C8]">
+                <h2 className="font-serif font-normal text-xl text-[#F2E0C8]">
                   {showConnectView ? 'Connect Wallet' : 'My Profile'}
                 </h2>
                 <button
@@ -300,7 +300,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                     </p>
                     <button
                       onClick={handleConnect}
-                      className="w-full py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] hover:brightness-110 text-black font-bold rounded-xl active:scale-95 transition-all"
+                      className="w-full py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] hover:brightness-110 text-black font-normal rounded-xl active:scale-95 transition-all"
                     >
                       Connect Wallet
                     </button>
@@ -330,7 +330,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                         </div>
                       </div>
 
-                      <h3 className="mt-4 text-xl font-bold text-[#F2E0C8]">
+                      <h3 className="mt-4 text-xl font-normal text-[#F2E0C8]">
                         {userData?.username ||
                           `${publicKey?.toBase58().slice(0, 4)}...${publicKey?.toBase58().slice(-4)}`}
                       </h3>
@@ -355,11 +355,11 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                       <Trophy className="absolute -right-4 -bottom-4 h-24 w-24 rotate-12 text-[#B8863F]/5 transition-transform duration-500 group-hover:rotate-6" />
 
                       <div className="relative z-10">
-                        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#B8863F]">
+                        <p className="mb-2 text-[10px] font-normal uppercase tracking-[0.2em] text-[#B8863F]">
                           Season 0 Rank
                         </p>
                         <div className="relative inline-block">
-                          <h3 className={`mb-1 font-serif text-5xl font-bold tracking-tight drop-shadow-sm transition-colors duration-300 ${xpFlash ? 'text-emerald-400' : 'text-[#F2E0C8]'}`}>
+                          <h3 className={`mb-1 font-serif text-5xl font-normal tracking-tight drop-shadow-sm transition-colors duration-300 ${xpFlash ? 'text-emerald-400' : 'text-[#F2E0C8]'}`}>
                             {userData?.total_xp?.toLocaleString() || 0}
                           </h3>
                           <AnimatePresence>
@@ -369,7 +369,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                                 animate={{ opacity: 1, y: -16, scale: 1 }}
                                 exit={{ opacity: 0, y: -32, scale: 0.8 }}
                                 transition={{ duration: 0.9, ease: 'easeOut' }}
-                                className="absolute -top-1 -right-14 text-emerald-400 font-bold text-sm whitespace-nowrap pointer-events-none"
+                                className="absolute -top-1 -right-14 text-emerald-400 font-normal text-sm whitespace-nowrap pointer-events-none"
                               >
                                 +10 XP
                               </motion.span>
@@ -390,7 +390,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                       <button
                         onClick={handleCheckIn}
                         disabled={loading || checkedIn}
-                        className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 font-bold shadow-lg transition-all ${
+                        className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 font-normal shadow-lg transition-all ${
                           checkedIn
                             ? 'bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 cursor-default'
                             : 'bg-[#B8863F] text-black shadow-[#6B4420]/20 active:scale-95 hover:brightness-110 disabled:opacity-50'
@@ -411,7 +411,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                       <button
                         onClick={handleFaucet}
                         disabled={faucetLoading}
-                        className={`w-full bg-[#1C1C1E] border border-[rgba(184,134,63,0.3)] text-[#B8863F] py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
+                        className={`w-full bg-[#1C1C1E] border border-[rgba(184,134,63,0.3)] text-[#B8863F] py-3 rounded-2xl font-normal flex items-center justify-center gap-2 transition-all ${
                           faucetLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#B8863F]/10 active:scale-95'
                         }`}
                       >
@@ -422,7 +422,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                       {/* Invite Button */}
                       <button
                         onClick={() => setIsInviteOpen(true)}
-                        className="group flex w-full items-center justify-center gap-2 rounded-xl border border-[rgba(184,134,63,0.15)] bg-[#140E08] py-3.5 font-bold text-[#F2E0C8] transition-all active:scale-95 hover:bg-[#221509]"
+                        className="group flex w-full items-center justify-center gap-2 rounded-xl border border-[rgba(184,134,63,0.15)] bg-[#140E08] py-3.5 font-normal text-[#F2E0C8] transition-all active:scale-95 hover:bg-[#221509]"
                       >
                         <QrCode className="h-5 w-5 text-[#7A5A30] transition-colors group-hover:text-[#F2E0C8]" />
                         Invite & Earn
@@ -438,7 +438,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                   <button
                     onClick={handleDisconnect}
                     disabled={isDisconnecting}
-                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2 text-sm font-bold text-red-500/80 transition-colors hover:bg-red-500/5 hover:text-red-500 disabled:opacity-50"
+                    className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2 text-sm font-normal text-red-500/80 transition-colors hover:bg-red-500/5 hover:text-red-500 disabled:opacity-50"
                   >
                     {isDisconnecting ? (
                       <Sparkles className="h-4 w-4 animate-spin" />

@@ -85,7 +85,7 @@ export const StrategyDetailPage = () => {
   if (error || !strategy) {
     return (
       <div className="w-full h-screen bg-[#080503] flex flex-col items-center justify-center text-white">
-        <h2 className="text-xl font-bold mb-2">Strategy Not Found</h2>
+        <h2 className="text-xl font-normal mb-2">Strategy Not Found</h2>
         <button onClick={() => navigate(-1)} className="text-[#B8863F] underline">
           Go Back
         </button>

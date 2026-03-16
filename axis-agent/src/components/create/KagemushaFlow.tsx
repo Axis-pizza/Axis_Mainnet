@@ -23,7 +23,7 @@ class SimpleErrorBoundary extends React.Component<
     if (this.state.hasError) {
       return (
         <div className="p-8 text-red-500 bg-black min-h-screen">
-          <h1 className="text-2xl font-bold mb-4">⚠️ Something went wrong</h1>
+          <h1 className="text-2xl font-normal mb-4">⚠️ Something went wrong</h1>
           <pre className="bg-red-900/20 p-4 rounded border border-red-500/50 whitespace-pre-wrap">
             {this.state.error?.toString()}
           </pre>

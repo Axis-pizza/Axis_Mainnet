@@ -92,7 +92,7 @@ export const StrategyDashboard = ({
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold">Strategy Dashboard</h2>
+          <h2 className="text-2xl font-normal">Strategy Dashboard</h2>
           <p className="text-xs text-white/50">Manage your deployed vaults</p>
         </div>
         <button
@@ -107,13 +107,13 @@ export const StrategyDashboard = ({
       <div className="grid grid-cols-2 gap-3 mb-6">
         <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
           <p className="text-xs text-white/50 mb-1">Total Value Locked</p>
-          <p className="text-2xl font-bold">{totalTvl.toFixed(2)} USDC</p>
+          <p className="text-2xl font-normal">{totalTvl.toFixed(2)} USDC</p>
         </div>
         <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
           <p className="text-xs text-white/50 mb-1">Total P&L</p>
           <div className="flex items-center gap-2">
             <p
-              className={`text-2xl font-bold ${totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}
+              className={`text-2xl font-normal ${totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}
             >
               {totalPnl >= 0 ? '+' : ''}
               {totalPnl.toFixed(2)}
@@ -133,12 +133,12 @@ export const StrategyDashboard = ({
           <Wallet className="w-4 h-4 text-white/50" />
           <span className="text-sm text-white/50">Available</span>
         </div>
-        <span className="font-mono font-bold">{usdcBalance.toFixed(2)} USDC</span>
+        <span className="font-mono font-normal">{usdcBalance.toFixed(2)} USDC</span>
       </div>
 
       {/* Strategy List */}
       <div className="space-y-3">
-        <h3 className="text-sm font-medium text-white/70 mb-2">Your Strategies</h3>
+        <h3 className="text-sm font-normal text-white/70 mb-2">Your Strategies</h3>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -201,7 +201,7 @@ const StrategyCard = ({
         {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <h4 className="font-bold truncate">{strategy.name}</h4>
+            <h4 className="font-normal truncate">{strategy.name}</h4>
             <span
               className={`px-2 py-0.5 rounded text-xs bg-gradient-to-r ${typeColors[strategy.type]} text-white`}
             >
@@ -237,13 +237,13 @@ const StrategyCard = ({
       <div className="flex gap-2 mt-3 pt-3 border-t border-white/10">
         <button
           onClick={onDeposit}
-          className="flex-1 py-2 bg-emerald-500/20 text-emerald-400 rounded-xl text-sm font-medium hover:bg-emerald-500/30 transition-colors flex items-center justify-center gap-2"
+          className="flex-1 py-2 bg-emerald-500/20 text-emerald-400 rounded-xl text-sm font-normal hover:bg-emerald-500/30 transition-colors flex items-center justify-center gap-2"
         >
           <Plus className="w-4 h-4" /> Deposit
         </button>
         <button
           onClick={onRebalance}
-          className="flex-1 py-2 bg-blue-500/20 text-blue-400 rounded-xl text-sm font-medium hover:bg-blue-500/30 transition-colors flex items-center justify-center gap-2"
+          className="flex-1 py-2 bg-blue-500/20 text-blue-400 rounded-xl text-sm font-normal hover:bg-blue-500/30 transition-colors flex items-center justify-center gap-2"
         >
           <RefreshCw className="w-4 h-4" /> Rebalance
         </button>
@@ -277,13 +277,13 @@ const EmptyState = ({ onCreateNew }: { onCreateNew: () => void }) => {
       <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4">
         <Target className="w-10 h-10 text-white/30" />
       </div>
-      <h3 className="text-lg font-bold mb-2">No Strategies Yet</h3>
+      <h3 className="text-lg font-normal mb-2">No Strategies Yet</h3>
       <p className="text-sm text-white/50 mb-6 max-w-xs">
         Create your first AI-powered investment strategy and start building your portfolio.
       </p>
       <button
         onClick={onCreateNew}
-        className="px-6 py-3 bg-gradient-to-r from-orange-500 to-amber-500 rounded-xl font-bold text-black flex items-center gap-2"
+        className="px-6 py-3 bg-gradient-to-r from-orange-500 to-amber-500 rounded-xl font-normal text-black flex items-center gap-2"
       >
         <Plus className="w-5 h-5" />
         Create Strategy

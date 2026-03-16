@@ -220,7 +220,7 @@ export const PizzaChart = ({
                 y={label.y - 4}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="text-[11px] font-serif font-bold fill-[#E7E5E4] drop-shadow-md"
+                className="text-[11px] font-serif font-normal fill-[#E7E5E4] drop-shadow-md"
                 style={{ fontFamily: "'Lora', 'Times New Roman', serif" }}
               >
                 {label.symbol}
