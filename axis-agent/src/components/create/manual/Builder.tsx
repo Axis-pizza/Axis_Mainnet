@@ -404,7 +404,7 @@ const MobileTokenListItem = memo(
             animate(x, 0, { type: 'spring', stiffness: 400, damping: 40 });
             setTimeout(() => { isDragging.current = false; }, 80);
           }}
-          onClick={() => { if (!isDragging.current) onDetail(); }}
+          onTap={() => { if (!isDragging.current) onDetail(); }}
           className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl min-h-[58px] select-none touch-pan-y transition-shadow ${
             justAdded ? 'shadow-[0_0_16px_rgba(251,191,36,0.2)]' : ''
           } ${

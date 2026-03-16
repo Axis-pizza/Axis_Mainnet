@@ -455,7 +455,8 @@ export const SwipeCard = ({
   };
 
   const handleClick = () => {
-    if (!isDragging.current && !swiped.current && isTop) onTap();
+    // タップ選択を無効化 — スワイプのみで選択する
+    void onTap;
   };
 
   // デッキの後ろのカードに微妙な回転を加えてバンドル感を演出
