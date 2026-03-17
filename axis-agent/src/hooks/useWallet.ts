@@ -1,7 +1,7 @@
 // src/hooks/useWallet.ts — Privy-backed wallet hook
 // Drop-in replacement for the old @solana/wallet-adapter-react hook
 import { useEffect, useRef, useMemo, useCallback, useContext } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useLogout } from '@privy-io/react-auth';
 import { useWallets, useSignTransaction } from '@privy-io/react-auth/solana';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { ConnectionContext } from '../context/ConnectionContext';
@@ -13,7 +13,7 @@ export interface WalletContextState {
   publicKey: PublicKey | null;
   signTransaction: ((tx: Transaction) => Promise<Transaction>) | undefined;
   signAllTransactions: ((txs: Transaction[]) => Promise<Transaction[]>) | undefined;
-  disconnect: () => Promise<void>;
+  disconnect: () => void;
   ready: boolean;
   authenticated: boolean;
   wallet: any;
@@ -40,9 +40,17 @@ export function useLoginModal() {
 }
 
 export function useWallet(): WalletContextState {
-  const { authenticated, ready: privyReady, logout, connectWallet } = usePrivy();
+  const { authenticated, ready: privyReady } = usePrivy();
   const { wallets } = useWallets();
   const { signTransaction: privySignTransaction } = useSignTransaction();
+
+  // useLogout with onSuccess callback — per official Privy docs
+  const { logout } = useLogout({
+    onSuccess: () => {
+      console.log('[Privy] Logged out successfully');
+    },
+  });
+
   const wallet = wallets[0] ?? null;
 
   const publicKey = useMemo(() => {
@@ -68,26 +76,10 @@ export function useWallet(): WalletContextState {
     };
   }, [wallet, privySignTransaction]);
 
-  const disconnect = useCallback(async () => {
-    try {
-      await logout();
-    } catch (e) {
-      console.warn('Privy logout API failed, clearing local state:', e);
-    }
-    // Always clear local state as fallback — Privy iframe may retain session
-    // but without local tokens the SDK will re-prompt login on next page load
-    try {
-      localStorage.clear();
-      sessionStorage.clear();
-      // Clear all cookies for this domain
-      document.cookie.split(';').forEach((c) => {
-        const name = c.trim().split('=')[0];
-        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
-        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname}`;
-      });
-    } catch { /* storage access may fail in some contexts */ }
-    // Full page navigation to reset all in-memory state
-    window.location.replace('/');
+  // Per Privy docs: logout should be called directly, not wrapped in async chains.
+  // The useLogout callbacks handle success/error.
+  const disconnect = useCallback(() => {
+    logout();
   }, [logout]);
 
   // GA tracking

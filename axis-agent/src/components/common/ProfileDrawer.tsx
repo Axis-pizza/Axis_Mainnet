@@ -184,17 +184,10 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
     }, 300); // Wait for drawer close animation
   };
 
-  const handleDisconnect = async () => {
-    setIsDisconnecting(true);
-    try {
-      resetUserData();
-      onClose();
-      await disconnect();
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-    setIsDisconnecting(false);
-    showToast('Logged out', 'info');
+  const handleDisconnect = () => {
+    resetUserData();
+    onClose();
+    disconnect();
   };
 
   const handleCheckIn = async () => {

@@ -454,15 +454,8 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
     }
   };
 
-  const handleDisconnect = async () => {
-    setIsDisconnecting(true);
-    try {
-      await disconnect();
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-    setIsDisconnecting(false);
-    showToast('Logged out', 'info');
+  const handleDisconnect = () => {
+    disconnect();
   };
 
   // --- Logic & Display Values ---
