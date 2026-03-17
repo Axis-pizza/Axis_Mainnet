@@ -28,30 +28,39 @@ export function useLoginModal() {
   const { login, ready } = usePrivy();
   const setVisible = useCallback(
     (visible: boolean) => {
-      if (visible && ready) login();
+      if (visible && ready) {
+        // Clear force-logout flag so the new session is recognized
+        localStorage.removeItem(FORCE_LOGOUT_KEY);
+        login();
+      }
     },
     [login, ready]
   );
   return { setVisible, visible: false };
 }
 
+const FORCE_LOGOUT_KEY = 'axis_force_logged_out';
+
 export function useWallet(): WalletContextState {
-  // Matches official example: destructure logout directly from usePrivy
   const { authenticated, ready: privyReady, logout } = usePrivy();
   const { wallets } = useWallets();
   const { signTransaction: privySignTransaction } = useSignTransaction();
   const wallet = wallets[0] ?? null;
 
+  // Check if user manually logged out — overrides Privy's auth state
+  const isForceLoggedOut = typeof window !== 'undefined' && localStorage.getItem(FORCE_LOGOUT_KEY) === 'true';
+
   const publicKey = useMemo(() => {
+    if (isForceLoggedOut) return null;
     if (!wallet?.address) return null;
     try {
       return new PublicKey(wallet.address);
     } catch {
       return null;
     }
-  }, [wallet?.address]);
+  }, [wallet?.address, isForceLoggedOut]);
 
-  const connected = authenticated && !!publicKey;
+  const connected = authenticated && !!publicKey && !isForceLoggedOut;
 
   const signTransaction = useMemo(() => {
     if (!wallet) return undefined;
@@ -66,11 +75,10 @@ export function useWallet(): WalletContextState {
   }, [wallet, privySignTransaction]);
 
   const disconnect = useCallback(async () => {
-    try {
-      await logout();
-    } catch {
-      // logout() throws on 400 — still navigate to clear state
-    }
+    // Mark as logged out locally — this overrides Privy's auth state
+    localStorage.setItem(FORCE_LOGOUT_KEY, 'true');
+    // Try Privy logout (may 400 — that's fine)
+    try { await logout(); } catch { /* ignored */ }
     window.location.replace('/');
   }, [logout]);
 

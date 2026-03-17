@@ -21,6 +21,7 @@ export const Providers: FC<{ children: ReactNode }> = ({ children }) => {
         appearance: {
           showWalletLoginFirst: true,
           walletChainType: 'solana-only',
+          walletList: ['phantom', 'solflare', 'detected_solana_wallets'],
           theme: 'dark',
           accentColor: '#D97706',
           logo: '/AxisLogoo.png',
