@@ -153,21 +153,29 @@ export const JupiterService = {
         if (dexRes.ok) {
           const dexData = await dexRes.json();
           if (dexData.pairs && dexData.pairs.length > 0) {
-            // Extract unique solana mints
-            const mints = Array.from(new Set(
-              dexData.pairs
-                .filter((p: any) => p.chainId === 'solana')
-                .map((p: any) => p.baseToken.address)
-            )) as string[];
-
-            const topMints = mints.slice(0, 5);
-            
-            // Re-use our robust RPC fetcher to get exact decimals
-            const fetchedTokens = await Promise.all(
-              topMints.map(mint => JupiterService.fetchTokenByMint(mint))
-            );
-            
-            results = fetchedTokens.filter((t): t is JupiterToken => t !== null);
+            // Extract token data DIRECTLY from search results — no second API round-trip
+            const seen = new Set<string>();
+            results = dexData.pairs
+              .filter((p: any) => p.chainId === 'solana')
+              .filter((p: any) => {
+                const addr = p.baseToken?.address;
+                if (!addr || seen.has(addr)) return false;
+                seen.add(addr);
+                return true;
+              })
+              .slice(0, 8)
+              .map((p: any): JupiterToken => ({
+                address: p.baseToken.address,
+                chainId: 101,
+                decimals: p.baseToken.decimals ?? 6,
+                name: p.baseToken.name || p.baseToken.symbol,
+                symbol: p.baseToken.symbol,
+                logoURI: p.info?.imageUrl || '',
+                tags: ['unverified', 'dexscreener'],
+                isVerified: false,
+                dailyVolume: p.volume?.h24,
+                marketCap: p.fdv ?? p.marketCap,
+              }));
           }
         }
       } catch (e) {
@@ -200,10 +208,10 @@ export const JupiterService = {
    */
   fetchTokenByMint: async (mint: string): Promise<JupiterToken | null> => {
     try {
-      // Parallel fetch to DexScreener & Solana public RPC
+      // Parallel fetch to DexScreener & Solana mainnet RPC (always mainnet for token metadata)
       const [dexRes, rpcRes] = await Promise.all([
         fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`).catch(() => null),
-        fetch(import.meta.env.VITE_RPC_URL || 'https://api.devnet.solana.com', {
+        fetch('https://api.mainnet-beta.solana.com', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

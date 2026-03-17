@@ -4,9 +4,10 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useWallet, useConnection, useLoginModal } from './hooks/useWallet';
+import { useWallet, useConnection } from './hooks/useWallet';
 import { FloatingNav, type ViewState } from './components/common/FloatingNav';
 import { TutorialOverlay } from './components/common/TutorialOverlay';
+import { LoginModal } from './components/common/LoginModal';
 import { KagemushaFlow } from './components/create';
 import { DiscoverView } from './components/discover/DiscoverView';
 import { ProfileView } from './components/profile/ProfileView';
@@ -35,9 +36,9 @@ export default function Home() {
     localStorage.setItem(DISCOVER_VIEW_KEY, mode);
   };
 
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const { connected, publicKey } = useWallet();
   const { connection } = useConnection();
-  const { setVisible: setWalletModalVisible } = useLoginModal();
   const [balance, setBalance] = useState<number | null>(null);
 
   // Fetch wallet balance (USDC)
@@ -71,7 +72,7 @@ export default function Home() {
   };
 
   const handleConnectWallet = () => {
-    setWalletModalVisible(true);
+    setIsLoginModalOpen(true);
   };
 
   const handleStrategySelect = (strategy: Strategy) => {
@@ -155,10 +156,17 @@ export default function Home() {
         <FloatingNav
           currentView={view as ViewState}
           onNavigate={handleNavigate}
+          onOpenLogin={() => setIsLoginModalOpen(true)}
           discoverViewMode={discoverViewMode}
           onDiscoverViewModeChange={handleDiscoverViewModeChange}
         />
       )}
+
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => setIsLoginModalOpen(false)}
+      />
 
       {/* Luxury Tutorial Overlay */}
       <AnimatePresence>
