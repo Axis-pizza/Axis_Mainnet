@@ -115,7 +115,7 @@ function SweepLight() {
     const t = clock.getElapsedTime();
     lightRef.current.position.x = Math.sin(t * 0.4) * 5;
     lightRef.current.position.y = Math.cos(t * 0.6) * 1.5 + 1.0;
-    lightRef.current.intensity = 3.0 + Math.sin(t * 2) * 1.5;
+    lightRef.current.intensity = 3.0;
   });
   return <pointLight ref={lightRef} position={[0, 0, 2]} color="#FFE4B8" distance={10} decay={1.5} />;
 }
@@ -150,8 +150,8 @@ function GlassSection({
   return (
     <section className={`relative z-10 ${className}`}>
       <div
-        className={`mx-4 md:mx-8 backdrop-blur-md border border-white/[0.08] rounded-2xl overflow-hidden ${innerClassName}`}
-        style={{ background: 'rgba(6, 4, 2, 0.68)' }}
+        className={`mx-4 md:mx-8 border border-white/[0.08] rounded-2xl overflow-hidden ${innerClassName}`}
+        style={{ background: 'rgba(6, 4, 2, 0.88)' }}
       >
         {children}
       </div>
@@ -406,7 +406,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
       <div className="fixed inset-0 z-0 pointer-events-none" style={{ background: '#050301' }}>
         <Canvas
           camera={{ position: [0, 0, 5.0], fov: 45 }}
-          gl={{ antialias: !isMobile, alpha: true }}
+          gl={{ antialias: !isMobile, alpha: false }}
           dpr={isMobile ? 1 : [1, 1.5]}
         >
           <Scene mobile={isMobile} />

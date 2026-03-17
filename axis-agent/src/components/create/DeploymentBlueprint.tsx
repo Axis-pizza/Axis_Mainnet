@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, ShieldCheck, Wallet, Loader2 } from 'lucide-react';
 import { useConnection } from '@solana/wallet-adapter-react';
@@ -282,22 +283,24 @@ export const DeploymentBlueprint = ({
         </motion.button>
       </div>
 
-      <AnimatePresence>
-        {isDepositModalOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsDepositModalOpen(false)}
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-[#140E08] border border-[rgba(184,134,63,0.15)] rounded-3xl p-6 z-50 shadow-2xl"
-            >
+      {createPortal(
+        <AnimatePresence>
+          {isDepositModalOpen && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsDepositModalOpen(false)}
+                className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999]"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-md bg-[#140E08] border border-[rgba(184,134,63,0.15)] rounded-3xl p-6 z-[10000] shadow-2xl"
+              >
               <h3 className="text-xl font-normal text-[#F2E0C8] mb-4">Initial Liquidity</h3>
 
               {/* USDC残高表示 */}
@@ -335,10 +338,12 @@ export const DeploymentBlueprint = ({
               >
                 {isDeploying ? <Loader2 className="animate-spin" /> : 'Confirm & Mint'}
               </button>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 };
