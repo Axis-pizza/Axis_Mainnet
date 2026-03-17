@@ -220,17 +220,18 @@ export const FloatingNav = memo(({ currentView, onNavigate, onOpenLogin, discove
             {connected ? (
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-4 h-10 rounded-full border border-red-500/30 bg-[#140E08] text-red-400/80 text-sm font-normal hover:border-red-500/60 hover:text-red-400 transition-all active:scale-95"
+                className="flex items-center gap-2 w-10 h-10 md:w-auto md:px-4 justify-center rounded-full border border-red-500/30 bg-[#140E08] text-red-400/80 text-sm font-normal hover:border-red-500/60 hover:text-red-400 transition-all active:scale-95"
               >
-                <LogOut className="w-4 h-4" />
-                Log Out
+                <LogOut className="w-4 h-4 shrink-0" />
+                <span className="hidden md:block">Log Out</span>
               </button>
             ) : (
               <button
                 onClick={onOpenLogin}
-                className="flex items-center gap-2 px-4 h-10 rounded-full bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-black text-sm font-normal active:scale-95 hover:brightness-110 transition-all shadow-[0_0_20px_rgba(184,134,63,0.25)]"
+                className="flex items-center gap-2 w-10 h-10 md:w-auto md:px-4 justify-center rounded-full bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-black text-sm font-normal active:scale-95 hover:brightness-110 transition-all shadow-[0_0_20px_rgba(184,134,63,0.25)]"
               >
-                Log In
+                <User className="w-4 h-4 shrink-0 md:hidden" />
+                <span className="hidden md:block">Log In</span>
               </button>
             )}
           </div>
