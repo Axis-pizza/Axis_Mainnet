@@ -65,9 +65,12 @@ export function useWallet(): WalletContextState {
     };
   }, [wallet, privySignTransaction]);
 
-  // Matches official Privy example: await logout() then navigate
   const disconnect = useCallback(async () => {
-    await logout();
+    try {
+      await logout();
+    } catch {
+      // logout() throws on 400 — still navigate to clear state
+    }
     window.location.replace('/');
   }, [logout]);
 
