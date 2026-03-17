@@ -45,7 +45,8 @@ export function useWallet(): WalletContextState {
   const { authenticated, ready: privyReady, logout } = usePrivy();
   const { wallets } = useWallets();
   const { signTransaction: privySignTransaction } = useSignTransaction();
-  const wallet = wallets[0] ?? null;
+  // Prioritize external wallets (Phantom, Solflare) over Privy embedded wallets
+  const wallet = wallets.find((w: any) => !w.isPrivyWallet) ?? wallets[0] ?? null;
 
   // Check if user manually logged out — overrides Privy's auth state
   const isForceLoggedOut = typeof window !== 'undefined' && localStorage.getItem(FORCE_LOGOUT_KEY) === 'true';
