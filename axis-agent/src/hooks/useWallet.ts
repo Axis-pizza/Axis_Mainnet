@@ -1,7 +1,7 @@
 // src/hooks/useWallet.ts — Privy-backed wallet hook
 // Based on privy-io examples and docs
 import { useEffect, useRef, useMemo, useCallback, useContext } from 'react';
-import { usePrivy, useWallets as useAllWallets } from '@privy-io/react-auth';
+import { usePrivy } from '@privy-io/react-auth';
 import { useWallets as useSolanaWallets, useSignTransaction } from '@privy-io/react-auth/solana';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { ConnectionContext } from '../context/ConnectionContext';
@@ -41,30 +41,35 @@ export function useLoginModal() {
 }
 
 export function useWallet(): WalletContextState {
-  const { authenticated, ready: privyReady, logout } = usePrivy();
+  const { authenticated, ready: privyReady, logout, user } = usePrivy();
 
-  // useAllWallets from main entry — has walletClientType to distinguish embedded vs external
-  const { wallets: allWallets } = useAllWallets();
-
-  // useSolanaWallets from /solana entry — needed for signTransaction
+  // Solana wallets from /solana entry — needed for signTransaction
   const { wallets: solanaWallets } = useSolanaWallets();
   const { signTransaction: privySignTransaction } = useSignTransaction();
 
   const isForceLoggedOut = typeof window !== 'undefined' && localStorage.getItem(FORCE_LOGOUT_KEY) === 'true';
 
-  // Find the right wallet address:
-  // 1. First look for an external Solana wallet (Phantom, Solflare, etc.)
-  // 2. Fall back to embedded Privy wallet
+  // Find the right wallet address using user.linkedAccounts
+  // which has walletClientType and chainType to distinguish embedded vs external
   const targetAddress = useMemo(() => {
     if (isForceLoggedOut) return null;
-    const solanaWalletEntries = allWallets.filter((w: any) => w.type === 'solana' || w.chainType === 'solana');
-    const external = solanaWalletEntries.find((w: any) => w.walletClientType !== 'privy');
-    if (external) return external.address;
-    const embedded = solanaWalletEntries.find((w: any) => w.walletClientType === 'privy');
-    if (embedded) return embedded.address;
-    // If no match in allWallets, try solanaWallets directly
+
+    // Check linked accounts for Solana wallets with walletClientType
+    const linkedWallets = user?.linkedAccounts?.filter(
+      (a: any) => a.type === 'wallet' && a.chainType === 'solana'
+    ) ?? [];
+
+    // Prefer external wallet over embedded
+    const external = linkedWallets.find((w: any) => w.walletClientType !== 'privy');
+    if (external) return (external as any).address;
+
+    // Fall back to embedded
+    const embedded = linkedWallets.find((w: any) => w.walletClientType === 'privy');
+    if (embedded) return (embedded as any).address;
+
+    // Last resort: first Solana wallet from the standard wallet hook
     return solanaWallets[0]?.address ?? null;
-  }, [allWallets, solanaWallets, isForceLoggedOut]);
+  }, [user, solanaWallets, isForceLoggedOut]);
 
   // Find the matching Solana standard wallet for signing
   const wallet = useMemo(() => {
