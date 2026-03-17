@@ -203,7 +203,7 @@ export const JupiterService = {
       // Parallel fetch to DexScreener & Solana public RPC
       const [dexRes, rpcRes] = await Promise.all([
         fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`).catch(() => null),
-        fetch(`https://api.mainnet-beta.solana.com`, {
+        fetch(import.meta.env.VITE_RPC_URL || 'https://api.devnet.solana.com', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
