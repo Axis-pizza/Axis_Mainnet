@@ -35,9 +35,9 @@ export default function Home() {
     localStorage.setItem(DISCOVER_VIEW_KEY, mode);
   };
 
+  const { setVisible: openLogin } = useLoginModal();
   const { connected, publicKey } = useWallet();
   const { connection } = useConnection();
-  const { setVisible: setWalletModalVisible } = useLoginModal();
   const [balance, setBalance] = useState<number | null>(null);
 
   // Fetch wallet balance (USDC)
@@ -70,9 +70,7 @@ export default function Home() {
     setShowTutorial(false);
   };
 
-  const handleConnectWallet = () => {
-    setWalletModalVisible(true);
-  };
+  const handleConnectWallet = () => { openLogin(true); };
 
   const handleStrategySelect = (strategy: Strategy) => {
     setPreviousView(view);
@@ -155,12 +153,13 @@ export default function Home() {
         <FloatingNav
           currentView={view as ViewState}
           onNavigate={handleNavigate}
+          onOpenLogin={() => openLogin(true)}
           discoverViewMode={discoverViewMode}
           onDiscoverViewModeChange={handleDiscoverViewModeChange}
         />
       )}
 
-      {/* Luxury Tutorial Overlay */}
+{/* Luxury Tutorial Overlay */}
       <AnimatePresence>
         {showTutorial && (
           <TutorialOverlay

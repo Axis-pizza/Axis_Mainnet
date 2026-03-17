@@ -24,7 +24,8 @@
       "Bash(node test-sim.mjs:*)",
       "Bash(find:*)",
       "Bash(head:*)",
-      "Bash(pnpm tsc:*)"
+      "Bash(pnpm tsc:*)",
+      "Bash(ls /Users/kikutayuusuke/Documents/GitHub/Axis_MVP/axis-agent/.env*)"
     ]
   }
 }

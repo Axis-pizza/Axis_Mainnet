@@ -161,7 +161,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
   const { publicKey, disconnect } = useWallet();
   const { connection } = useConnection();
   const { setVisible: openLogin } = useLoginModal();
-  const { showToast } = useToast();
+const { showToast } = useToast();
 
   // --- UI State ---
   const [activeTab, setActiveTab] = useState<'portfolio' | 'leaderboard'>('portfolio');
@@ -473,24 +473,78 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
 
   if (!publicKey) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-6 text-center min-h-[70vh]">
-        <div className="w-20 h-20 bg-[#140E08] rounded-full flex items-center justify-center border border-[rgba(184,134,63,0.15)] mb-6 animate-pulse">
-          <Wallet className="w-8 h-8 text-white/50" />
+      <div className="relative min-h-[85vh] flex flex-col items-center justify-center px-6 overflow-hidden pt-24 pb-32">
+        {/* Ambient background glows */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full opacity-30"
+            style={{ background: 'radial-gradient(ellipse, rgba(184,134,63,0.18) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+          <div className="absolute bottom-20 right-0 w-64 h-64 rounded-full opacity-20"
+            style={{ background: 'radial-gradient(ellipse, rgba(153,69,255,0.12) 0%, transparent 70%)', filter: 'blur(60px)' }} />
         </div>
-        <h2 className="text-2xl font-serif font-normal text-white mb-2">Connect Wallet</h2>
-        <p className="text-white/40 text-sm max-w-xs mx-auto mb-8">
-          Access your portfolio, track referrals, and climb the leaderboard.
-        </p>
-        <div className="w-full max-w-xs">
-          <button
+
+        <div className="relative w-full max-w-sm mx-auto">
+          {/* Logo mark */}
+          <div className="flex flex-col items-center mb-10">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5"
+              style={{
+                background: 'linear-gradient(135deg, #1A0E06, #2A1A08)',
+                border: '1px solid rgba(184,134,63,0.2)',
+                boxShadow: '0 0 40px rgba(184,134,63,0.08), inset 0 1px 0 rgba(255,255,255,0.05)',
+              }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #6B4420, #B8863F)' }}>
+                <Wallet className="w-4 h-4 text-black" />
+              </div>
+            </div>
+
+            <p className="text-[10px] font-normal uppercase tracking-[0.25em] mb-3"
+              style={{ color: '#B8863F' }}>
+              Axis · DeFi Strategy Hub
+            </p>
+            <h1 className="font-serif text-3xl font-normal text-center leading-tight tracking-tight"
+              style={{ color: '#F2E0C8' }}>
+              Your private<br />portfolio awaits
+            </h1>
+            <p className="text-sm text-center mt-3 leading-relaxed max-w-[240px]"
+              style={{ color: '#5A3A18' }}>
+              Sign in to manage strategies, track XP, and climb the leaderboard
+            </p>
+          </div>
+
+          {/* Connect Button */}
+          <motion.button
+            whileTap={{ scale: 0.98 }}
             onClick={() => openLogin(true)}
-            className="w-full py-3 rounded-xl font-normal text-white cursor-pointer"
+            className="w-full group relative flex items-center gap-4 px-5 py-4 rounded-2xl overflow-hidden transition-all duration-300"
             style={{
-              background: 'linear-gradient(135deg, #6B4420, #B8863F, #E8C890)',
+              background: 'linear-gradient(135deg, rgba(153,69,255,0.08) 0%, rgba(20,241,149,0.05) 100%)',
+              border: '1px solid rgba(153,69,255,0.25)',
             }}
           >
-            Connect Wallet
-          </button>
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              style={{ background: 'linear-gradient(135deg, rgba(153,69,255,0.14) 0%, rgba(20,241,149,0.08) 100%)' }} />
+            <div className="relative w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: 'rgba(153,69,255,0.12)', border: '1px solid rgba(153,69,255,0.2)' }}>
+              <svg width="22" height="22" viewBox="0 0 397.7 311.7" fill="none">
+                <defs>
+                  <linearGradient id="sol-grad-profile" x1="360.8" y1="351.5" x2="141.7" y2="-69.3" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#9945ff" />
+                    <stop offset="1" stopColor="#14f195" />
+                  </linearGradient>
+                </defs>
+                <path fill="url(#sol-grad-profile)" d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7zm0-164.2c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7zm317.4-70H64.6c-3.5 0-6.8 1.4-9.2 3.8L-7.3 70.2c-4.1 4.1-1.2 11.1 4.6 11.1h317.4c3.5 0 6.8-1.4 9.2-3.8l62.7-62.7c4.1-4.1 1.2-11.1-4.6-11.1z" />
+              </svg>
+            </div>
+            <div className="relative text-left flex-1">
+              <p className="text-[#F2E0C8] font-normal text-[15px] leading-tight">Continue with Solana</p>
+              <p className="text-[#7A5A30] text-xs mt-0.5">Phantom · Solflare · Backpack</p>
+            </div>
+            <span className="relative text-[#9945ff]/40 group-hover:text-[#9945ff]/70 transition-colors text-lg">›</span>
+          </motion.button>
+
+          <p className="text-center text-[11px] mt-6 leading-relaxed" style={{ color: '#2E1A08' }}>
+            By signing in, you agree to our Terms of Service
+          </p>
         </div>
       </div>
     );

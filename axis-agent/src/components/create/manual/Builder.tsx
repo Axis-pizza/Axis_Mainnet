@@ -991,9 +991,8 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
     } catch { /* clipboard denied */ }
   }, [setSearchQuery]);
 
-  useEffect(() => {
-    if (portfolio.length === 0 && !isSelectorOpen) setIsSelectorOpen(true);
-  }, []);
+  // Removed: auto-open token selector on mount.
+  // Users should open it by scrolling to and clicking the "Add Token" button.
 
   return (
     <div className={inline ? 'flex flex-col h-full' : 'absolute inset-0 bg-[#030303] flex flex-col'}>
