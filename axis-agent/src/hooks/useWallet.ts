@@ -1,7 +1,7 @@
 // src/hooks/useWallet.ts — Privy-backed wallet hook
-// Drop-in replacement for the old @solana/wallet-adapter-react hook
+// Based on privy-io/create-solana-next-app official example
 import { useEffect, useRef, useMemo, useCallback, useContext } from 'react';
-import { usePrivy, useLogout } from '@privy-io/react-auth';
+import { usePrivy } from '@privy-io/react-auth';
 import { useWallets, useSignTransaction } from '@privy-io/react-auth/solana';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { ConnectionContext } from '../context/ConnectionContext';
@@ -13,7 +13,7 @@ export interface WalletContextState {
   publicKey: PublicKey | null;
   signTransaction: ((tx: Transaction) => Promise<Transaction>) | undefined;
   signAllTransactions: ((txs: Transaction[]) => Promise<Transaction[]>) | undefined;
-  disconnect: () => void;
+  disconnect: () => Promise<void>;
   ready: boolean;
   authenticated: boolean;
   wallet: any;
@@ -24,10 +24,6 @@ export function useConnection() {
   return { connection };
 }
 
-/**
- * Drop-in replacement for useWalletModal from @solana/wallet-adapter-react-ui.
- * `setVisible(true)` opens the Privy login modal.
- */
 export function useLoginModal() {
   const { login, ready } = usePrivy();
   const setVisible = useCallback(
@@ -40,20 +36,10 @@ export function useLoginModal() {
 }
 
 export function useWallet(): WalletContextState {
-  const { authenticated, ready: privyReady } = usePrivy();
+  // Matches official example: destructure logout directly from usePrivy
+  const { authenticated, ready: privyReady, logout } = usePrivy();
   const { wallets } = useWallets();
   const { signTransaction: privySignTransaction } = useSignTransaction();
-
-  // useLogout with onSuccess callback — per official Privy docs
-  const { logout } = useLogout({
-    onSuccess: () => {
-      console.log('[Privy] Logged out successfully');
-      // Reload to fully reset UI state — shouldAutoConnect:false
-      // ensures the wallet won't reconnect on the fresh page
-      window.location.replace('/');
-    },
-  });
-
   const wallet = wallets[0] ?? null;
 
   const publicKey = useMemo(() => {
@@ -79,10 +65,10 @@ export function useWallet(): WalletContextState {
     };
   }, [wallet, privySignTransaction]);
 
-  // Per Privy docs: logout should be called directly, not wrapped in async chains.
-  // The useLogout callbacks handle success/error.
-  const disconnect = useCallback(() => {
-    logout();
+  // Matches official Privy example: await logout() then navigate
+  const disconnect = useCallback(async () => {
+    await logout();
+    window.location.replace('/');
   }, [logout]);
 
   // GA tracking

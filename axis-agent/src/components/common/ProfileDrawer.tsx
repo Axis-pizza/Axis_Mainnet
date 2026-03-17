@@ -184,10 +184,10 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
     }, 300); // Wait for drawer close animation
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
     resetUserData();
     onClose();
-    disconnect();
+    await disconnect();
   };
 
   const handleCheckIn = async () => {

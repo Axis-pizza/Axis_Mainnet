@@ -454,8 +454,8 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
     }
   };
 
-  const handleDisconnect = () => {
-    disconnect();
+  const handleDisconnect = async () => {
+    await disconnect();
   };
 
   // --- Logic & Display Values ---
