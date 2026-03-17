@@ -79,7 +79,7 @@ export function useWallet(): WalletContextState {
     localStorage.setItem(FORCE_LOGOUT_KEY, 'true');
     // Try Privy logout (may 400 — that's fine)
     try { await logout(); } catch { /* ignored */ }
-    window.location.replace('/');
+    window.location.reload();
   }, [logout]);
 
   // GA tracking
