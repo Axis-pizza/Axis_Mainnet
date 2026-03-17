@@ -292,14 +292,16 @@ export const DeploymentBlueprint = ({
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={() => setIsDepositModalOpen(false)}
-                className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[9999]"
+                className="fixed inset-0 bg-black/80 z-[9999]"
+                style={{ willChange: 'opacity' }}
               />
               <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 24 }}
                 transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                 className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-md bg-[#140E08] border border-[rgba(184,134,63,0.15)] rounded-3xl p-6 z-[10000] shadow-2xl"
+                style={{ willChange: 'transform, opacity' }}
               >
               <h3 className="text-xl font-normal text-[#F2E0C8] mb-4">Initial Liquidity</h3>
 
