@@ -1,11 +1,13 @@
 // src/hooks/useWallet.ts — Privy-backed wallet hook
-// Based on privy-io/create-solana-next-app official example
+// Based on privy-io examples and docs
 import { useEffect, useRef, useMemo, useCallback, useContext } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
-import { useWallets, useSignTransaction } from '@privy-io/react-auth/solana';
+import { usePrivy, useWallets as useAllWallets } from '@privy-io/react-auth';
+import { useWallets as useSolanaWallets, useSignTransaction } from '@privy-io/react-auth/solana';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { ConnectionContext } from '../context/ConnectionContext';
 import ReactGA from 'react-ga4';
+
+const FORCE_LOGOUT_KEY = 'axis_force_logged_out';
 
 export interface WalletContextState {
   connected: boolean;
@@ -29,7 +31,6 @@ export function useLoginModal() {
   const setVisible = useCallback(
     (visible: boolean) => {
       if (visible && ready) {
-        // Clear force-logout flag so the new session is recognized
         localStorage.removeItem(FORCE_LOGOUT_KEY);
         login();
       }
@@ -39,30 +40,46 @@ export function useLoginModal() {
   return { setVisible, visible: false };
 }
 
-const FORCE_LOGOUT_KEY = 'axis_force_logged_out';
-
 export function useWallet(): WalletContextState {
   const { authenticated, ready: privyReady, logout } = usePrivy();
-  const { wallets } = useWallets();
-  const { signTransaction: privySignTransaction } = useSignTransaction();
-  // Prioritize external wallets (Phantom, Solflare) over Privy embedded wallets
-  const wallet = wallets.find((w: any) => {
-    const name = (w.name || w.walletClientType || '').toLowerCase();
-    return name !== 'privy' && !name.includes('privy');
-  }) ?? wallets[0] ?? null;
 
-  // Check if user manually logged out — overrides Privy's auth state
+  // useAllWallets from main entry — has walletClientType to distinguish embedded vs external
+  const { wallets: allWallets } = useAllWallets();
+
+  // useSolanaWallets from /solana entry — needed for signTransaction
+  const { wallets: solanaWallets } = useSolanaWallets();
+  const { signTransaction: privySignTransaction } = useSignTransaction();
+
   const isForceLoggedOut = typeof window !== 'undefined' && localStorage.getItem(FORCE_LOGOUT_KEY) === 'true';
 
-  const publicKey = useMemo(() => {
+  // Find the right wallet address:
+  // 1. First look for an external Solana wallet (Phantom, Solflare, etc.)
+  // 2. Fall back to embedded Privy wallet
+  const targetAddress = useMemo(() => {
     if (isForceLoggedOut) return null;
-    if (!wallet?.address) return null;
+    const solanaWalletEntries = allWallets.filter((w: any) => w.type === 'solana' || w.chainType === 'solana');
+    const external = solanaWalletEntries.find((w: any) => w.walletClientType !== 'privy');
+    if (external) return external.address;
+    const embedded = solanaWalletEntries.find((w: any) => w.walletClientType === 'privy');
+    if (embedded) return embedded.address;
+    // If no match in allWallets, try solanaWallets directly
+    return solanaWallets[0]?.address ?? null;
+  }, [allWallets, solanaWallets, isForceLoggedOut]);
+
+  // Find the matching Solana standard wallet for signing
+  const wallet = useMemo(() => {
+    if (!targetAddress) return null;
+    return solanaWallets.find((w) => w.address === targetAddress) ?? solanaWallets[0] ?? null;
+  }, [solanaWallets, targetAddress]);
+
+  const publicKey = useMemo(() => {
+    if (!targetAddress) return null;
     try {
-      return new PublicKey(wallet.address);
+      return new PublicKey(targetAddress);
     } catch {
       return null;
     }
-  }, [wallet?.address, isForceLoggedOut]);
+  }, [targetAddress]);
 
   const connected = authenticated && !!publicKey && !isForceLoggedOut;
 
@@ -79,9 +96,7 @@ export function useWallet(): WalletContextState {
   }, [wallet, privySignTransaction]);
 
   const disconnect = useCallback(async () => {
-    // Mark as logged out locally — this overrides Privy's auth state
     localStorage.setItem(FORCE_LOGOUT_KEY, 'true');
-    // Try Privy logout (may 400 — that's fine)
     try { await logout(); } catch { /* ignored */ }
     window.location.reload();
   }, [logout]);
