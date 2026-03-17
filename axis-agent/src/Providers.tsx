@@ -7,6 +7,14 @@ import { ConnectionContext } from './context/ConnectionContext';
 
 const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID || 'cmmty4ru802060cjplthsx04y';
 
+const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+// On mobile: use specific wallet names (deep links) + WalletConnect
+// On desktop: use specific names + auto-detected browser extensions
+const walletList = isMobile
+  ? ['phantom', 'solflare', 'backpack', 'wallet_connect'] as any
+  : ['phantom', 'solflare', 'backpack', 'detected_solana_wallets'] as any;
+
 export const Providers: FC<{ children: ReactNode }> = ({ children }) => {
   const endpoint = useMemo(
     () => import.meta.env.VITE_RPC_URL || clusterApiUrl('devnet'),
@@ -21,7 +29,7 @@ export const Providers: FC<{ children: ReactNode }> = ({ children }) => {
         appearance: {
           showWalletLoginFirst: true,
           walletChainType: 'solana-only',
-          walletList: ['phantom', 'solflare', 'detected_solana_wallets'],
+          walletList,
           theme: 'dark',
           accentColor: '#D97706',
           logo: '/AxisLogoo.png',
