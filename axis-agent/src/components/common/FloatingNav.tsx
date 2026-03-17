@@ -25,7 +25,6 @@ export const FloatingNav = memo(({ currentView, onNavigate, onOpenLogin, discove
   const [isVisible, setIsVisible] = useState(true);
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768);
   const [hiddenByScroll, setHiddenByScroll] = useState(false);
-  const [showLogoutPopover, setShowLogoutPopover] = useState(false);
 
   const { connected, publicKey, disconnect } = useWallet();
 
@@ -98,36 +97,9 @@ export const FloatingNav = memo(({ currentView, onNavigate, onOpenLogin, discove
     if (!isDesktop) handleActivity();
   };
 
-  // Close popover when clicking outside
-  useEffect(() => {
-    if (!showLogoutPopover) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('[data-auth-menu]')) {
-        setShowLogoutPopover(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    document.addEventListener('touchstart', handler as any);
-    return () => {
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('touchstart', handler as any);
-    };
-  }, [showLogoutPopover]);
-
-  const handleAvatarClick = () => {
-    setShowLogoutPopover((v) => !v);
-  };
-
   const handleLogout = async () => {
-    setShowLogoutPopover(false);
     await disconnect();
   };
-
-  // Short address label
-  const shortAddress = publicKey
-    ? `${publicKey.toBase58().slice(0, 4)}…${publicKey.toBase58().slice(-3)}`
-    : '';
 
   return (
     <>
@@ -246,53 +218,19 @@ export const FloatingNav = memo(({ currentView, onNavigate, onOpenLogin, discove
 
             {/* Auth button */}
             {connected ? (
-              <div className="relative" data-auth-menu>
-                {/* Avatar button */}
-                <button
-                  onClick={handleAvatarClick}
-                  className="flex items-center gap-2 pl-1 pr-3 h-10 rounded-full border border-[#B8863F]/30 bg-[#140E08] hover:border-[#B8863F]/60 transition-all active:scale-95"
-                >
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#B8863F] to-[#6B4420] flex items-center justify-center text-[10px] font-normal text-black shrink-0">
-                    {shortAddress.slice(0, 2).toUpperCase()}
-                  </div>
-                  <span className="hidden md:block text-xs text-[#B8863F] font-normal">{shortAddress}</span>
-                </button>
-
-                {/* Logout popover */}
-                <AnimatePresence>
-                  {showLogoutPopover && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                      transition={{ duration: 0.15 }}
-                      className="absolute bottom-14 right-0 bg-[#0D0A07] border border-[#B8863F]/20 rounded-2xl shadow-2xl overflow-hidden min-w-[160px]"
-                    >
-                      <button
-                        onClick={() => { setShowLogoutPopover(false); onNavigate('PROFILE'); }}
-                        className="flex items-center gap-3 w-full px-4 py-3 text-sm text-[#F2E0C8]/80 hover:bg-white/5 hover:text-[#F2E0C8] transition-colors"
-                      >
-                        <User className="w-4 h-4 text-[#B8863F]" />
-                        Profile
-                      </button>
-                      <div className="h-px bg-[#B8863F]/10 mx-3" />
-                      <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-3 w-full px-4 py-3 text-sm text-red-400/80 hover:bg-red-500/5 hover:text-red-400 transition-colors"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        Log Out
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 h-10 rounded-full border border-red-500/30 bg-[#140E08] text-red-400/80 text-sm font-normal hover:border-red-500/60 hover:text-red-400 transition-all active:scale-95"
+              >
+                <LogOut className="w-4 h-4" />
+                Log Out
+              </button>
             ) : (
               <button
                 onClick={onOpenLogin}
                 className="flex items-center gap-2 px-4 h-10 rounded-full bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-black text-sm font-normal active:scale-95 hover:brightness-110 transition-all shadow-[0_0_20px_rgba(184,134,63,0.25)]"
               >
-                Sign In
+                Log In
               </button>
             )}
           </div>

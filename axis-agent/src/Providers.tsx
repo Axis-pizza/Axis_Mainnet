@@ -34,7 +34,7 @@ export const Providers: FC<{ children: ReactNode }> = ({ children }) => {
           accentColor: '#D97706',
           logo: '/AxisLogoo.png',
         },
-        loginMethods: ['wallet', 'google', 'twitter'],
+        loginMethods: ['wallet'],
         embeddedWallets: {
           solana: {
             createOnLogin: 'users-without-wallets',
