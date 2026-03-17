@@ -5,7 +5,7 @@ import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana';
 import { Connection, clusterApiUrl } from '@solana/web3.js';
 import { ConnectionContext } from './context/ConnectionContext';
 
-const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID || 'cmmtfgqr3009b0ejokozel5gx';
+const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID || 'cmmty4ru802060cjplthsx04y';
 
 const solanaConnectors = toSolanaWalletConnectors({
   shouldAutoConnect: false,
