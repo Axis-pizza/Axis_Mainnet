@@ -48,6 +48,9 @@ export function useWallet(): WalletContextState {
   const { logout } = useLogout({
     onSuccess: () => {
       console.log('[Privy] Logged out successfully');
+      // Reload to fully reset UI state — shouldAutoConnect:false
+      // ensures the wallet won't reconnect on the fresh page
+      window.location.replace('/');
     },
   });
 
