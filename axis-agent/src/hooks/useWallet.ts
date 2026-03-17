@@ -1,7 +1,7 @@
 // src/hooks/useWallet.ts — Privy-backed wallet hook
 // Drop-in replacement for the old @solana/wallet-adapter-react hook
 import { useEffect, useRef, useMemo, useCallback, useContext } from 'react';
-import { usePrivy, useLogout } from '@privy-io/react-auth';
+import { usePrivy } from '@privy-io/react-auth';
 import { useWallets, useSignTransaction } from '@privy-io/react-auth/solana';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { ConnectionContext } from '../context/ConnectionContext';
@@ -29,19 +29,18 @@ export function useConnection() {
  * `setVisible(true)` opens the Privy login modal.
  */
 export function useLoginModal() {
-  const { login } = usePrivy();
+  const { login, ready } = usePrivy();
   const setVisible = useCallback(
     (visible: boolean) => {
-      if (visible) login();
+      if (visible && ready) login();
     },
-    [login]
+    [login, ready]
   );
   return { setVisible, visible: false };
 }
 
 export function useWallet(): WalletContextState {
-  const { authenticated, ready: privyReady } = usePrivy();
-  const { logout } = useLogout();
+  const { authenticated, ready: privyReady, logout, connectWallet } = usePrivy();
   const { wallets } = useWallets();
   const { signTransaction: privySignTransaction } = useSignTransaction();
   const wallet = wallets[0] ?? null;
@@ -70,14 +69,24 @@ export function useWallet(): WalletContextState {
   }, [wallet, privySignTransaction]);
 
   const disconnect = useCallback(async () => {
-    try { await logout(); } catch { /* Privy API may 400 */ }
-    // Nuclear clear — Privy uses generic storage keys, not privy-prefixed
-    localStorage.clear();
-    sessionStorage.clear();
-    // Clear all cookies
-    document.cookie.split(';').forEach((c) => {
-      document.cookie = c.trim().split('=')[0] + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
-    });
+    try {
+      await logout();
+    } catch (e) {
+      console.warn('Privy logout API failed, clearing local state:', e);
+    }
+    // Always clear local state as fallback — Privy iframe may retain session
+    // but without local tokens the SDK will re-prompt login on next page load
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      // Clear all cookies for this domain
+      document.cookie.split(';').forEach((c) => {
+        const name = c.trim().split('=')[0];
+        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname}`;
+      });
+    } catch { /* storage access may fail in some contexts */ }
+    // Full page navigation to reset all in-memory state
     window.location.replace('/');
   }, [logout]);
 

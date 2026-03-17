@@ -115,7 +115,8 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isWalletModalPending, setIsWalletModalPending] = useState(false);
-  const { setVisible, visible: walletModalVisible } = useLoginModal();
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const { setVisible } = useLoginModal();
   const { publicKey, disconnect, connected } = useWallet();
 
   const resetUserData = useCallback(() => {
@@ -168,15 +169,19 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
   }, [isOpen, publicKey, connected, fetchUser]);
 
   useEffect(() => {
-    if (isWalletModalPending && !walletModalVisible) {
+    if (isWalletModalPending && !isLoginOpen) {
       setIsWalletModalPending(false);
     }
-  }, [walletModalVisible, isWalletModalPending]);
+  }, [isLoginOpen, isWalletModalPending]);
 
   // ★ 追加: ウォレット接続・切断ハンドラ
   const handleConnect = () => {
-    setVisible(true);
-    setIsWalletModalPending(true);
+    setIsLoginOpen(true);
+    onClose(); // Close drawer so Privy modal is visible
+    setTimeout(() => {
+      setVisible(true);
+      setIsLoginOpen(false);
+    }, 300); // Wait for drawer close animation
   };
 
   const handleDisconnect = async () => {
@@ -251,8 +256,8 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
   };
 
   const showConnectView = !connected || !publicKey;
-  const drawerZIndex = walletModalVisible ? 'z-[100]' : 'z-[9999]';
-  const backdropZIndex = walletModalVisible ? 'z-[99]' : 'z-[9998]';
+  const drawerZIndex = isLoginOpen ? 'z-[100]' : 'z-[9999]';
+  const backdropZIndex = isLoginOpen ? 'z-[99]' : 'z-[9998]';
 
   return createPortal(
     <>
