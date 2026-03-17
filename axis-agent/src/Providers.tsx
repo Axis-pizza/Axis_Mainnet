@@ -37,7 +37,7 @@ export const Providers: FC<{ children: ReactNode }> = ({ children }) => {
         loginMethods: ['wallet', 'email'],
         embeddedWallets: {
           solana: {
-            createOnLogin: 'all-users',
+            createOnLogin: 'users-without-wallets',
           },
         },
         externalWallets: {
