@@ -92,10 +92,13 @@ export default function Home() {
 
   return (
     <div className="bg-[#030303] min-h-screen text-white font-sans selection:bg-orange-500/30 relative overflow-x-hidden">
-      {/* Background Glows */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full h-full pointer-events-none overflow-hidden z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-orange-900/10 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-900/10 blur-[120px] rounded-full" />
+      {/* Background Glows — use will-change + translateZ to prevent mobile repaint flicker */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full h-full pointer-events-none overflow-hidden z-0"
+        style={{ willChange: 'transform', transform: 'translateZ(0)' }}>
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-orange-900/10 blur-[80px] rounded-full"
+          style={{ willChange: 'transform', backfaceVisibility: 'hidden' }} />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-900/10 blur-[80px] rounded-full"
+          style={{ willChange: 'transform', backfaceVisibility: 'hidden' }} />
       </div>
 
       {/* DISCOVER VIEW */}

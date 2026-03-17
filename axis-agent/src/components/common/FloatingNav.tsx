@@ -21,7 +21,7 @@ interface FloatingNavProps {
 export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, onDiscoverViewModeChange }: FloatingNavProps) => {
   const [isBugDrawerOpen, setIsBugDrawerOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 768);
   const [hiddenByScroll, setHiddenByScroll] = useState(false);
 
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -100,7 +100,7 @@ export const FloatingNav = memo(({ currentView, onNavigate, discoverViewMode, on
   return (
     <>
       <motion.div
-        initial={{ y: 0 }}
+        initial={false}
         animate={{
           y: hiddenByScroll
             ? (isDesktop ? -80 : 120)
