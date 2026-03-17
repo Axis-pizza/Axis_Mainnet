@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, TrendingUp, TrendingDown, Wallet, Activity, ExternalLink } from 'lucide-react';
-import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { useConnection, useWallet } from '../../hooks/useWallet';
 import { PublicKey } from '@solana/web3.js';
 import { RichChart } from './RichChart';
 import { api } from '../../services/api';

@@ -21,8 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useWallet, useConnection } from '../../hooks/useWallet';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { useWallet, useConnection, useLoginModal } from '../../hooks/useWallet';
 import { api } from '../../services/api';
 import { getUsdcBalance } from '../../services/usdc';
 import { TokenImage } from '../common/TokenImage';
@@ -161,6 +160,7 @@ interface ProfileViewProps {
 export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
   const { publicKey, disconnect } = useWallet();
   const { connection } = useConnection();
+  const { setVisible: openLogin } = useLoginModal();
   const { showToast } = useToast();
 
   // --- UI State ---
@@ -455,16 +455,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
   };
 
   const handleDisconnect = async () => {
-    try {
-      setIsDisconnecting(true);
-      await disconnect();
-      showToast('Wallet disconnected', 'info');
-    } catch (error) {
-      console.error('Disconnect error:', error);
-      showToast('Failed to disconnect wallet', 'error');
-    } finally {
-      setIsDisconnecting(false);
-    }
+    await disconnect();
   };
 
   // --- Logic & Display Values ---
@@ -491,15 +482,15 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           Access your portfolio, track referrals, and climb the leaderboard.
         </p>
         <div className="w-full max-w-xs">
-          <WalletMultiButton
+          <button
+            onClick={() => openLogin(true)}
+            className="w-full py-3 rounded-xl font-normal text-white cursor-pointer"
             style={{
-              width: '100%',
-              justifyContent: 'center',
               background: 'linear-gradient(135deg, #6B4420, #B8863F, #E8C890)',
-              borderRadius: '12px',
-              fontWeight: 'normal',
             }}
-          />
+          >
+            Connect Wallet
+          </button>
         </div>
       </div>
     );
@@ -932,7 +923,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           ) : (
             <LogOut className="h-4 w-4" />
           )}
-          {isDisconnecting ? 'Disconnecting...' : 'Disconnect Wallet'}
+          {isDisconnecting ? 'Logging out...' : 'Log Out'}
         </button>
       </div>
 

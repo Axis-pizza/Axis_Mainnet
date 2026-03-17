@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, ShieldCheck, Wallet, Loader2 } from 'lucide-react';
-import { useConnection } from '@solana/wallet-adapter-react';
+import { useConnection } from '../../hooks/useWallet';
 import { Transaction } from '@solana/web3.js';
 import { useWallet } from '../../hooks/useWallet';
 import { useToast } from '../../context/ToastContext';

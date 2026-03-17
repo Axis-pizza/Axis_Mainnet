@@ -11,8 +11,7 @@ import {
   Sparkles,
   Check,
 } from 'lucide-react';
-import { useWallet } from '../../hooks/useWallet';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useWallet, useLoginModal } from '../../hooks/useWallet';
 import { useManualDashboard } from '../../hooks/useManualDashboard';
 import { useTokenPreferences } from '../../hooks/useTokenPreferences';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -341,7 +340,7 @@ export interface ETFScrollFlowProps {
 
 export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
   const { publicKey, connected } = useWallet();
-  const { setVisible: setWalletModalVisible } = useWalletModal();
+  const { setVisible: setWalletModalVisible } = useLoginModal();
   const isMobile = useIsMobile();
   const preferences = useTokenPreferences();
 

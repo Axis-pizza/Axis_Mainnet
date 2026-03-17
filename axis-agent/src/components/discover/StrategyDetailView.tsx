@@ -27,7 +27,7 @@ import {
   ChevronRight,
   Settings,
 } from 'lucide-react';
-import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { useConnection, useWallet } from '../../hooks/useWallet';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,

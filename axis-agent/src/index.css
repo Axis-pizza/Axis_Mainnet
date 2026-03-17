@@ -262,12 +262,6 @@ body {
   border-radius: 3px;
 }
 
-.wallet-adapter-modal-wrapper {
-  z-index: 99999 !important;
-}
-.wallet-adapter-modal-overlay {
-  z-index: 99998 !important;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    APPLE LIQUID GLASS BUTTONS
