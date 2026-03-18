@@ -9,6 +9,7 @@ import { useToast } from '../../context/ToastContext';
 import { api } from '../../services/api';
 import { SERVER_WALLET_PUBKEY } from '../../config/constants';
 import { getOrCreateUsdcAta, createUsdcTransferIx, getUsdcBalance } from '../../services/usdc';
+import { Buffer } from 'buffer';
 
 interface DeploymentBlueprintProps {
   strategyName: string;
@@ -120,6 +121,7 @@ export const DeploymentBlueprint = ({
 
         const transaction = new Transaction();
         transaction.recentBlockhash = blockhash;
+        // 一時的にユーザーを feePayer に設定（シリアライズに必要）
         transaction.feePayer = wallet.publicKey;
 
         // Only add ATA creation if it doesn't exist yet
@@ -128,8 +130,19 @@ export const DeploymentBlueprint = ({
 
         transaction.add(createUsdcTransferIx(fromAta, toAta, wallet.publicKey, amountUsdc));
 
-        // Sign first, then simulate the signed transaction (simulation requires signatures)
-        const signed = await wallet.signTransaction(transaction);
+        // 運営ウォレットにガス代を委任
+        let txToSign = transaction;
+        try {
+          const serialized = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
+          const { transaction: feePayerSignedBase64 } = await api.signAsFeePayer(
+            Buffer.from(serialized).toString('base64')
+          );
+          txToSign = Transaction.from(Buffer.from(feePayerSignedBase64, 'base64'));
+        } catch {
+          // バックエンドが失敗した場合はユーザーがガス代を負担するフォールバック
+        }
+
+        const signed = await wallet.signTransaction(txToSign);
 
         // eslint-disable-next-line @typescript-eslint/no-deprecated
         const sim = await connection.simulateTransaction(signed);

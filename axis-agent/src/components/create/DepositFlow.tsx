@@ -113,9 +113,22 @@ export const DepositFlow = ({
       setStatus('PROCESSING');
       const latestBlockhash = await connection.getLatestBlockhash();
       transaction.recentBlockhash = latestBlockhash.blockhash;
+      // 一時的にユーザーを feePayer に設定（シリアライズに必要）
       transaction.feePayer = publicKey;
 
-      const signedTx = await signTransaction(transaction);
+      // 運営ウォレットにガス代を委任
+      let txToSign = transaction;
+      try {
+        const serialized = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
+        const { transaction: feePayerSignedBase64 } = await api.signAsFeePayer(
+          Buffer.from(serialized).toString('base64')
+        );
+        txToSign = Transaction.from(Buffer.from(feePayerSignedBase64, 'base64'));
+      } catch {
+        // バックエンドが失敗した場合はユーザーがガス代を負担するフォールバック
+      }
+
+      const signedTx = await signTransaction(txToSign);
       const serializedTx = signedTx.serialize();
       const signature = await connection.sendRawTransaction(serializedTx, {
         skipPreflight: false,

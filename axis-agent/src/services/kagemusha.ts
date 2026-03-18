@@ -9,6 +9,8 @@ import { USDC_DECIMALS } from '../config/constants';
 import { Program, AnchorProvider, BN } from '@coral-xyz/anchor';
 import type { Idl } from '@coral-xyz/anchor';
 import type { TokenAllocation } from '../types';
+import { api } from './api';
+import { Buffer } from 'buffer';
 
 const PROGRAM_ID = new PublicKey('2kdDnjHHLmHex8v5pk8XgB7ddFeiuBW4Yp5Ykx8JmBLd');
 
@@ -136,9 +138,23 @@ export const KagemushaService = {
       })
       .transaction();
 
+    // 一時的にユーザーを feePayer に設定（シリアライズに必要）
     tx.feePayer = wallet.publicKey;
     tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    const signedTx = await wallet.signTransaction(tx);
+
+    // 運営ウォレットにガス代を委任
+    let txToSign = tx;
+    try {
+      const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+      const { transaction: feePayerSignedBase64 } = await api.signAsFeePayer(
+        Buffer.from(serialized).toString('base64')
+      );
+      txToSign = Transaction.from(Buffer.from(feePayerSignedBase64, 'base64'));
+    } catch {
+      // バックエンドが失敗した場合はユーザーがガス代を負担するフォールバック
+    }
+
+    const signedTx = await wallet.signTransaction(txToSign);
     const signature = await connection.sendRawTransaction(signedTx.serialize());
     await connection.confirmTransaction(signature, 'confirmed');
 
@@ -176,9 +192,23 @@ export const KagemushaService = {
       })
       .transaction();
 
+    // 一時的にユーザーを feePayer に設定（シリアライズに必要）
     tx.feePayer = wallet.publicKey;
     tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-    const signedTx = await wallet.signTransaction(tx);
+
+    // 運営ウォレットにガス代を委任
+    let txToSign = tx;
+    try {
+      const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+      const { transaction: feePayerSignedBase64 } = await api.signAsFeePayer(
+        Buffer.from(serialized).toString('base64')
+      );
+      txToSign = Transaction.from(Buffer.from(feePayerSignedBase64, 'base64'));
+    } catch {
+      // バックエンドが失敗した場合はユーザーがガス代を負担するフォールバック
+    }
+
+    const signedTx = await wallet.signTransaction(txToSign);
     const signature = await connection.sendRawTransaction(signedTx.serialize());
     await connection.confirmTransaction(signature, 'confirmed');
 
