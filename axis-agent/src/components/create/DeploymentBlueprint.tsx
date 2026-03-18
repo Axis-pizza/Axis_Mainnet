@@ -6,7 +6,7 @@ import { useConnection } from '../../hooks/useWallet';
 import { Transaction } from '@solana/web3.js';
 import { useWallet } from '../../hooks/useWallet';
 import { useToast } from '../../context/ToastContext';
-import { api } from '../../services/api';
+import { api, clearStrategyCache } from '../../services/api';
 import { SERVER_WALLET_PUBKEY } from '../../config/constants';
 import { getOrCreateUsdcAta, createUsdcTransferIx, getUsdcBalance } from '../../services/usdc';
 import { Buffer } from 'buffer';
@@ -54,6 +54,7 @@ export const DeploymentBlueprint = ({
   const [depositAsset, setDepositAsset] = useState<'SOL' | 'USDC'>('USDC');
   const [isDeploying, setIsDeploying] = useState(false);
   const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
+  const [deployStep, setDeployStep] = useState<string>('');
 
   // Fetch balance when modal opens
   const handleInitialDeployClickWithBalance = async () => {
@@ -76,6 +77,7 @@ export const DeploymentBlueprint = ({
     }
 
     setIsDeploying(true);
+    setDeployStep('Checking balance...');
 
     try {
       const amountUsdc = parseFloat(depositAmount);
@@ -91,10 +93,11 @@ export const DeploymentBlueprint = ({
             'error'
           );
           setIsDeploying(false);
+          setDeployStep('');
           return;
         }
 
-        showToast(`Sending ${amountUsdc} USDC to Vault...`, 'info');
+        setDeployStep('Preparing transaction...');
 
         // Derive ATA addresses
         const { ata: fromAta, instruction: createFromIx } = await getOrCreateUsdcAta(
@@ -131,6 +134,7 @@ export const DeploymentBlueprint = ({
         transaction.add(createUsdcTransferIx(fromAta, toAta, wallet.publicKey, amountUsdc));
 
         // 運営ウォレットにガス代を委任
+        setDeployStep('Delegating gas fee to operator...');
         let txToSign = transaction;
         try {
           const serialized = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
@@ -142,8 +146,10 @@ export const DeploymentBlueprint = ({
           // バックエンドが失敗した場合はユーザーがガス代を負担するフォールバック
         }
 
+        setDeployStep('Waiting for wallet signature...');
         const signed = await wallet.signTransaction(txToSign);
 
+        setDeployStep('Verifying transaction...');
         // eslint-disable-next-line @typescript-eslint/no-deprecated
         const sim = await connection.simulateTransaction(signed);
         if (sim.value.err) {
@@ -153,11 +159,12 @@ export const DeploymentBlueprint = ({
         }
         console.log('[Simulation passed]', sim.value.logs);
 
+        setDeployStep('Sending to blockchain...');
         txSignature = await connection.sendRawTransaction(signed.serialize(), {
           skipPreflight: true,
           maxRetries: 5,
         });
-        showToast('Confirming transaction...', 'info');
+        setDeployStep('Confirming on-chain... (may take 10-30s)');
         const confirmation = await connection.confirmTransaction(
           { signature: txSignature, blockhash, lastValidBlockHeight },
           'confirmed'
@@ -169,7 +176,7 @@ export const DeploymentBlueprint = ({
       }
 
       // 2. API call
-      showToast('🚀 Minting ETF Tokens...', 'info');
+      setDeployStep('Minting ETF tokens...');
       const strategyData = {
         ownerPubkey: wallet.publicKey.toBase58(),
         name: strategyName,
@@ -188,18 +195,24 @@ export const DeploymentBlueprint = ({
 
       if (!result.success) throw new Error(result.error || 'Deployment API failed');
 
+      // キャッシュをクリアして Discover で最新データが取得されるようにする
+      clearStrategyCache();
+      console.log('[Deploy] result:', JSON.stringify(result));
+
       showToast(`✅ ${safeSymbol} Deployed Successfully!`, 'success');
       setIsDepositModalOpen(false);
       setIsDeploying(false);
+      setDeployStep('');
 
       if (onDeploySuccess) {
-        onDeploySuccess(result.mintAddress || result.strategyId, amountUsdc, depositAsset);
+        onDeploySuccess(result.strategyId || result.mintAddress, amountUsdc, depositAsset);
       } else {
         onComplete();
       }
     } catch (e: any) {
       showToast(`Failed: ${e.message}`, 'error');
       setIsDeploying(false);
+      setDeployStep('');
     }
   };
 
@@ -343,6 +356,13 @@ export const DeploymentBlueprint = ({
               {usdcBalance === 0 && (
                 <div className="mb-4 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400">
                   No devnet USDC found. Mint with 0 USDC or get some from the faucet first.
+                </div>
+              )}
+
+              {isDeploying && deployStep && (
+                <div className="mb-4 px-3 py-3 rounded-xl bg-amber-900/20 border border-amber-600/20 flex items-center gap-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 flex-shrink-0" />
+                  <span className="text-xs text-amber-300">{deployStep}</span>
                 </div>
               )}
 

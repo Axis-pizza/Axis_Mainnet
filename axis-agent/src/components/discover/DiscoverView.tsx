@@ -23,11 +23,12 @@ interface DiscoverViewProps {
   onOverlayChange?: (isActive: boolean) => void;
   viewMode: 'swipe' | 'list';
   onViewModeChange: (mode: 'swipe' | 'list') => void;
+  focusedStrategyId?: string | null;
 }
 
-export const DiscoverView = ({ onStrategySelect, onOverlayChange, viewMode, onViewModeChange }: DiscoverViewProps) => {
+export const DiscoverView = ({ onStrategySelect, onOverlayChange, viewMode, onViewModeChange, focusedStrategyId: externalFocusedId }: DiscoverViewProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [focusedStrategyId, setFocusedStrategyId] = useState<string | null>(null);
+  const [focusedStrategyId, setFocusedStrategyId] = useState<string | null>(externalFocusedId ?? null);
 
   // list へ戻った時に focus をリセット
   useEffect(() => {

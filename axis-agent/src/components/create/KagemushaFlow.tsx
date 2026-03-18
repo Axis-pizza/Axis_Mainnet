@@ -41,12 +41,12 @@ class SimpleErrorBoundary extends React.Component<
 type CreateStep = 'LANDING' | 'BUILDER' | 'BLUEPRINT' | 'DASHBOARD' | 'REBALANCE';
 
 interface KagemushaFlowProps {
-  onStepChange?: (step: CreateStep) => void;
+  onStepChange?: (step: CreateStep, strategyId?: string) => void;
 }
 
 export const KagemushaFlow = ({ onStepChange }: KagemushaFlowProps) => {
-  const handleDeployComplete = () => {
-    onStepChange?.('DASHBOARD');
+  const handleDeployComplete = (strategyId?: string) => {
+    onStepChange?.('DASHBOARD', strategyId);
   };
 
   return (

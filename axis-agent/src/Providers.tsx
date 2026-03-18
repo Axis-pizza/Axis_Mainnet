@@ -20,7 +20,7 @@ export const Providers: FC<{ children: ReactNode }> = ({ children }) => {
     () => import.meta.env.VITE_RPC_URL || clusterApiUrl('devnet'),
     []
   );
-  const connection = useMemo(() => new Connection(endpoint), [endpoint]);
+  const connection = useMemo(() => new Connection(endpoint, 'confirmed'), [endpoint]);
 
   return (
     <PrivyProvider

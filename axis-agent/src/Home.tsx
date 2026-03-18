@@ -22,6 +22,7 @@ export default function Home() {
   const [view, setView] = useState<View>('CREATE');
   const [previousView, setPreviousView] = useState<View>('DISCOVER');
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null);
+  const [newStrategyId, setNewStrategyId] = useState<string | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const [isOverlayActive, setIsOverlayActive] = useState(false);
   const [hideNavInCreate, setHideNavInCreate] = useState(false);
@@ -106,6 +107,7 @@ export default function Home() {
             onOverlayChange={setIsOverlayActive}
             viewMode={discoverViewMode}
             onViewModeChange={handleDiscoverViewModeChange}
+            focusedStrategyId={newStrategyId}
           />
         </div>
       )}
@@ -114,10 +116,13 @@ export default function Home() {
       {view === 'CREATE' && (
         <div className="relative z-10 pb-32">
           <KagemushaFlow
-            onStepChange={(step) => {
+            onStepChange={(step, strategyId) => {
               setHideNavInCreate(step !== 'LANDING' && step !== 'DASHBOARD');
 
               if (step === 'DASHBOARD') {
+                // strategyId が取れた場合はそれを、なければ publicKey を
+                // シグナルとして使い「このユーザーの最新策略を先頭に」を伝える
+                setNewStrategyId(strategyId || publicKey?.toBase58() || 'my-newest');
                 setView('DISCOVER');
                 setHideNavInCreate(false);
               }
