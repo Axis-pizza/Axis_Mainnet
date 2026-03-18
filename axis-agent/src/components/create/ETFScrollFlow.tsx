@@ -335,7 +335,7 @@ function InlineIdentityStep({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ETFScrollFlowProps {
-  onDeployComplete?: () => void;
+  onDeployComplete?: (strategyId?: string) => void;
 }
 
 export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
@@ -379,8 +379,8 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
     scrollTo(reviewRef);
   }, [dashboard, connected, publicKey, setWalletModalVisible, scrollTo]);
 
-  const handleDeployComplete = () => {
-    onDeployComplete?.();
+  const handleDeployComplete = (strategyId?: string) => {
+    onDeployComplete?.(strategyId);
   };
 
   // When builder hook internally tries to go to 'identity', redirect to our scroll nav
@@ -532,6 +532,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
             initialTvl={1.0}
             onBack={() => scrollTo(identityRef)}
             onComplete={handleDeployComplete}
+            onDeploySuccess={(address) => handleDeployComplete(address)}
           />
         </GlassSection>
       </div>

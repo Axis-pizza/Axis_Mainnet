@@ -763,13 +763,30 @@ export const SwipeDiscoverView = ({
 
         const myApiStrats = myRes.strategies || myRes || [];
         const publicStrats = publicRes.strategies || [];
+        console.log('[Discover] myApiStrats count:', myApiStrats.length, 'publicStrats count:', publicStrats.length);
+        if (myApiStrats.length > 0) {
+          console.log('[Discover] myApiStrats[0] fields:', JSON.stringify(Object.keys(myApiStrats[0])));
+          console.log('[Discover] myApiStrats[0]:', JSON.stringify(myApiStrats[0]).slice(0, 200));
+        }
+
         // Public strategies first — prevents user's own ETFs from always appearing at the top
+        // ただし user version の ownerPubkey を保持するためにマージする
         const combined = [...publicStrats, ...myApiStrats];
 
-        const uniqueMap = new Map();
+        const uniqueMap = new Map<string, any>();
         combined.forEach((item) => {
-          if (item.id && !uniqueMap.has(item.id)) uniqueMap.set(item.id, item);
-          if (item.address && !uniqueMap.has(item.address)) uniqueMap.set(item.address, item);
+          const key = item.id || item.address;
+          if (!key) return;
+          if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, { ...item });
+          } else {
+            // 公開版に ownerPubkey/creator がない場合、user版の値をマージ
+            const existing = uniqueMap.get(key);
+            const merged: any = { ...existing };
+            if (!existing.ownerPubkey && item.ownerPubkey) merged.ownerPubkey = item.ownerPubkey;
+            if (!existing.creator && item.creator) merged.creator = item.creator;
+            uniqueMap.set(key, merged);
+          }
         });
         const uniqueStrategies = Array.from(uniqueMap.values());
         setStrategies(uniqueStrategies);
@@ -930,13 +947,50 @@ export const SwipeDiscoverView = ({
   useEffect(() => {
     if (!focusedStrategyId || focusedStrategyId === appliedFocusRef.current) return;
     if (enrichedStrategies.length === 0) return;
-    const idx = enrichedStrategies.findIndex((s) => s.id === focusedStrategyId);
+
+    console.log('[Focus] focusedStrategyId:', focusedStrategyId);
+    console.log('[Focus] enrichedStrategies count:', enrichedStrategies.length);
+    console.log('[Focus] publicKey:', publicKey?.toBase58());
+    console.log('[Focus] sample ids:', enrichedStrategies.slice(0, 3).map(s => ({
+      id: s.id, address: s.address, ownerPubkey: s.ownerPubkey, creator: s.creator, creatorAddress: s.creatorAddress
+    })));
+
+    // 複数フィールドで一致を試みる（IDフォーマットの揺れに対応）
+    let idx = enrichedStrategies.findIndex((s) =>
+      s.id === focusedStrategyId ||
+      s.address === focusedStrategyId ||
+      s.mintAddress === focusedStrategyId ||
+      s.pubkey === focusedStrategyId
+    );
+    console.log('[Focus] exact match idx:', idx);
+
+    // フォールバック: 現在のユーザーが作成した最新のストラテジーを先頭へ
+    if (idx < 0 && publicKey) {
+      const ownerStr = publicKey.toBase58();
+      const mine = enrichedStrategies
+        .map((s, i) => ({ s, i }))
+        .filter(({ s }) =>
+          s.ownerPubkey === ownerStr ||
+          s.creator === ownerStr ||
+          s.creatorAddress === ownerStr
+        );
+      console.log('[Focus] fallback mine count:', mine.length);
+      if (mine.length > 0) {
+        mine.sort((a, b) => (b.s.createdAt || 0) - (a.s.createdAt || 0));
+        idx = mine[0].i;
+        console.log('[Focus] fallback idx:', idx, 'strategy:', mine[0].s.name);
+      }
+    }
+
     if (idx >= 0) {
       _savedSwipeIndex = idx;
       setCurrentIndex(idx);
       appliedFocusRef.current = focusedStrategyId;
+      console.log('[Focus] setCurrentIndex:', idx);
+    } else {
+      console.log('[Focus] no match found — strategy not in list yet?');
     }
-  }, [focusedStrategyId, enrichedStrategies]);
+  }, [focusedStrategyId, enrichedStrategies, publicKey]);
 
   const handleSwipe = useCallback(
     (direction: 'left' | 'right', strategy: any) => {
