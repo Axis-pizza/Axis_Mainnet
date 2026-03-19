@@ -5,7 +5,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "test:price": "tsx src/services/snapshot/price-fetcher-test.ts"
+    "test:price": "tsx src/services/snapshot/price-fetcher-test.ts", 
+    "test": "jest"
   },
   "dependencies": {
     "@metaplex-foundation/mpl-token-metadata": "^2.13.0",
@@ -23,8 +24,12 @@
     "satori": "^0.19.1"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "drizzle-kit": "^0.31.9",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6",
     "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
     "wrangler": "^4.60.0"
   },
   "packageManager": "pnpm@10.10.0+sha512.d615db246fe70f25dcfea6d8d73dee782ce23e2245e3c4f6f888249fb568149318637dca73c2c5c8ef2a4ca0d5657fb9567188bfab47f566d1ee6ce987815c39"
