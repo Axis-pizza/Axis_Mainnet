@@ -17,6 +17,12 @@ import { getUsdcBalance } from './services/usdc';
 type View = 'DISCOVER' | 'CREATE' | 'PROFILE' | 'STRATEGY_DETAIL';
 const TUTORIAL_KEY = 'kagemusha-onboarding-v2';
 const DISCOVER_VIEW_KEY = 'axis-discover-view-mode';
+const pageVariants = {
+  enter: { opacity: 0, scale: 0.97, filter: 'blur(14px)' },
+  center: { opacity: 1, scale: 1,    filter: 'blur(0px)'  },
+  exit:   { opacity: 0, scale: 1.02, filter: 'blur(14px)' },
+};
+const pageTransition = { duration: 0.62, ease: [0.4, 0, 0.2, 1] };
 
 export default function Home() {
   const [view, setView] = useState<View>('CREATE');
@@ -84,9 +90,11 @@ export default function Home() {
     setSelectedStrategy(null);
   };
 
-  const handleNavigate = (newView: ViewState) => {
-    setView(newView as View);
-  };
+  const navigateTo = useCallback((newView: View) => {
+    setView(newView);
+  }, []);
+
+  const handleNavigate = (newView: ViewState) => navigateTo(newView as View);
 
   return (
     <div className="bg-[#030303] min-h-screen text-white font-sans selection:bg-orange-500/30 relative overflow-x-hidden">
@@ -99,44 +107,71 @@ export default function Home() {
           style={{ willChange: 'transform', backfaceVisibility: 'hidden' }} />
       </div>
 
-      {/* DISCOVER VIEW */}
-      {view === 'DISCOVER' && (
-        <div className="relative z-10 pb-32">
-          <DiscoverView
-            onStrategySelect={handleStrategySelect}
-            onOverlayChange={setIsOverlayActive}
-            viewMode={discoverViewMode}
-            onViewModeChange={handleDiscoverViewModeChange}
-            focusedStrategyId={newStrategyId}
-          />
-        </div>
-      )}
+      {/* Main views — blur morph transition */}
+      <AnimatePresence mode="wait">
+        {view === 'DISCOVER' && (
+          <motion.div
+            key="DISCOVER"
+            variants={pageVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={pageTransition}
+            className="relative z-10 pb-32"
+            style={{ willChange: 'opacity, transform, filter' }}
+          >
+            <DiscoverView
+              onStrategySelect={handleStrategySelect}
+              onOverlayChange={setIsOverlayActive}
+              viewMode={discoverViewMode}
+              onViewModeChange={handleDiscoverViewModeChange}
+              focusedStrategyId={newStrategyId}
+            />
+          </motion.div>
+        )}
 
-      {/* CREATE VIEW */}
-      {view === 'CREATE' && (
-        <div className="relative z-10 pb-32">
-          <KagemushaFlow
-            onStepChange={(step, strategyId) => {
-              setHideNavInCreate(step !== 'LANDING' && step !== 'DASHBOARD');
+        {view === 'CREATE' && (
+          <motion.div
+            key="CREATE"
+            variants={pageVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={pageTransition}
+            className="relative z-10 pb-32"
+            style={{ willChange: 'opacity, transform, filter' }}
+          >
+            <KagemushaFlow
+              onStepChange={(step, strategyId) => {
+                setHideNavInCreate(step !== 'LANDING' && step !== 'DASHBOARD');
 
-              if (step === 'DASHBOARD') {
-                // strategyId が取れた場合はそれを、なければ publicKey を
-                // シグナルとして使い「このユーザーの最新策略を先頭に」を伝える
-                setNewStrategyId(strategyId || publicKey?.toBase58() || 'my-newest');
-                setView('DISCOVER');
-                setHideNavInCreate(false);
-              }
-            }}
-          />
-        </div>
-      )}
+                if (step === 'DASHBOARD') {
+                  // strategyId が取れた場合はそれを、なければ publicKey を
+                  // シグナルとして使い「このユーザーの最新策略を先頭に」を伝える
+                  setNewStrategyId(strategyId || publicKey?.toBase58() || 'my-newest');
+                  navigateTo('DISCOVER');
+                  setHideNavInCreate(false);
+                }
+              }}
+            />
+          </motion.div>
+        )}
 
-      {/* PROFILE VIEW */}
-      {view === 'PROFILE' && (
-        <div className="relative z-10 pb-32">
-          <ProfileView onStrategySelect={handleStrategySelect} />
-        </div>
-      )}
+        {view === 'PROFILE' && (
+          <motion.div
+            key="PROFILE"
+            variants={pageVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={pageTransition}
+            className="relative z-10 pb-32"
+            style={{ willChange: 'opacity, transform, filter' }}
+          >
+            <ProfileView onStrategySelect={handleStrategySelect} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* STRATEGY DETAIL — slide up with spring bounce */}
       <AnimatePresence>
