@@ -79,7 +79,7 @@ export const RichChart = ({ data, isPositive, height = 300, colors }: RichChartP
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
         textColor: chartColors.textMuted,
-        fontFamily: "'Times New Roman', Times, serif",
+        fontFamily: "'Lora', 'Times New Roman', Times, serif",
       },
       grid: {
         vertLines: { visible: false },

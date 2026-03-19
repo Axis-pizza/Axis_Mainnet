@@ -154,10 +154,10 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-white font-serif text-xl italic tracking-wide">
+                        <span className="text-white font-serif text-xl tracking-wide">
                           Muse
                         </span>
-                        <span className="px-2 py-0.5 bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[9px] font-bold rounded-sm tracking-widest">
+                        <span className="px-2 py-0.5 bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[9px] font-normal rounded-sm tracking-widest">
                           FOUNDER
                         </span>
                       </div>
@@ -193,7 +193,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
                   <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4 text-orange-400 border border-orange-500/20">
                     <Send size={32} />
                   </div>
-                  <p className="text-2xl italic text-white mb-2">Signal Transmitted.</p>
+                  <p className="text-2xl text-white mb-2">Signal Transmitted.</p>
                   <p className="text-sm font-sans text-white/40">
                     We will analyze your report shortly.
                   </p>
@@ -201,7 +201,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
               ) : (
                 <form onSubmit={submitReport} className="space-y-5">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] text-orange-500/70 uppercase tracking-widest font-sans font-bold pl-1">
+                    <label className="text-[10px] text-orange-500/70 uppercase tracking-widest font-sans font-normal pl-1">
                       Your ID
                     </label>
                     <div className="relative group">
@@ -221,7 +221,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] text-orange-500/70 uppercase tracking-widest font-sans font-bold pl-1">
+                    <label className="text-[10px] text-orange-500/70 uppercase tracking-widest font-sans font-normal pl-1">
                       Message
                     </label>
                     <textarea
@@ -294,7 +294,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
                     whileTap={{ scale: 0.96 }}
                     disabled={isSending}
                     type="submit"
-                    className="w-full bg-white text-black py-3.5 rounded-xl font-serif text-lg font-bold flex items-center justify-center gap-3 shadow-[0_0_15px_rgba(255,255,255,0.05)] transition-all disabled:opacity-50 mt-4"
+                    className="w-full bg-white text-black py-3.5 rounded-xl font-serif text-lg font-normal flex items-center justify-center gap-3 shadow-[0_0_15px_rgba(255,255,255,0.05)] transition-all disabled:opacity-50 mt-4"
                   >
                     {isSending ? (
                       <Loader2 className="animate-spin" size={20} />

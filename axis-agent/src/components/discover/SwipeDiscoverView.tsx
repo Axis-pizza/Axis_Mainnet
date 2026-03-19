@@ -316,13 +316,13 @@ const SwipeToConfirm = memo(
           className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
           style={{ opacity: textOpacity }}
         >
-          <span className="font-bold text-xs tracking-[0.2em] text-white/50 animate-pulse">
+          <span className="font-normal text-xs tracking-[0.2em] text-white/50 animate-pulse">
             {isLoading ? 'PROCESSING...' : label}
           </span>
         </motion.div>
 
         {isSuccess && (
-          <div className="absolute inset-0 flex items-center justify-center z-20 text-white font-bold tracking-widest text-sm">
+          <div className="absolute inset-0 flex items-center justify-center z-20 text-white font-normal tracking-widest text-sm">
             SUCCESS
           </div>
         )}
@@ -443,7 +443,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
             <div className="flex bg-[#1C1C1E] p-1 rounded-full border border-white/5">
               <button
                 onClick={() => setMode('BUY')}
-                className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                className={`px-5 py-1.5 rounded-full text-xs font-normal transition-all ${
                   mode === 'BUY' ? 'bg-[#B8863F] text-black' : 'text-[#78716C]'
                 }`}
               >
@@ -451,7 +451,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
               </button>
               <button
                 onClick={() => setMode('SELL')}
-                className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                className={`px-5 py-1.5 rounded-full text-xs font-normal transition-all ${
                   mode === 'SELL' ? 'bg-[#B8863F] text-black' : 'text-[#78716C]'
                 }`}
               >
@@ -467,12 +467,12 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
             <div className="flex flex-col items-center gap-2 mb-8">
               <div className="flex items-baseline justify-center gap-1">
                 <span
-                  className={`font-sans font-medium text-6xl tracking-tight ${amount === '0' ? 'text-[#57534E]' : 'text-white'}`}
+                  className={`font-sans font-normal text-6xl tracking-tight ${amount === '0' ? 'text-[#57534E]' : 'text-white'}`}
                 >
                   {amount}
                 </span>
               </div>
-              <span className="text-[#78716C] font-bold text-lg">
+              <span className="text-[#78716C] font-normal text-lg">
                 {mode === 'BUY' ? 'USDC' : ticker}
               </span>
             </div>
@@ -485,7 +485,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
               </span>
               <button
                 onClick={() => setAmount((currentBalance * (mode === 'BUY' ? 0.95 : 1)).toFixed(4))}
-                className="text-[#B8863F] text-xs font-bold uppercase hover:text-white transition-colors"
+                className="text-[#B8863F] text-xs font-normal uppercase hover:text-white transition-colors"
               >
                 Max
               </button>
@@ -510,7 +510,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
                   <button
                     key={key}
                     onClick={() => handleNum(key.toString())}
-                    className="h-14 text-2xl font-medium text-white hover:bg-white/5 active:bg-white/10 rounded-full transition-all flex items-center justify-center select-none"
+                    className="h-14 text-2xl font-normal text-white hover:bg-white/5 active:bg-white/10 rounded-full transition-all flex items-center justify-center select-none"
                   >
                     {key}
                   </button>
@@ -528,7 +528,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
               {status === 'SIGNING' || status === 'CONFIRMING' || status === 'PROCESSING' ? (
                 <div className="w-full h-16 bg-[#1C1C1E] rounded-full flex items-center justify-center gap-3 border border-white/5">
                   <Loader2 className="w-5 h-5 text-[#B8863F] animate-spin" />
-                  <span className="text-white font-bold tracking-wide text-sm">PROCESSING...</span>
+                  <span className="text-white font-normal tracking-wide text-sm">PROCESSING...</span>
                 </div>
               ) : (
                 <SwipeToConfirm
@@ -577,7 +577,7 @@ const SuccessOverlay = ({
         transition={{ type: 'spring', damping: 14, stiffness: 100, delay: 0.1 }}
         className="relative mb-10 z-20 text-center"
       >
-        <h1 className="text-5xl md:text-7xl font-black italic text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-yellow-200 to-orange-500 drop-shadow-[0_0_30px_rgba(234,88,12,0.8)] transform -rotate-3 leading-none tracking-tight">
+        <h1 className="text-5xl md:text-7xl font-normal text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-yellow-200 to-orange-500 drop-shadow-[0_0_30px_rgba(234,88,12,0.8)] transform -rotate-3 leading-none tracking-tight">
           READY FOR
           <br />
           TAKEOFF
@@ -601,12 +601,12 @@ const SuccessOverlay = ({
               alt="creator"
               className="w-16 h-16 rounded-full border-2 border-[rgba(184,134,63,0.15)] bg-black object-cover"
             />
-            <div className="absolute -bottom-2 -right-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#140E08] shadow-lg flex items-center gap-1">
+            <div className="absolute -bottom-2 -right-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-[10px] font-normal px-2 py-0.5 rounded-full border border-[#140E08] shadow-lg flex items-center gap-1">
               ROI {(strategy.roi || 0).toFixed(0)}%
             </div>
           </div>
           <div className="min-w-0">
-            <h3 className="font-bold text-white text-xl leading-tight truncate">{strategy.name}</h3>
+            <h3 className="font-normal text-white text-xl leading-tight truncate">{strategy.name}</h3>
             <p className="text-xs text-white/40 font-mono mt-1 flex items-center gap-1">
               By {strategy.creatorAddress?.slice(0, 4)}...{strategy.creatorAddress?.slice(-4)}
             </p>
@@ -625,7 +625,7 @@ const SuccessOverlay = ({
                   className="w-full h-full rounded-full object-cover"
                 />
               ) : (
-                <span className="text-[9px] text-white font-bold">{t.symbol?.[0]}</span>
+                <span className="text-[9px] text-white font-normal">{t.symbol?.[0]}</span>
               )}
             </div>
           ))}
@@ -640,7 +640,7 @@ const SuccessOverlay = ({
           onClick={onBuy}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          className="group w-full py-4 bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-black text-lg rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all flex items-center justify-center gap-2 relative overflow-hidden"
+          className="group w-full py-4 bg-gradient-to-r from-emerald-600 to-cyan-600 text-white font-normal text-lg rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all flex items-center justify-center gap-2 relative overflow-hidden"
         >
           <span className="relative z-10 flex items-center gap-2">
             <ShoppingCart className="w-5 h-5" /> Buy Now
@@ -655,7 +655,7 @@ const SuccessOverlay = ({
           onClick={onGoToStrategy}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          className="group w-full py-4 bg-gradient-to-r from-orange-600 to-yellow-600 text-white font-black text-lg rounded-2xl shadow-[0_0_20px_rgba(249,115,22,0.4)] transition-all flex items-center justify-center gap-2 relative overflow-hidden"
+          className="group w-full py-4 bg-gradient-to-r from-orange-600 to-yellow-600 text-white font-normal text-lg rounded-2xl shadow-[0_0_20px_rgba(249,115,22,0.4)] transition-all flex items-center justify-center gap-2 relative overflow-hidden"
         >
           <span className="relative z-10 flex items-center gap-2">
             <Rocket className="w-5 h-5 fill-white" /> LFG (View Detail)
@@ -668,7 +668,7 @@ const SuccessOverlay = ({
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.7 }}
           onClick={onClose}
-          className="w-full py-4 bg-white/5 border border-[rgba(184,134,63,0.15)] text-white/60 font-bold text-lg rounded-2xl hover:bg-white/10 hover:text-white active:scale-95 transition-all flex items-center justify-center gap-2"
+          className="w-full py-4 bg-white/5 border border-[rgba(184,134,63,0.15)] text-white/60 font-normal text-lg rounded-2xl hover:bg-white/10 hover:text-white active:scale-95 transition-all flex items-center justify-center gap-2"
         >
           Keep Scouting
         </motion.button>
@@ -676,6 +676,9 @@ const SuccessOverlay = ({
     </motion.div>
   );
 };
+
+// Module-level: survives React unmount/remount within the same session
+let _savedSwipeIndex = 0;
 
 // --- Main View Component ---
 
@@ -691,7 +694,7 @@ export const SwipeDiscoverView = ({
   const { showToast } = useToast();
 
   const [strategies, setStrategies] = useState<any[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(_savedSwipeIndex);
   const [loading, setLoading] = useState(true);
   const [matchedStrategy, setMatchedStrategy] = useState<any | null>(null);
   const lastSwipeTime = useRef(0);
@@ -760,12 +763,30 @@ export const SwipeDiscoverView = ({
 
         const myApiStrats = myRes.strategies || myRes || [];
         const publicStrats = publicRes.strategies || [];
-        const combined = [...myApiStrats, ...publicStrats];
+        console.log('[Discover] myApiStrats count:', myApiStrats.length, 'publicStrats count:', publicStrats.length);
+        if (myApiStrats.length > 0) {
+          console.log('[Discover] myApiStrats[0] fields:', JSON.stringify(Object.keys(myApiStrats[0])));
+          console.log('[Discover] myApiStrats[0]:', JSON.stringify(myApiStrats[0]).slice(0, 200));
+        }
 
-        const uniqueMap = new Map();
+        // Public strategies first — prevents user's own ETFs from always appearing at the top
+        // ただし user version の ownerPubkey を保持するためにマージする
+        const combined = [...publicStrats, ...myApiStrats];
+
+        const uniqueMap = new Map<string, any>();
         combined.forEach((item) => {
-          if (item.id && !uniqueMap.has(item.id)) uniqueMap.set(item.id, item);
-          if (item.address && !uniqueMap.has(item.address)) uniqueMap.set(item.address, item);
+          const key = item.id || item.address;
+          if (!key) return;
+          if (!uniqueMap.has(key)) {
+            uniqueMap.set(key, { ...item });
+          } else {
+            // 公開版に ownerPubkey/creator がない場合、user版の値をマージ
+            const existing = uniqueMap.get(key);
+            const merged: any = { ...existing };
+            if (!existing.ownerPubkey && item.ownerPubkey) merged.ownerPubkey = item.ownerPubkey;
+            if (!existing.creator && item.creator) merged.creator = item.creator;
+            uniqueMap.set(key, merged);
+          }
         });
         const uniqueStrategies = Array.from(uniqueMap.values());
         setStrategies(uniqueStrategies);
@@ -926,12 +947,50 @@ export const SwipeDiscoverView = ({
   useEffect(() => {
     if (!focusedStrategyId || focusedStrategyId === appliedFocusRef.current) return;
     if (enrichedStrategies.length === 0) return;
-    const idx = enrichedStrategies.findIndex((s) => s.id === focusedStrategyId);
+
+    console.log('[Focus] focusedStrategyId:', focusedStrategyId);
+    console.log('[Focus] enrichedStrategies count:', enrichedStrategies.length);
+    console.log('[Focus] publicKey:', publicKey?.toBase58());
+    console.log('[Focus] sample ids:', enrichedStrategies.slice(0, 3).map(s => ({
+      id: s.id, address: s.address, ownerPubkey: s.ownerPubkey, creator: s.creator, creatorAddress: s.creatorAddress
+    })));
+
+    // 複数フィールドで一致を試みる（IDフォーマットの揺れに対応）
+    let idx = enrichedStrategies.findIndex((s) =>
+      s.id === focusedStrategyId ||
+      s.address === focusedStrategyId ||
+      s.mintAddress === focusedStrategyId ||
+      s.pubkey === focusedStrategyId
+    );
+    console.log('[Focus] exact match idx:', idx);
+
+    // フォールバック: 現在のユーザーが作成した最新のストラテジーを先頭へ
+    if (idx < 0 && publicKey) {
+      const ownerStr = publicKey.toBase58();
+      const mine = enrichedStrategies
+        .map((s, i) => ({ s, i }))
+        .filter(({ s }) =>
+          s.ownerPubkey === ownerStr ||
+          s.creator === ownerStr ||
+          s.creatorAddress === ownerStr
+        );
+      console.log('[Focus] fallback mine count:', mine.length);
+      if (mine.length > 0) {
+        mine.sort((a, b) => (b.s.createdAt || 0) - (a.s.createdAt || 0));
+        idx = mine[0].i;
+        console.log('[Focus] fallback idx:', idx, 'strategy:', mine[0].s.name);
+      }
+    }
+
     if (idx >= 0) {
+      _savedSwipeIndex = idx;
       setCurrentIndex(idx);
       appliedFocusRef.current = focusedStrategyId;
+      console.log('[Focus] setCurrentIndex:', idx);
+    } else {
+      console.log('[Focus] no match found — strategy not in list yet?');
     }
-  }, [focusedStrategyId, enrichedStrategies]);
+  }, [focusedStrategyId, enrichedStrategies, publicKey]);
 
   const handleSwipe = useCallback(
     (direction: 'left' | 'right', strategy: any) => {
@@ -940,7 +999,11 @@ export const SwipeDiscoverView = ({
       const now = Date.now();
       if (now - lastSwipeTime.current < 50) return;
       lastSwipeTime.current = now;
-      setCurrentIndex((prev) => prev + 1);
+      setCurrentIndex((prev) => {
+        const next = prev + 1;
+        _savedSwipeIndex = next;
+        return next;
+      });
       if (direction === 'right') {
         setMatchedStrategy(strategy);
       }
@@ -1115,8 +1178,8 @@ export const SwipeDiscoverView = ({
   if (loading) {
     return (
       <div className="relative w-full h-[100dvh] bg-[#030303] overflow-hidden flex flex-col">
-        <div className="flex-1 w-full flex items-center justify-center px-4 pb-53 pt-12 md:pb-24 relative">
-          <div className="relative w-full max-w-sm h-full max-h-[70vh] md:max-h-[600px] z-10">
+        <div className="flex-1 w-full flex items-center justify-center px-4 pb-36 pt-12 md:pb-24 relative">
+          <div className="relative w-full max-w-sm h-full max-h-[78vh] md:max-h-[600px] z-10">
             {/* スケルトンを3枚スタック表示 */}
             {[0, 1, 2].map((i) => (
               <SwipeCardSkeleton key={i} index={i} />
@@ -1126,7 +1189,7 @@ export const SwipeDiscoverView = ({
             <div className="absolute inset-0 flex flex-col items-center justify-center z-50">
               <div className="bg-[#080503]/80 backdrop-blur-xl p-6 rounded-3xl border border-[rgba(184,134,63,0.15)] shadow-2xl flex flex-col items-center">
                 <Loader2 className="w-8 h-8 text-[#B8863F] animate-spin mb-3" />
-                <p className="text-xs font-bold text-white/50 tracking-widest animate-pulse">
+                <p className="text-xs font-normal text-white/50 tracking-widest animate-pulse">
                   SCOUTING GEMS...
                 </p>
               </div>
@@ -1142,7 +1205,7 @@ export const SwipeDiscoverView = ({
   if (enrichedStrategies.length === 0) {
     return (
       <div className="relative w-full h-[100dvh] bg-[#030303] flex flex-col items-center justify-center p-4">
-        <h3 className="text-xl font-bold text-white mb-2">No Strategies Found</h3>
+        <h3 className="text-xl font-normal text-white mb-2">No Strategies Found</h3>
         <p className="text-white/50 text-sm">Create one to get started.</p>
       </div>
     );
@@ -1155,10 +1218,10 @@ export const SwipeDiscoverView = ({
           <div className="w-20 h-20 bg-[#140E08] rounded-full flex items-center justify-center mx-auto mb-6 border border-[rgba(184,134,63,0.15)]">
             <Sparkles className="w-8 h-8 text-[#B8863F]" />
           </div>
-          <h3 className="text-xl font-bold text-white mb-2">That's all for now!</h3>
+          <h3 className="text-xl font-normal text-white mb-2">That's all for now!</h3>
           <button
-            onClick={() => setCurrentIndex(0)}
-            className="px-6 py-3 bg-[#B8863F] text-white font-bold rounded-xl flex items-center gap-2 mx-auto mt-4"
+            onClick={() => { _savedSwipeIndex = 0; setCurrentIndex(0); }}
+            className="px-6 py-3 bg-[#B8863F] text-white font-normal rounded-xl flex items-center gap-2 mx-auto mt-4"
           >
             <RefreshCw className="w-4 h-4" /> Start Over
           </button>
@@ -1180,7 +1243,7 @@ export const SwipeDiscoverView = ({
         )}
       </AnimatePresence>
 
-      <div className="flex-1 w-full flex items-center justify-center px-4 pb-53 pt-12 md:pb-24 relative">
+      <div className="flex-1 w-full flex items-center justify-center px-4 pb-36 pt-12 md:pb-24 relative">
         {/* Left Button (Pass) */}
         <motion.button
           initial={{ opacity: 0, x: 20 }}
@@ -1195,7 +1258,7 @@ export const SwipeDiscoverView = ({
         </motion.button>
 
         {/* Card Stack */}
-        <div className="relative w-full max-w-sm h-full max-h-[70vh] md:max-h-[600px] z-10">
+        <div className="relative w-full max-w-sm h-full max-h-[78vh] md:max-h-[600px] z-10">
           <AnimatePresence>
             {enrichedStrategies
               .slice(currentIndex, currentIndex + 3)

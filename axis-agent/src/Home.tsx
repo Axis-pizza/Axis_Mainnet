@@ -4,8 +4,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useWallet, useConnection } from './hooks/useWallet';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useWallet, useConnection, useLoginModal } from './hooks/useWallet';
 import { FloatingNav, type ViewState } from './components/common/FloatingNav';
 import { TutorialOverlay } from './components/common/TutorialOverlay';
 import { KagemushaFlow } from './components/create';
@@ -23,6 +22,7 @@ export default function Home() {
   const [view, setView] = useState<View>('CREATE');
   const [previousView, setPreviousView] = useState<View>('DISCOVER');
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null);
+  const [newStrategyId, setNewStrategyId] = useState<string | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const [isOverlayActive, setIsOverlayActive] = useState(false);
   const [hideNavInCreate, setHideNavInCreate] = useState(false);
@@ -36,9 +36,9 @@ export default function Home() {
     localStorage.setItem(DISCOVER_VIEW_KEY, mode);
   };
 
+  const { setVisible: openLogin } = useLoginModal();
   const { connected, publicKey } = useWallet();
   const { connection } = useConnection();
-  const { setVisible: setWalletModalVisible } = useWalletModal();
   const [balance, setBalance] = useState<number | null>(null);
 
   // Fetch wallet balance (USDC)
@@ -71,9 +71,7 @@ export default function Home() {
     setShowTutorial(false);
   };
 
-  const handleConnectWallet = () => {
-    setWalletModalVisible(true);
-  };
+  const handleConnectWallet = () => { openLogin(true); };
 
   const handleStrategySelect = (strategy: Strategy) => {
     setPreviousView(view);
@@ -92,10 +90,13 @@ export default function Home() {
 
   return (
     <div className="bg-[#030303] min-h-screen text-white font-sans selection:bg-orange-500/30 relative overflow-x-hidden">
-      {/* Background Glows */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full h-full pointer-events-none overflow-hidden z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-orange-900/10 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-900/10 blur-[120px] rounded-full" />
+      {/* Background Glows — use will-change + translateZ to prevent mobile repaint flicker */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-full h-full pointer-events-none overflow-hidden z-0"
+        style={{ willChange: 'transform', transform: 'translateZ(0)' }}>
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-orange-900/10 blur-[80px] rounded-full"
+          style={{ willChange: 'transform', backfaceVisibility: 'hidden' }} />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-900/10 blur-[80px] rounded-full"
+          style={{ willChange: 'transform', backfaceVisibility: 'hidden' }} />
       </div>
 
       {/* DISCOVER VIEW */}
@@ -106,6 +107,7 @@ export default function Home() {
             onOverlayChange={setIsOverlayActive}
             viewMode={discoverViewMode}
             onViewModeChange={handleDiscoverViewModeChange}
+            focusedStrategyId={newStrategyId}
           />
         </div>
       )}
@@ -114,10 +116,13 @@ export default function Home() {
       {view === 'CREATE' && (
         <div className="relative z-10 pb-32">
           <KagemushaFlow
-            onStepChange={(step) => {
+            onStepChange={(step, strategyId) => {
               setHideNavInCreate(step !== 'LANDING' && step !== 'DASHBOARD');
 
               if (step === 'DASHBOARD') {
+                // strategyId が取れた場合はそれを、なければ publicKey を
+                // シグナルとして使い「このユーザーの最新策略を先頭に」を伝える
+                setNewStrategyId(strategyId || publicKey?.toBase58() || 'my-newest');
                 setView('DISCOVER');
                 setHideNavInCreate(false);
               }
@@ -153,12 +158,13 @@ export default function Home() {
         <FloatingNav
           currentView={view as ViewState}
           onNavigate={handleNavigate}
+          onOpenLogin={() => openLogin(true)}
           discoverViewMode={discoverViewMode}
           onDiscoverViewModeChange={handleDiscoverViewModeChange}
         />
       )}
 
-      {/* Luxury Tutorial Overlay */}
+{/* Luxury Tutorial Overlay */}
       <AnimatePresence>
         {showTutorial && (
           <TutorialOverlay

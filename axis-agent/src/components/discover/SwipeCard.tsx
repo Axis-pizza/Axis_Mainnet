@@ -65,11 +65,11 @@ export const FormatChange = ({
 }) => {
   const c = Number(value);
   if (isNaN(c) || !isFinite(c))
-    return <span className={`font-bold text-white/40 ${className}`}>0.00%</span>;
+    return <span className={`font-normal text-white/40 ${className}`}>0.00%</span>;
   const isPositive = c >= 0;
   return (
     <span
-      className={`flex items-center justify-center font-bold ${isPositive ? 'text-[#34D399]' : 'text-[#F87171]'} ${className}`}
+      className={`flex items-center justify-center font-normal ${isPositive ? 'text-[#34D399]' : 'text-[#F87171]'} ${className}`}
       style={{
         textShadow: isPositive
           ? '0 0 10px rgba(52, 211, 153, 0.4)'
@@ -192,17 +192,17 @@ export const SwipeCardBody = ({
         <div className={`flex justify-between items-start ${c ? 'mb-1.5' : 'mb-3'}`}>
           <div className="min-w-0 flex-1 pr-2">
             <div
-              className={`inline-flex items-center rounded-full font-bold uppercase border ${c ? 'px-1.5 py-px text-[8px] mb-1' : 'px-2.5 py-0.5 text-[10px] mb-2'} ${typeColors[strategy.type] || typeColors.BALANCED}`}
+              className={`inline-flex items-center rounded-full font-normal uppercase border ${c ? 'px-1.5 py-px text-[8px] mb-1' : 'px-2.5 py-0.5 text-[10px] mb-2'} ${typeColors[strategy.type] || typeColors.BALANCED}`}
             >
               {strategy.type}
             </div>
             <h2
-              className={`font-bold text-white leading-tight tracking-tight truncate ${c ? 'text-sm' : 'text-[26px] leading-none drop-shadow-md'}`}
+              className={`font-normal text-white leading-tight tracking-tight truncate ${c ? 'text-sm' : 'text-[26px] leading-none drop-shadow-md'}`}
             >
               ${strategy.ticker || strategy.name}
             </h2>
             {strategy.ticker && !c && (
-              <p className="text-sm text-white/60 mt-1 font-medium tracking-wide truncate">
+              <p className="text-sm text-white/60 mt-1 font-normal tracking-wide truncate">
                 {strategy.name}
               </p>
             )}
@@ -241,7 +241,7 @@ export const SwipeCardBody = ({
             </span>
             <Copy className={`text-white/40 ${c ? 'w-2 h-2' : 'w-3 h-3'}`} />
           </div>
-          <div className={`flex items-center gap-1 text-white/50 font-medium ${c ? 'text-[8px]' : 'text-[11px]'}`}>
+          <div className={`flex items-center gap-1 text-white/50 font-normal ${c ? 'text-[8px]' : 'text-[11px]'}`}>
             <Clock className={c ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
             {timeAgo(strategy.createdAt)}
           </div>
@@ -249,38 +249,31 @@ export const SwipeCardBody = ({
       </div>
 
       {/* --- Stats --- */}
-      <div className={`grid grid-cols-2 relative z-10 ${c ? 'px-3 py-1.5 gap-2' : 'px-6 py-2 gap-3'}`}>
-        {/* ROI Card */}
+      <div className={`relative z-10 ${c ? 'px-3 py-1.5' : 'px-6 py-2'}`}>
+        {/* TVL Card — full width */}
         <div
-          className={`col-span-1 rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-inner flex flex-col items-center justify-center relative overflow-hidden group ${c ? 'h-[68px]' : 'h-[100px]'}`}
-        >
-          <div
-            className={`absolute inset-0 opacity-20 bg-gradient-to-br ${strategy.roi >= 0 ? 'from-emerald-500/30 to-transparent' : 'from-red-500/30 to-transparent'}`}
-          />
-          <span className={`font-bold uppercase tracking-widest mb-0.5 text-white/40 z-10 ${c ? 'text-[8px]' : 'text-[10px]'}`}>
-            24h
-          </span>
-          <FormatChange
-            value={strategy.roi}
-            className={`drop-shadow-sm z-10 ${c ? 'text-lg' : 'text-3xl'}`}
-            iconSize={c ? 'w-4 h-4' : 'w-6 h-6'}
-          />
-        </div>
-
-        {/* TVL Card */}
-        <div
-          className={`col-span-1 rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-inner flex flex-col justify-center relative overflow-hidden ${c ? 'h-[68px] px-2.5' : 'h-[100px] px-4'}`}
+          className={`rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-inner flex items-center justify-between relative overflow-hidden ${c ? 'h-[56px] px-3' : 'h-[72px] px-5'}`}
         >
           <div className={`absolute top-0 right-0 opacity-10 ${c ? 'p-2' : 'p-3'}`}>
             <Wallet className={c ? 'w-8 h-8 text-white' : 'w-12 h-12 text-white'} />
           </div>
-          <span className={`text-white/40 uppercase font-bold tracking-widest mb-0.5 z-10 ${c ? 'text-[8px]' : 'text-[10px]'}`}>
-            TVL
-          </span>
-          <div className={`font-bold text-white tracking-tight z-10 drop-shadow-sm leading-none ${c ? 'text-base' : 'text-2xl'}`}>
-            {formatTvl(strategy.tvl)}
+          <div>
+            <span className={`text-white/40 uppercase font-normal tracking-widest block mb-0.5 z-10 ${c ? 'text-[8px]' : 'text-[10px]'}`}>
+              TVL
+            </span>
+            <div className={`font-normal text-white tracking-tight z-10 drop-shadow-sm leading-none ${c ? 'text-base' : 'text-2xl'}`}>
+              {formatTvl(strategy.tvl)}
+              {!c && <span className="text-[11px] text-white/30 ml-1.5">USDC</span>}
+            </div>
           </div>
-          {!c && <span className="text-[9px] text-white/30 z-10">USDC</span>}
+          <div className="text-right z-10">
+            <span className={`text-white/40 uppercase font-normal tracking-widest block mb-0.5 ${c ? 'text-[8px]' : 'text-[10px]'}`}>
+              Assets
+            </span>
+            <div className={`font-normal text-white/80 tracking-tight leading-none ${c ? 'text-base' : 'text-2xl'}`}>
+              {strategy.tokens.length}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -289,7 +282,7 @@ export const SwipeCardBody = ({
         
         {/* セクションヘッダー */}
         <div className={`flex items-center justify-between ${c ? 'mb-2' : 'mb-3'}`}>
-          <span className={`font-bold text-white/40 uppercase tracking-widest flex items-center gap-1 ${c ? 'text-[8px]' : 'text-[11px]'}`}>
+          <span className={`font-normal text-white/40 uppercase tracking-widest flex items-center gap-1 ${c ? 'text-[8px]' : 'text-[11px]'}`}>
             <div className="w-1 h-1 rounded-full bg-white/50" /> Assets
           </span>
           <span className={`px-1.5 py-px rounded-full bg-white/10 text-white/60 border border-white/5 ${c ? 'text-[8px]' : 'text-[10px] px-2 py-0.5'}`}>
@@ -298,7 +291,7 @@ export const SwipeCardBody = ({
         </div>
 
         {/* 2カラム・グリッドで構成銘柄をすべて表示 */}
-        <div className={`grid grid-cols-2 ${c ? 'gap-1.5' : 'gap-2'} mt-1 overflow-y-auto pr-1 pb-1 scrollbar-hide`}>
+        <div className={`grid grid-cols-2 ${c ? 'gap-1.5' : 'gap-2'} mt-1 overflow-y-auto pr-1 pb-1 scrollbar-hide flex-1 min-h-0`}>
           {(() => {
             // 最も比重の大きい数値を基準（100%）にしてゲージの長さを相対計算する
             const maxWeight = Math.max(...sortedTokens.map(t => t.weight));
@@ -329,7 +322,7 @@ export const SwipeCardBody = ({
                         address={token.address} 
                         className={`rounded-full bg-black/50 ${c ? 'w-4 h-4' : 'w-5 h-5'}`} 
                       />
-                      <span className={`font-bold text-white/90 tracking-wide ${c ? 'text-[8px]' : 'text-[10px]'}`}>
+                      <span className={`font-normal text-white/90 tracking-wide ${c ? 'text-[8px]' : 'text-[10px]'}`}>
                         {token.symbol}
                       </span>
                     </div>
@@ -348,7 +341,7 @@ export const SwipeCardBody = ({
         {/* 万が一、maxLogos（6〜8）を超えた場合のみ表示 */}
         {overflow > 0 && (
           <div className="mt-2 text-center">
-            <span className={`text-white/30 font-medium tracking-widest ${c ? 'text-[7px]' : 'text-[9px]'}`}>
+            <span className={`text-white/30 font-normal tracking-widest ${c ? 'text-[7px]' : 'text-[9px]'}`}>
               + {overflow} MORE ASSETS
             </span>
           </div>
@@ -462,7 +455,8 @@ export const SwipeCard = ({
   };
 
   const handleClick = () => {
-    if (!isDragging.current && !swiped.current && isTop) onTap();
+    // タップ選択を無効化 — スワイプのみで選択する
+    void onTap;
   };
 
   // デッキの後ろのカードに微妙な回転を加えてバンドル感を演出
@@ -488,7 +482,7 @@ export const SwipeCard = ({
       initial={false}
       animate={isTop ? undefined : { scale: 1 - index * 0.05, y: index * 14, rotate: deckRotate }}
       exit={{ opacity: 0, transition: { duration: 0.3 } }}
-      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      transition={{ type: 'spring', stiffness: 280, damping: 24 }}
     >
       {/* Card Body */}
       <SwipeCardBody strategy={strategy} />
@@ -497,13 +491,13 @@ export const SwipeCard = ({
       {isTop && (
         <>
           <motion.div
-            className="absolute top-12 left-8 z-50 border-[3px] border-[#34D399] text-[#34D399] font-black text-3xl px-4 py-2 rounded-2xl transform -rotate-12 bg-black/80 pointer-events-none"
+            className="absolute top-12 left-8 z-50 border-[3px] border-[#34D399] text-[#34D399] font-normal text-3xl px-4 py-2 rounded-2xl transform -rotate-12 bg-black/80 pointer-events-none"
             style={{ opacity: likeOpacity }}
           >
             LIKE
           </motion.div>
           <motion.div
-            className="absolute top-12 right-8 z-50 border-[3px] border-[#F87171] text-[#F87171] font-black text-3xl px-4 py-2 rounded-2xl transform rotate-12 bg-black/80 pointer-events-none"
+            className="absolute top-12 right-8 z-50 border-[3px] border-[#F87171] text-[#F87171] font-normal text-3xl px-4 py-2 rounded-2xl transform rotate-12 bg-black/80 pointer-events-none"
             style={{ opacity: nopeOpacity }}
           >
             PASS
@@ -513,7 +507,7 @@ export const SwipeCard = ({
             className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-1.5 pointer-events-none"
             style={{ opacity: downIndicatorOpacity }}
           >
-            <div className="bg-black/80 border border-white/20 rounded-full px-4 py-1.5 text-white/80 text-xs font-bold tracking-widest">
+            <div className="bg-black/80 border border-white/20 rounded-full px-4 py-1.5 text-white/80 text-xs font-normal tracking-widest">
               ↓ LIST
             </div>
           </motion.div>

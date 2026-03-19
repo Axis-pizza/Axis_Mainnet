@@ -21,8 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useWallet, useConnection } from '../../hooks/useWallet';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { useWallet, useConnection, useLoginModal } from '../../hooks/useWallet';
 import { api } from '../../services/api';
 import { getUsdcBalance } from '../../services/usdc';
 import { TokenImage } from '../common/TokenImage';
@@ -125,7 +124,7 @@ const InviteModal = ({
           <X className="w-6 h-6" />
         </button>
 
-        <h3 className="mb-2 text-2xl font-serif font-bold text-[#F2E0C8] tracking-tight">
+        <h3 className="mb-2 text-2xl font-serif font-normal text-[#F2E0C8] tracking-tight">
           Invite & Earn
         </h3>
         <p className="mb-8 text-sm text-[#7A5A30]">Share your link to earn referral XP.</p>
@@ -137,14 +136,14 @@ const InviteModal = ({
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={handleCopy}
-            className="flex items-center justify-center gap-2 rounded-xl bg-[#221509] py-3.5 text-sm font-bold text-[#F2E0C8] transition-all hover:bg-[#221509] active:scale-95 border border-[rgba(184,134,63,0.08)]"
+            className="flex items-center justify-center gap-2 rounded-xl bg-[#221509] py-3.5 text-sm font-normal text-[#F2E0C8] transition-all hover:bg-[#221509] active:scale-95 border border-[rgba(184,134,63,0.08)]"
           >
             <Copy className="w-4 h-4" /> Copy Link
           </button>
 
           <button
             onClick={handleShareX}
-            className="group flex items-center justify-center gap-2 rounded-xl bg-black py-3.5 text-sm font-bold text-[#F2E0C8] transition-all hover:border-[#B8863F]/35 border border-[#B8863F]/15 active:scale-95"
+            className="group flex items-center justify-center gap-2 rounded-xl bg-black py-3.5 text-sm font-normal text-[#F2E0C8] transition-all hover:border-[#B8863F]/35 border border-[#B8863F]/15 active:scale-95"
           >
             <Share2 className="w-4 h-4 group-hover:text-[#B8863F] transition-colors" /> Post on X
           </button>
@@ -161,7 +160,8 @@ interface ProfileViewProps {
 export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
   const { publicKey, disconnect } = useWallet();
   const { connection } = useConnection();
-  const { showToast } = useToast();
+  const { setVisible: openLogin } = useLoginModal();
+const { showToast } = useToast();
 
   // --- UI State ---
   const [activeTab, setActiveTab] = useState<'portfolio' | 'leaderboard'>('portfolio');
@@ -455,16 +455,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
   };
 
   const handleDisconnect = async () => {
-    try {
-      setIsDisconnecting(true);
-      await disconnect();
-      showToast('Wallet disconnected', 'info');
-    } catch (error) {
-      console.error('Disconnect error:', error);
-      showToast('Failed to disconnect wallet', 'error');
-    } finally {
-      setIsDisconnecting(false);
-    }
+    await disconnect();
   };
 
   // --- Logic & Display Values ---
@@ -482,24 +473,78 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
 
   if (!publicKey) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-6 text-center min-h-[70vh]">
-        <div className="w-20 h-20 bg-[#140E08] rounded-full flex items-center justify-center border border-[rgba(184,134,63,0.15)] mb-6 animate-pulse">
-          <Wallet className="w-8 h-8 text-white/50" />
+      <div className="relative min-h-[85vh] flex flex-col items-center justify-center px-6 overflow-hidden pt-24 pb-32">
+        {/* Ambient background glows */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-80 rounded-full opacity-30"
+            style={{ background: 'radial-gradient(ellipse, rgba(184,134,63,0.18) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+          <div className="absolute bottom-20 right-0 w-64 h-64 rounded-full opacity-20"
+            style={{ background: 'radial-gradient(ellipse, rgba(153,69,255,0.12) 0%, transparent 70%)', filter: 'blur(60px)' }} />
         </div>
-        <h2 className="text-2xl font-serif font-bold text-white mb-2">Connect Wallet</h2>
-        <p className="text-white/40 text-sm max-w-xs mx-auto mb-8">
-          Access your portfolio, track referrals, and climb the leaderboard.
-        </p>
-        <div className="w-full max-w-xs">
-          <WalletMultiButton
+
+        <div className="relative w-full max-w-sm mx-auto">
+          {/* Logo mark */}
+          <div className="flex flex-col items-center mb-10">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5"
+              style={{
+                background: 'linear-gradient(135deg, #1A0E06, #2A1A08)',
+                border: '1px solid rgba(184,134,63,0.2)',
+                boxShadow: '0 0 40px rgba(184,134,63,0.08), inset 0 1px 0 rgba(255,255,255,0.05)',
+              }}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ background: 'linear-gradient(135deg, #6B4420, #B8863F)' }}>
+                <Wallet className="w-4 h-4 text-black" />
+              </div>
+            </div>
+
+            <p className="text-[10px] font-normal uppercase tracking-[0.25em] mb-3"
+              style={{ color: '#B8863F' }}>
+              Axis · DeFi Strategy Hub
+            </p>
+            <h1 className="font-serif text-3xl font-normal text-center leading-tight tracking-tight"
+              style={{ color: '#F2E0C8' }}>
+              Your private<br />portfolio awaits
+            </h1>
+            <p className="text-sm text-center mt-3 leading-relaxed max-w-[240px]"
+              style={{ color: '#5A3A18' }}>
+              Sign in to manage strategies, track XP, and climb the leaderboard
+            </p>
+          </div>
+
+          {/* Connect Button */}
+          <motion.button
+            whileTap={{ scale: 0.98 }}
+            onClick={() => openLogin(true)}
+            className="w-full group relative flex items-center gap-4 px-5 py-4 rounded-2xl overflow-hidden transition-all duration-300"
             style={{
-              width: '100%',
-              justifyContent: 'center',
-              background: 'linear-gradient(135deg, #6B4420, #B8863F, #E8C890)',
-              borderRadius: '12px',
-              fontWeight: 'bold',
+              background: 'linear-gradient(135deg, rgba(153,69,255,0.08) 0%, rgba(20,241,149,0.05) 100%)',
+              border: '1px solid rgba(153,69,255,0.25)',
             }}
-          />
+          >
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              style={{ background: 'linear-gradient(135deg, rgba(153,69,255,0.14) 0%, rgba(20,241,149,0.08) 100%)' }} />
+            <div className="relative w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: 'rgba(153,69,255,0.12)', border: '1px solid rgba(153,69,255,0.2)' }}>
+              <svg width="22" height="22" viewBox="0 0 397.7 311.7" fill="none">
+                <defs>
+                  <linearGradient id="sol-grad-profile" x1="360.8" y1="351.5" x2="141.7" y2="-69.3" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#9945ff" />
+                    <stop offset="1" stopColor="#14f195" />
+                  </linearGradient>
+                </defs>
+                <path fill="url(#sol-grad-profile)" d="M64.6 237.9c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7zm0-164.2c2.4-2.4 5.7-3.8 9.2-3.8h317.4c5.8 0 8.7 7 4.6 11.1l-62.7 62.7c-2.4 2.4-5.7 3.8-9.2 3.8H6.5c-5.8 0-8.7-7-4.6-11.1l62.7-62.7zm317.4-70H64.6c-3.5 0-6.8 1.4-9.2 3.8L-7.3 70.2c-4.1 4.1-1.2 11.1 4.6 11.1h317.4c3.5 0 6.8-1.4 9.2-3.8l62.7-62.7c4.1-4.1 1.2-11.1-4.6-11.1z" />
+              </svg>
+            </div>
+            <div className="relative text-left flex-1">
+              <p className="text-[#F2E0C8] font-normal text-[15px] leading-tight">Continue with Solana</p>
+              <p className="text-[#7A5A30] text-xs mt-0.5">Phantom · Solflare · Backpack</p>
+            </div>
+            <span className="relative text-[#9945ff]/40 group-hover:text-[#9945ff]/70 transition-colors text-lg">›</span>
+          </motion.button>
+
+          <p className="text-center text-[11px] mt-6 leading-relaxed" style={{ color: '#2E1A08' }}>
+            By signing in, you agree to our Terms of Service
+          </p>
         </div>
       </div>
     );
@@ -541,7 +586,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
             {/* Info */}
             <div className="flex-1 min-w-0 pt-1">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="text-lg font-bold text-[#F2E0C8] truncate">
+                <h2 className="text-lg font-normal text-[#F2E0C8] truncate">
                   {userProfile?.username || formatAddress(publicKey.toBase58())}
                 </h2>
                 {userProfile?.is_vip && <OGBadge size="sm" />}
@@ -549,7 +594,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
 
               {/* XP with flash animation */}
               <div className="relative inline-block mt-0.5">
-                <p className={`text-sm font-serif font-bold transition-colors duration-300 ${xpFlash ? 'text-emerald-400' : 'text-[#B8863F]'}`}>
+                <p className={`text-sm font-serif font-normal transition-colors duration-300 ${xpFlash ? 'text-emerald-400' : 'text-[#B8863F]'}`}>
                   XP: {userProfile?.totalPoints.toLocaleString() || 0}
                 </p>
                 <AnimatePresence>
@@ -559,7 +604,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                       animate={{ opacity: 1, y: -16, scale: 1 }}
                       exit={{ opacity: 0, y: -32, scale: 0.8 }}
                       transition={{ duration: 0.9, ease: 'easeOut' }}
-                      className="absolute -top-1 left-full ml-2 text-emerald-400 font-bold text-xs whitespace-nowrap pointer-events-none"
+                      className="absolute -top-1 left-full ml-2 text-emerald-400 font-normal text-xs whitespace-nowrap pointer-events-none"
                     >
                       +{earnedXp} XP
                     </motion.span>
@@ -598,15 +643,15 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           {/* Net Worth separator */}
           <div className="mt-4 pt-4 border-t border-[rgba(184,134,63,0.1)] flex items-center justify-between">
             <div>
-              <p className="text-[10px] text-white/40 uppercase font-bold tracking-widest mb-1">
+              <p className="text-[10px] text-white/40 uppercase font-normal tracking-widest mb-1">
                 Net Worth
               </p>
-              <h3 className="text-2xl font-bold text-white font-serif">
+              <h3 className="text-2xl font-normal text-white font-serif">
                 {isHidden ? '••••••' : formatCurrency(displayValue, currencyMode)}
               </h3>
               {pnlVal !== 0 && (
                 <div
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold mt-1 border border-[rgba(184,134,63,0.15)] ${isPos ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-normal mt-1 border border-[rgba(184,134,63,0.15)] ${isPos ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}
                 >
                   {isPos ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                   <span className="font-mono">
@@ -618,7 +663,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
             <div className="flex gap-2 items-center">
               <button
                 onClick={() => setCurrencyMode((m) => (m === 'USD' ? 'USDC' : 'USD'))}
-                className="text-[10px] font-bold bg-black/40 px-2 py-1 rounded text-white/70 border border-[rgba(184,134,63,0.15)]"
+                className="text-[10px] font-normal bg-black/40 px-2 py-1 rounded text-white/70 border border-[rgba(184,134,63,0.15)]"
               >
                 {currencyMode}
               </button>
@@ -636,7 +681,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
         <button
           onClick={handleCheckIn}
           disabled={checkInLoading || checkedIn}
-          className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 font-bold shadow-lg transition-all ${
+          className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 font-normal shadow-lg transition-all ${
             checkedIn
               ? 'bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 cursor-default'
               : 'bg-[#B8863F] text-black shadow-[#6B4420]/20 active:scale-95 hover:brightness-110 disabled:opacity-50'
@@ -658,7 +703,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           <button
             onClick={handleFaucet}
             disabled={faucetLoading || faucetClaimed}
-            className={`py-3 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
+            className={`py-3 rounded-2xl font-normal flex items-center justify-center gap-2 transition-all ${
               faucetClaimed
                 ? 'bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 cursor-default'
                 : faucetLoading
@@ -677,7 +722,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
 
           <button
             onClick={() => setIsInviteOpen(true)}
-            className="group flex items-center justify-center gap-2 rounded-2xl border border-[rgba(184,134,63,0.15)] bg-[#140E08] py-3 font-bold text-[#F2E0C8] text-sm transition-all active:scale-95 hover:bg-[#221509]"
+            className="group flex items-center justify-center gap-2 rounded-2xl border border-[rgba(184,134,63,0.15)] bg-[#140E08] py-3 font-normal text-[#F2E0C8] text-sm transition-all active:scale-95 hover:bg-[#221509]"
           >
             <QrCode className="h-4 w-4 text-[#7A5A30] transition-colors group-hover:text-[#F2E0C8]" />
             Invite & Earn
@@ -691,7 +736,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           <button
             key={t}
             onClick={() => setActiveTab(t as any)}
-            className={`flex-1 pb-3 font-bold text-sm capitalize transition-colors ${activeTab === t ? 'text-white border-b-2 border-[#B8863F]' : 'text-white/40 hover:text-white/60'}`}
+            className={`flex-1 pb-3 font-normal text-sm capitalize transition-colors ${activeTab === t ? 'text-white border-b-2 border-[#B8863F]' : 'text-white/40 hover:text-white/60'}`}
           >
             {t}
           </button>
@@ -803,7 +848,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                     : 'bg-[#140E08] border-[rgba(212,175,55,0.2)]'
                   } overflow-hidden`}
                 >
-                  <span className="absolute top-4 left-5 font-black italic text-2xl bg-gradient-to-br from-[#FFF5C3] via-[#D4AF37] to-[#996515] text-transparent bg-clip-text drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
+                  <span className="absolute top-4 left-5 font-normal text-2xl bg-gradient-to-br from-[#FFF5C3] via-[#D4AF37] to-[#996515] text-transparent bg-clip-text drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
                     #1
                   </span>
 
@@ -812,13 +857,13 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                       {leaderboardData[0].avatar_url ? (
                         <img src={api.getProxyUrl(leaderboardData[0].avatar_url)} className="w-full h-full object-cover" alt="Rank 1" />
                       ) : (
-                        <span className="text-2xl font-bold text-white/50">{leaderboardData[0].username.charAt(0).toUpperCase()}</span>
+                        <span className="text-2xl font-normal text-white/50">{leaderboardData[0].username.charAt(0).toUpperCase()}</span>
                       )}
                     </div>
                   </div>
 
-                  <p className="font-bold text-white text-lg mb-1">{leaderboardData[0].username}</p>
-                  <div className="flex items-center gap-1.5 text-[#D4AF37] font-bold">
+                  <p className="font-normal text-white text-lg mb-1">{leaderboardData[0].username}</p>
+                  <div className="flex items-center gap-1.5 text-[#D4AF37] font-normal">
                     {leaderboardTab === 'created' ? (
                       <><Trophy className="w-4 h-4" />{leaderboardData[0].value.toLocaleString()} ETFs</>
                     ) : (
@@ -849,7 +894,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                         : 'bg-[#140E08] border-[rgba(255,255,255,0.05)]'
                       }`}
                     >
-                      <span className={`absolute top-3 left-4 font-black italic text-xl bg-gradient-to-br ${badgeGradient} text-transparent bg-clip-text drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)]`}>
+                      <span className={`absolute top-3 left-4 font-normal text-xl bg-gradient-to-br ${badgeGradient} text-transparent bg-clip-text drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)]`}>
                         #{rank}
                       </span>
 
@@ -857,12 +902,12 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                         {user.avatar_url ? (
                           <img src={api.getProxyUrl(user.avatar_url)} className="w-full h-full object-cover" alt={`Rank ${rank}`} />
                         ) : (
-                          <span className="text-xl font-bold text-white/50">{user.username.charAt(0).toUpperCase()}</span>
+                          <span className="text-xl font-normal text-white/50">{user.username.charAt(0).toUpperCase()}</span>
                         )}
                       </div>
 
-                      <p className="font-bold text-white text-sm mb-1 w-full text-center truncate">{user.username}</p>
-                      <div className={`flex items-center gap-1 font-bold text-sm ${textColor}`}>
+                      <p className="font-normal text-white text-sm mb-1 w-full text-center truncate">{user.username}</p>
+                      <div className={`flex items-center gap-1 font-normal text-sm ${textColor}`}>
                         {leaderboardTab === 'created' ? (
                           <><Trophy className="w-3.5 h-3.5" />{user.value.toLocaleString()} ETFs</>
                         ) : (
@@ -888,23 +933,23 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                         {user.avatar_url ? (
                           <img src={api.getProxyUrl(user.avatar_url)} className="w-full h-full object-cover" alt="Player" />
                         ) : (
-                          <span className="text-sm font-bold text-white/50">{user.username.charAt(0).toUpperCase()}</span>
+                          <span className="text-sm font-normal text-white/50">{user.username.charAt(0).toUpperCase()}</span>
                         )}
                       </div>
 
                       <div className="flex-1 min-w-0 flex flex-col justify-center">
-                        <p className="text-[11px] text-white/40 mb-0.5 font-mono font-bold">#{user.rank}</p>
+                        <p className="text-[11px] text-white/40 mb-0.5 font-mono font-normal">#{user.rank}</p>
                         <div className="flex items-center gap-2">
-                          <p className={`font-bold text-sm truncate ${user.isMe ? 'text-[#B8863F]' : 'text-white/90'}`}>
+                          <p className={`font-normal text-sm truncate ${user.isMe ? 'text-[#B8863F]' : 'text-white/90'}`}>
                             {user.username}
                           </p>
                           {user.isMe && (
-                            <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#B8863F]/20 text-[#B8863F] uppercase tracking-wider font-bold">You</span>
+                            <span className="text-[8px] px-1.5 py-0.5 rounded-sm bg-[#B8863F]/20 text-[#B8863F] uppercase tracking-wider font-normal">You</span>
                           )}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 text-white/70 font-bold">
+                      <div className="flex items-center gap-1.5 text-white/70 font-normal">
                         {leaderboardTab === 'created' ? (
                           <><Trophy className="w-3.5 h-3.5" />{user.value.toLocaleString()} ETFs</>
                         ) : (
@@ -925,14 +970,14 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
         <button
           onClick={handleDisconnect}
           disabled={isDisconnecting}
-          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2 text-sm font-bold text-red-500/80 transition-colors hover:bg-red-500/5 hover:text-red-500 disabled:opacity-50"
+          className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg py-2 text-sm font-normal text-red-500/80 transition-colors hover:bg-red-500/5 hover:text-red-500 disabled:opacity-50"
         >
           {isDisconnecting ? (
             <Sparkles className="h-4 w-4 animate-spin" />
           ) : (
             <LogOut className="h-4 w-4" />
           )}
-          {isDisconnecting ? 'Disconnecting...' : 'Disconnect Wallet'}
+          {isDisconnecting ? 'Logging out...' : 'Log Out'}
         </button>
       </div>
 
@@ -969,7 +1014,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
 const FilterChip = memo(({ label, active, onClick, icon }: any) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-colors ${active ? 'bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#140D07]' : 'bg-[#140E08] border border-[rgba(184,134,63,0.08)] text-white/50 hover:bg-white/5'}`}
+    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-normal whitespace-nowrap transition-colors ${active ? 'bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#140D07]' : 'bg-[#140E08] border border-[rgba(184,134,63,0.08)] text-white/50 hover:bg-white/5'}`}
   >
     {icon} {label}
   </button>
@@ -978,7 +1023,7 @@ const FilterChip = memo(({ label, active, onClick, icon }: any) => (
 const EmptyState = memo(({ icon: Icon, title, sub }: any) => (
   <div className="flex flex-col items-center justify-center py-12 text-white/20 border border-dashed border-[rgba(184,134,63,0.08)] rounded-2xl">
     <Icon className="w-10 h-10 mb-3 opacity-20" />
-    <p className="text-sm font-bold text-white/40">{title}</p>
+    <p className="text-sm font-normal text-white/40">{title}</p>
     <p className="text-xs">{sub}</p>
   </div>
 ));
@@ -997,7 +1042,7 @@ const StrategyCard = memo(
       >
         <div className="flex justify-between items-start mb-3">
           <div>
-            <p className="text-white font-bold">{strategy.name}</p>
+            <p className="text-white font-normal">{strategy.name}</p>
             <p className="text-white/40 text-xs">{strategy.ticker || strategy.type || ''}</p>
           </div>
           <div className="text-right">
@@ -1022,12 +1067,12 @@ const StrategyCard = memo(
           ))}
           {extraCount > 0 && (
             <div className="w-6 h-6 rounded-full bg-white/10 border-2 border-[#140E08] -ml-1.5 flex items-center justify-center">
-              <span className="text-[8px] text-white/60 font-bold">+{extraCount}</span>
+              <span className="text-[8px] text-white/60 font-normal">+{extraCount}</span>
             </div>
           )}
         </div>
         <div className="flex justify-between items-center pt-3 border-t border-[rgba(184,134,63,0.08)]">
-          <span className="text-[10px] px-2 py-0.5 rounded bg-green-500/10 text-green-400 font-bold">
+          <span className="text-[10px] px-2 py-0.5 rounded bg-green-500/10 text-green-400 font-normal">
             ACTIVE
           </span>
           <span className="text-[10px] text-white/30">

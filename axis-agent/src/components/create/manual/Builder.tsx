@@ -1,11 +1,12 @@
 import { useState, useCallback, useEffect, useRef, memo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import {
   Search,
   ArrowLeft,
   ChevronRight,
   Check,
-  Loader2,
+
   AlertCircle,
   Percent,
   X,
@@ -14,8 +15,9 @@ import {
   ClipboardPaste,
   Minus,
   Copy,
+  Star,
 } from 'lucide-react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet } from '../../../hooks/useWallet';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { TokenImage } from '../../common/TokenImage';
 import { WeightControl } from './WeightControl';
@@ -24,8 +26,8 @@ import { StockTokenCard } from './StockTokenCard';
 import { formatCompactUSD, abbreviateAddress } from '../../../utils/formatNumber';
 import type { JupiterToken } from '../../../services/jupiter';
 import type { AssetItem, BuilderProps } from './types';
-import { PredictionSelectModal } from './PredictionSelectModal';
-import { PredictionEventCard, type PredictionGroup } from './PredictionEventCard';
+import { PredictionListModal } from './PredictionListModal';
+import type { PredictionGroup } from './PredictionEventCard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared sub-components
@@ -33,16 +35,71 @@ import { PredictionEventCard, type PredictionGroup } from './PredictionEventCard
 
 const STEP_AMOUNT = 1;
 
+// ─── SVG Spinner (replaces Loader2 for all loading states) ───────────────────
+const AxisSpinner = ({ size = 32, className = '' }: { size?: number; className?: string }) => (
+  <motion.svg
+    width={size}
+    height={size}
+    viewBox="0 0 32 32"
+    fill="none"
+    className={className}
+    animate={{ rotate: 360 }}
+    transition={{ duration: 1.1, repeat: Infinity, ease: 'linear' }}
+    style={{ display: 'inline-block' }}
+  >
+    {/* Track */}
+    <circle cx="16" cy="16" r="12" stroke="rgba(201,168,76,0.12)" strokeWidth="2.5" />
+    {/* Arc */}
+    <circle
+      cx="16"
+      cy="16"
+      r="12"
+      stroke="url(#axisSpinnerGrad)"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeDasharray="28 48"
+    />
+    <defs>
+      <linearGradient id="axisSpinnerGrad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#e8ca80" />
+        <stop offset="100%" stopColor="#c9a84c" stopOpacity="0.3" />
+      </linearGradient>
+    </defs>
+  </motion.svg>
+);
+
+// ─── Brand copper-gold scale (Axis amber palette) ────────────────────────────
+// Core: #C77D36 = 18K Rose-Bronze. Light → #F4DFBE. Shadow → #1A0A04.
+const AXIS_GOLD = '#C77D36';           // amber-400 — primary accent
+const AXIS_GOLD_DIM = '#6B3716';       // amber-700 — shadow / border
+const AXIS_GOLD_GLOW = 'rgba(199, 125, 54, ';  // base for rgba glow
+
+// Legend dot colors — amber scale only (unified family)
+const PORTFOLIO_COLORS = [
+  '#C77D36', // amber-400 — core
+  '#D9A05B', // amber-300 — satin copper
+  '#E8C28A', // amber-200 — bright lit face
+  '#B0652B', // amber-500 — heavy bronze
+  '#F4DFBE', // amber-100 — champagne specular
+  '#8E4D1F', // amber-600 — deep pressed
+  '#6B3716', // amber-700 — shadow edge
+  '#4A230F', // amber-800 — reddish void
+];
+
 // ─── Mobile: Weight Control ───────────────────────────────────────────────────
 const MobileWeightControl = memo(
   ({
     value,
     onChange,
     totalWeight,
+    accentColor = '#c9a84c',
+    hidePercentage = false,
   }: {
     value: number;
     onChange: (v: number) => void;
     totalWeight: number;
+    accentColor?: string;
+    hidePercentage?: boolean;
   }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [inputValue, setInputValue] = useState(value.toString());
@@ -65,91 +122,98 @@ const MobileWeightControl = memo(
     };
 
     const isOverLimit = totalWeight > 100;
+    const fillColor = isOverLimit ? '#ef4444' : accentColor;
 
     return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-4">
-          <div className="flex-1 relative h-12 flex items-center">
-            <div className="absolute inset-x-0 h-3 bg-white/10 rounded-full overflow-hidden">
-              <motion.div
-                className={`h-full rounded-full ${isOverLimit ? 'bg-red-500' : 'bg-gradient-to-r from-amber-500 to-amber-300'}`}
-                animate={{ width: `${Math.min(100, value)}%` }}
-                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              />
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="1"
-              value={value}
-              onChange={(e) => handleChange(parseInt(e.target.value))}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            />
+      <div className="space-y-2.5">
+        {/* Slider */}
+        <div className="relative h-10 flex items-center">
+          <div className="absolute inset-x-0 h-1.5 bg-white/8 rounded-full overflow-hidden">
             <motion.div
-              className="absolute top-1/2 -translate-y-1/2 pointer-events-none"
-              animate={{ left: `calc(${Math.min(100, value)}% - 14px)` }}
+              className="h-full rounded-full"
+              style={{ backgroundColor: fillColor, opacity: 0.85 }}
+              animate={{ width: `${Math.min(100, value)}%` }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            >
-              <div
-                className={`w-7 h-7 rounded-full border-2 shadow-lg ${isOverLimit ? 'bg-red-500 border-red-400' : 'bg-amber-400 border-amber-300'}`}
-              />
-            </motion.div>
-          </div>
-
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              inputMode="numeric"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value.replace(/[^0-9]/g, ''))}
-              onBlur={handleInputBlur}
-              onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.blur()}
-              className={`w-20 h-12 bg-black/50 border-2 rounded-xl text-center text-xl font-bold outline-none ${isOverLimit ? 'border-red-500 text-red-400' : 'border-amber-400 text-white'}`}
-              style={{ fontFamily: '"Times New Roman", serif' }}
-              maxLength={3}
-              autoFocus
             />
-          ) : (
-            <button
-              onClick={() => {
-                setIsEditing(true);
-                setInputValue(value.toString());
-              }}
-              className={`w-20 h-12 rounded-xl font-bold text-xl transition-all active:scale-95 ${isOverLimit ? 'bg-red-500/20 text-red-400' : 'bg-amber-900/30 text-amber-400'}`}
-              style={{ fontFamily: '"Times New Roman", serif' }}
-            >
-              {value}%
-            </button>
-          )}
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={value}
+            onChange={(e) => handleChange(parseInt(e.target.value))}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          />
+          <motion.div
+            className="absolute top-1/2 -translate-y-1/2 pointer-events-none"
+            animate={{ left: `calc(${Math.min(100, value)}% - 11px)` }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          >
+            <div
+              className="w-[22px] h-[22px] rounded-full border-2 shadow-md"
+              style={{ backgroundColor: fillColor, borderColor: `${fillColor}bb` }}
+            />
+          </motion.div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Quick buttons + stepper + (optional) percentage */}
+        <div className="flex items-center gap-1.5">
           {[10, 25, 50].map((qv) => (
             <button
               key={qv}
               onClick={() => handleChange(qv)}
-              className={`flex-1 h-11 rounded-xl text-sm font-bold transition-all active:scale-95 ${value === qv ? 'btn-glass-gold' : 'btn-glass text-white/50'}`}
+              className="flex-1 h-8 rounded-lg text-xs font-normal transition-all active:scale-95 bg-white/5 text-white/35"
+              style={value === qv ? { backgroundColor: `${accentColor}22`, color: accentColor } : {}}
             >
               {qv}%
             </button>
           ))}
-          <div className="w-2" />
+          <div className="w-1" />
           <button
             onClick={() => handleChange(value - STEP_AMOUNT)}
             disabled={value <= 0}
-            className="w-12 h-11 rounded-xl bg-white/5 flex items-center justify-center text-white/50 active:bg-red-500/20 active:text-red-400 disabled:opacity-30 transition-all active:scale-95"
+            className="w-9 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/35 active:bg-red-500/15 active:text-red-400 disabled:opacity-20 transition-all active:scale-95"
           >
-            <Minus size={20} />
+            <Minus size={14} />
           </button>
           <button
             onClick={() => handleChange(value + STEP_AMOUNT)}
             disabled={value >= 100}
-            className="w-12 h-11 rounded-xl bg-white/5 flex items-center justify-center text-white/50 active:bg-green-500/20 active:text-green-400 disabled:opacity-30 transition-all active:scale-95"
+            className="w-9 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/35 active:bg-emerald-500/15 active:text-emerald-400 disabled:opacity-20 transition-all active:scale-95"
           >
-            <Plus size={20} />
+            <Plus size={14} />
           </button>
+
+          {/* Percentage input — hidden when card header handles it */}
+          {!hidePercentage && (
+            <>
+              <div className="w-1" />
+              {isEditing ? (
+                <input
+                  ref={inputRef}
+                  type="text"
+                  inputMode="numeric"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value.replace(/[^0-9]/g, ''))}
+                  onBlur={handleInputBlur}
+                  onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.blur()}
+                  className="w-14 h-8 bg-black/50 border rounded-lg text-center text-sm font-normal outline-none text-white"
+                  style={{ borderColor: fillColor }}
+                  maxLength={3}
+                  autoFocus
+                />
+              ) : (
+                <button
+                  onClick={() => { setIsEditing(true); setInputValue(value.toString()); }}
+                  className="w-14 h-8 rounded-lg text-sm font-normal transition-all active:scale-95 bg-white/5"
+                  style={{ color: fillColor }}
+                >
+                  {value}%
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     );
@@ -193,16 +257,16 @@ const TokenDetailModal = ({
           <TokenImage src={token.logoURI} className="w-14 h-14 rounded-full bg-white/10 flex-none" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xl font-black text-white">{token.symbol}</span>
+              <span className="text-xl font-normal text-white">{token.symbol}</span>
               {token.isVerified && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold">Verified</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-normal">Verified</span>
               )}
               {token.tags?.includes('meme') && <Sparkles size={13} className="text-pink-400" />}
             </div>
             <div className="text-sm text-white/40 truncate">{token.name}</div>
           </div>
           {isSelected && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-400 text-xs font-bold flex-none">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/15 text-amber-400 text-xs font-normal flex-none">
               <Check size={12} />Added
             </div>
           )}
@@ -231,7 +295,7 @@ const TokenDetailModal = ({
           ].map(({ label, value }) => (
             <div key={label} className="bg-white/5 rounded-xl p-3">
               <div className="text-[9px] text-white/30 uppercase tracking-wide mb-1">{label}</div>
-              <div className="text-sm font-bold text-white">{value ?? '—'}</div>
+              <div className="text-sm font-normal text-white">{value ?? '—'}</div>
             </div>
           ))}
         </div>
@@ -240,7 +304,7 @@ const TokenDetailModal = ({
         {!isSelected && (
           <button
             onClick={() => { onAdd(); onClose(); }}
-            className="w-full btn-glass-gold rounded-2xl py-4 font-black text-base"
+            className="w-full btn-glass-gold rounded-2xl py-4 font-normal text-base"
           >
             Add to ETF
           </button>
@@ -250,161 +314,323 @@ const TokenDetailModal = ({
   );
 };
 
-// ─── Mobile: Token List Item (swipe-right to add, swipe-left to remove, tap for detail) ──
+// ─── FavoriteStar: 星ボタン（タップでくるっと回転）────────────────────────────
+const FavoriteStar = memo(function FavoriteStar({
+  isFav,
+  onToggle,
+}: {
+  isFav: boolean;
+  onToggle: (e: React.MouseEvent) => void;
+}) {
+  const [spinning, setSpinning] = useState(false);
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSpinning(true);
+    onToggle(e);
+    setTimeout(() => setSpinning(false), 480);
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      className={`w-9 h-9 flex items-center justify-center rounded-xl flex-none transition-colors ${
+        isFav ? 'text-amber-400' : 'text-white/20 active:text-amber-400'
+      }`}
+    >
+      <motion.div
+        animate={spinning ? { rotate: 360, scale: [1, 1.5, 1] } : { rotate: 0, scale: 1 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <Star size={15} fill={isFav ? 'currentColor' : 'none'} strokeWidth={2} />
+      </motion.div>
+    </button>
+  );
+});
+
+// ─── Mobile: Token List Item (tap = detail, swipe right = add, swipe left = remove) ───
 const MobileTokenListItem = memo(
   function MobileTokenListItem({
     token,
     isSelected,
+    isFav,
     onAdd,
     onRemove,
     onDetail,
+    onToggleFav,
   }: {
     token: JupiterToken;
     isSelected: boolean;
+    isFav: boolean;
     onAdd: () => void;
     onRemove?: () => void;
     onDetail: () => void;
+    onToggleFav: (e: React.MouseEvent) => void;
   }) {
     const x = useMotionValue(0);
-    const addOpacity = useTransform(x, [0, 56], [0, 1]);
-    const removeOpacity = useTransform(x, [-56, 0], [1, 0]);
-    const isDragging = useRef(false);
+    const THRESHOLD = 64;
+
+    // Hint backgrounds revealed as user drags
+    const addOpacity = useTransform(x, [0, THRESHOLD], [0, 1]);
+    const removeOpacity = useTransform(x, [-THRESHOLD, 0], [1, 0]);
+
+    const handleDragEnd = (_: PointerEvent, info: { offset: { x: number } }) => {
+      const dx = info.offset.x;
+      if (dx > THRESHOLD && !isSelected) {
+        onAdd();
+      } else if (dx < -THRESHOLD && isSelected) {
+        onRemove?.();
+      }
+      // Snap back
+      animate(x, 0, { type: 'spring', stiffness: 500, damping: 35 });
+    };
 
     return (
       <div className="relative overflow-hidden rounded-xl">
-        {/* right-swipe hint — add */}
-        <motion.div
-          style={{ opacity: addOpacity, background: 'rgba(199,125,54,0.12)' }}
-          className="absolute inset-0 flex items-center justify-end pr-4 pointer-events-none"
-        >
-          <div className="flex items-center gap-1.5 text-amber-400">
-            <Plus size={15} />
-            <span className="text-xs font-bold">Add</span>
-          </div>
-        </motion.div>
-
-        {/* left-swipe hint — remove */}
-        {isSelected && onRemove && (
+        {/* Add hint — revealed on right swipe */}
+        {!isSelected && (
           <motion.div
-            style={{ opacity: removeOpacity, background: 'rgba(239,68,68,0.12)' }}
-            className="absolute inset-0 flex items-center justify-start pl-4 pointer-events-none"
+            className="absolute inset-0 flex items-center pl-5 rounded-xl pointer-events-none"
+            style={{ background: 'rgba(48,164,108,0.18)', opacity: addOpacity }}
           >
-            <div className="flex items-center gap-1.5 text-red-400">
-              <X size={15} />
-              <span className="text-xs font-bold">Remove</span>
-            </div>
+            <Plus size={22} className="text-emerald-400" strokeWidth={2.5} />
+            <span className="ml-2 text-sm text-emerald-400 font-normal">Add</span>
+          </motion.div>
+        )}
+        {/* Remove hint — revealed on left swipe */}
+        {isSelected && (
+          <motion.div
+            className="absolute inset-0 flex items-center justify-end pr-5 rounded-xl pointer-events-none"
+            style={{ background: 'rgba(229,77,46,0.18)', opacity: removeOpacity }}
+          >
+            <span className="mr-2 text-sm text-red-400 font-normal">Remove</span>
+            <Minus size={22} className="text-red-400" strokeWidth={2.5} />
           </motion.div>
         )}
 
-        {/* draggable row */}
+        {/* Draggable row — onTap fires only when not dragging */}
         <motion.div
           drag="x"
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={{ left: isSelected && onRemove ? 0.3 : 0.03, right: 0.3 }}
-          style={{ x }}
-          onDragStart={() => { isDragging.current = true; }}
-          onDragEnd={(_, info) => {
-            if (info.offset.x > 56 && !isSelected) onAdd();
-            else if (info.offset.x < -56 && isSelected && onRemove) onRemove();
-            animate(x, 0, { type: 'spring', stiffness: 400, damping: 40 });
-            setTimeout(() => { isDragging.current = false; }, 80);
+          dragConstraints={{
+            left: isSelected ? -THRESHOLD * 1.6 : 0,
+            right: isSelected ? 0 : THRESHOLD * 1.6,
           }}
-          onClick={() => { if (!isDragging.current) onDetail(); }}
-          className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl min-h-[58px] select-none touch-pan-y
-            ${isSelected
-              ? 'bg-gradient-to-r from-amber-950/60 to-amber-900/40 border border-amber-800/40'
+          dragElastic={0.12}
+          dragMomentum={false}
+          dragDirectionLock
+          style={{ x, touchAction: 'pan-y' }}
+          onTap={onDetail}
+          onDragEnd={handleDragEnd}
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl min-h-[64px] ${
+            isSelected
+              ? 'bg-gradient-to-r from-amber-950/60 to-amber-900/30 border border-amber-800/35'
               : 'bg-[#181818]'
-            }`}
+          }`}
         >
-          {/* logo */}
-          <div className="relative flex-none">
-            <TokenImage src={token.logoURI} className="w-9 h-9 rounded-full bg-white/10" />
+          {/* Logo */}
+          <div className="w-10 h-10 rounded-full bg-amber-900/25 flex items-center justify-center relative overflow-hidden flex-none">
+            <span className="absolute text-[14px] font-normal text-amber-400/40 select-none">
+              {token.symbol.charAt(0)}
+            </span>
+            <TokenImage src={token.logoURI} disableLazyLoad className="w-full h-full rounded-full object-cover absolute inset-0 z-10" />
             {token.isVerified && (
-              <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center ring-1 ring-[#181818]">
-                <Check size={8} className="text-white" />
+              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 z-20 rounded-full bg-emerald-500 flex items-center justify-center ring-1 ring-[#181818]">
+                <Check size={7} className="text-white" />
               </div>
             )}
           </div>
 
-          {/* name */}
-          <div className="flex-1 min-w-0 text-left">
+          {/* Text */}
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5">
-              <span className={`font-bold text-sm ${isSelected ? 'text-amber-400' : 'text-white'}`}>
+              <span className={`font-normal text-base leading-none ${isSelected ? 'text-amber-400' : 'text-white'}`}>
                 {token.symbol}
               </span>
-              {token.tags?.includes('meme') && <Sparkles size={9} className="text-pink-400" />}
+              {token.tags?.includes('meme') && <Sparkles size={11} className="text-pink-400" />}
             </div>
-            <div className="text-[11px] text-white/30 truncate">{token.name}</div>
+            <div className="text-[11px] text-white/40 truncate mt-1 font-mono">{formatCompactUSD(token.marketCap)}</div>
           </div>
 
-          {/* mc */}
-          <div className="text-right flex-none">
-            <div className="text-[9px] text-white/25 uppercase leading-none mb-0.5">MC</div>
-            <div className="text-[11px] text-white/50 font-mono leading-none">{formatCompactUSD(token.marketCap)}</div>
+          {/* Status badge */}
+          <div className="flex-none w-8 flex justify-center">
+            <AnimatePresence mode="wait" initial={false}>
+              {isSelected ? (
+                <motion.div
+                  key="check"
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                  className="w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-600"
+                >
+                  <Check size={14} className="text-zinc-950" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="plus"
+                  initial={{ scale: 0.5, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.5, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                  className="w-7 h-7 rounded-full border-2 border-white/15 flex items-center justify-center"
+                >
+                  <Plus size={14} className="text-white/40" />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-
-          {/* added indicator */}
-          {isSelected && (
-            <div className="flex-none w-7 h-7 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-amber-700">
-              <Check size={13} className="text-zinc-950" />
-            </div>
-          )}
         </motion.div>
       </div>
     );
   },
+
   (prev, next) =>
     prev.token.address === next.token.address &&
-    prev.isSelected === next.isSelected,
+    prev.isSelected === next.isSelected &&
+    prev.isFav === next.isFav,
 );
 
 // ─── Mobile: Asset Card ───────────────────────────────────────────────────────
 const MobileAssetCard = memo(
   ({
     item,
+    colorIndex,
     totalWeight,
     onUpdateWeight,
     onRemove,
   }: {
     item: AssetItem;
+    colorIndex: number;
     totalWeight: number;
     onUpdateWeight: (address: string, value: number) => void;
     onRemove: (address: string) => void;
-  }) => (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.95, y: 20 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.9, x: -50 }}
-      className="relative overflow-hidden rounded-3xl border border-amber-900/20"
-    >
-      <div className="absolute inset-0 bg-gradient-to-br from-[#0a0a0a] via-[#111] to-amber-950/20" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(180,83,9,0.1),transparent_50%)]" />
-      <div className="relative p-5">
-        <div className="flex items-center gap-4 mb-5">
-          <TokenImage
-            src={item.token.logoURI}
-            className="w-14 h-14 rounded-full flex-none ring-2 ring-amber-900/30"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-white text-lg">{item.token.symbol}</div>
-            <div className="text-sm text-white/40 truncate">{item.token.name}</div>
-          </div>
-          <button
-            onClick={() => onRemove(item.token.address)}
-            className="w-12 h-12 flex items-center justify-center text-white/30 active:text-red-400 active:bg-red-500/10 rounded-2xl transition-colors"
-          >
-            <X size={24} />
-          </button>
-        </div>
-        <MobileWeightControl
-          value={item.weight}
-          onChange={(val) => onUpdateWeight(item.token.address, val)}
-          totalWeight={totalWeight}
+  }) => {
+    const [isEditingWeight, setIsEditingWeight] = useState(false);
+    const [inputValue, setInputValue] = useState(item.weight.toString());
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+      if (!isEditingWeight) setInputValue(item.weight.toString());
+    }, [item.weight, isEditingWeight]);
+
+    const isOverLimit = totalWeight > 100;
+    const displayColor = isOverLimit ? '#ef4444' : AXIS_GOLD;
+
+    const handleWeightCommit = () => {
+      setIsEditingWeight(false);
+      const v = parseInt(inputValue);
+      if (!isNaN(v)) onUpdateWeight(item.token.address, Math.min(100, Math.max(0, v)));
+      else setInputValue(item.weight.toString());
+    };
+
+    return (
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, x: -30, scale: 0.96 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        className="relative overflow-hidden rounded-2xl"
+        style={{
+          background: '#0e0906',
+          boxShadow: `0 2px 16px rgba(0,0,0,0.6), 0 0 0 1px ${AXIS_GOLD_GLOW}0.10)`,
+        }}
+      >
+        {/* Left accent stripe — brand copper gold */}
+        <div
+          className="absolute left-0 top-0 bottom-0 w-[3px]"
+          style={{ background: `linear-gradient(180deg, ${AXIS_GOLD_DIM}, ${AXIS_GOLD}, ${AXIS_GOLD_DIM})` }}
         />
-      </div>
-    </motion.div>
-  )
+        {/* Ambient copper glow from left */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: `radial-gradient(ellipse at -5% 50%, ${AXIS_GOLD_GLOW}0.10), transparent 50%)` }}
+        />
+
+        <div className="pl-5 pr-4 pt-4 pb-3">
+          {/* Header: logo + name + BIG weight + remove */}
+          <div className="flex items-center gap-3 mb-3">
+            {/* Logo with copper halo */}
+            <div className="relative flex-none">
+              <div
+                className="absolute inset-0 rounded-full blur-lg"
+                style={{ backgroundColor: AXIS_GOLD, opacity: 0.20, transform: 'scale(1.5)' }}
+              />
+              <TokenImage
+                src={item.token.logoURI}
+                className="relative w-11 h-11 rounded-full"
+              />
+            </div>
+
+            {/* Symbol + name */}
+            <div className="flex-1 min-w-0">
+              <div className="font-normal text-white text-[15px] tracking-wide leading-tight">
+                {item.token.symbol}
+              </div>
+              <div className="text-[11px] truncate mt-0.5" style={{ color: `${AXIS_GOLD_GLOW}0.45)` }}>
+                {item.token.name}
+              </div>
+            </div>
+
+            {/* Tappable weight — sole percentage display */}
+            {isEditingWeight ? (
+              <input
+                ref={inputRef}
+                type="text"
+                inputMode="numeric"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value.replace(/[^0-9]/g, ''))}
+                onBlur={handleWeightCommit}
+                onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.blur()}
+                className="w-[72px] h-11 border-2 rounded-xl text-center text-2xl font-normal outline-none tabular-nums"
+                style={{
+                  background: 'rgba(10,5,2,0.7)',
+                  borderColor: AXIS_GOLD,
+                  color: AXIS_GOLD,
+                  fontFamily: "'Lora', 'Times New Roman', serif",
+                }}
+                maxLength={3}
+                autoFocus
+              />
+            ) : (
+              <button
+                onClick={() => { setIsEditingWeight(true); setInputValue(item.weight.toString()); }}
+                className="flex items-baseline gap-0.5 active:opacity-60 transition-opacity"
+              >
+                <span
+                  className="text-[32px] font-normal tabular-nums leading-none"
+                  style={{
+                    color: isOverLimit ? '#ef4444' : AXIS_GOLD,
+                    fontFamily: "'Lora', 'Times New Roman', serif",
+                  }}
+                >
+                  {item.weight}
+                </span>
+                <span className="text-base font-normal" style={{ color: displayColor }}>%</span>
+              </button>
+            )}
+
+            {/* Remove */}
+            <button
+              onClick={() => onRemove(item.token.address)}
+              className="w-8 h-8 flex items-center justify-center text-white/15 active:text-red-400 active:bg-red-500/10 rounded-xl transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          {/* Slider — no duplicate percentage */}
+          <MobileWeightControl
+            value={item.weight}
+            onChange={(val) => onUpdateWeight(item.token.address, val)}
+            totalWeight={totalWeight}
+            accentColor={displayColor}
+            hidePercentage
+          />
+        </div>
+      </motion.div>
+    );
+  }
 );
 
 // ─── Desktop: Token List Item ─────────────────────────────────────────────────
@@ -434,7 +660,7 @@ const DesktopTokenListItem = ({
     </div>
     <div className="flex-1 min-w-0 text-left">
       <div className="flex items-center gap-1.5">
-        <span className={`font-bold text-sm ${isSelected ? 'text-amber-400' : 'text-white'}`}>
+        <span className={`font-normal text-sm ${isSelected ? 'text-amber-400' : 'text-white'}`}>
           {token.symbol}
         </span>
         {token.tags?.includes('meme') && <Sparkles size={10} className="text-pink-400" />}
@@ -490,50 +716,203 @@ const DesktopTokenListItem = ({
 // ─── Desktop: Asset Card ──────────────────────────────────────────────────────
 const DesktopAssetCard = ({
   item,
+  colorIndex,
   totalWeight,
   onUpdateWeight,
   onRemove,
 }: {
   item: AssetItem;
+  colorIndex: number;
   totalWeight: number;
   onUpdateWeight: (address: string, value: number) => void;
   onRemove: (address: string) => void;
-}) => (
-  <div className="relative overflow-hidden rounded-2xl border border-amber-900/20 bg-gradient-to-br from-[#0a0a0a] via-[#111] to-amber-950/10">
-    <div className="p-4">
-      <div className="flex items-center gap-3 mb-3">
-        <TokenImage
-          src={item.token.logoURI}
-          className="w-10 h-10 rounded-full flex-none ring-1 ring-amber-900/30"
-        />
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-white text-sm">{item.token.symbol}</div>
-          <div className="text-xs text-white/40 truncate">{item.token.name}</div>
-        </div>
-        <button
-          onClick={() => onRemove(item.token.address)}
-          className="w-8 h-8 flex items-center justify-center text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
-        >
-          <X size={16} />
-        </button>
-      </div>
-      <WeightControl
-        value={item.weight}
-        onChange={(val) => onUpdateWeight(item.token.address, val)}
-        totalWeight={totalWeight}
+}) => {
+  const isOverLimit = totalWeight > 100;
+  const displayColor = isOverLimit ? '#ef4444' : AXIS_GOLD;
+  return (
+    <div
+      className="relative overflow-hidden rounded-2xl"
+      style={{
+        background: '#0e0906',
+        boxShadow: `0 1px 10px rgba(0,0,0,0.5), 0 0 0 1px ${AXIS_GOLD_GLOW}0.08)`,
+      }}
+    >
+      {/* Left accent stripe — brand gradient */}
+      <div
+        className="absolute left-0 top-0 bottom-0 w-[3px]"
+        style={{ background: `linear-gradient(180deg, ${AXIS_GOLD_DIM}, ${AXIS_GOLD}, ${AXIS_GOLD_DIM})` }}
       />
+      {/* Ambient copper glow */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: `radial-gradient(ellipse at -5% 50%, ${AXIS_GOLD_GLOW}0.08), transparent 50%)` }}
+      />
+      <div className="pl-5 pr-4 py-3">
+        <div className="flex items-center gap-3 mb-3">
+          {/* Logo with copper halo */}
+          <div className="relative flex-none">
+            <div
+              className="absolute inset-0 rounded-full blur-md"
+              style={{ backgroundColor: AXIS_GOLD, opacity: 0.18, transform: 'scale(1.5)' }}
+            />
+            <TokenImage src={item.token.logoURI} className="relative w-9 h-9 rounded-full" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-normal text-white text-sm tracking-wide">{item.token.symbol}</div>
+            <div className="text-[11px] truncate mt-0.5" style={{ color: `${AXIS_GOLD_GLOW}0.40)` }}>
+              {item.token.name}
+            </div>
+          </div>
+          {/* Weight — sole percentage display */}
+          <div
+            className="text-xl font-normal tabular-nums mr-1"
+            style={{ color: displayColor, fontFamily: '"Times New Roman", serif' }}
+          >
+            {item.weight}%
+          </div>
+          <button
+            onClick={() => onRemove(item.token.address)}
+            className="w-7 h-7 flex items-center justify-center text-white/15 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <WeightControl
+          value={item.weight}
+          onChange={(val) => onUpdateWeight(item.token.address, val)}
+          totalWeight={totalWeight}
+        />
+      </div>
     </div>
-  </div>
+  );
+};
+
+// ─── Portfolio Progress Bar (shared) ─────────────────────────────────────────
+const PortfolioProgressBar = memo(
+  ({
+    portfolio,
+    totalWeight,
+    onDistributeEvenly,
+  }: {
+    portfolio: AssetItem[];
+    totalWeight: number;
+    onDistributeEvenly: () => void;
+  }) => {
+    const isComplete = totalWeight === 100;
+    const isOver = totalWeight > 100;
+
+    return (
+      <div className="px-4 py-3 space-y-2.5">
+        {/* Top row: stacked avatars + status + equal button */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Stacked token avatars */}
+            <div className="flex items-center">
+              {portfolio.length === 0 ? (
+                <div className="w-8 h-8 rounded-full ring-2 ring-dashed ring-white/10 bg-white/5 flex items-center justify-center">
+                  <Plus size={12} className="text-white/20" />
+                </div>
+              ) : (
+                <>
+                  {portfolio.slice(0, 6).map((asset, i) => (
+                    <div
+                      key={asset.token.address}
+                      className="relative w-8 h-8 rounded-full ring-2 ring-[#030303] overflow-hidden bg-[#1a1a1a] flex-none"
+                      style={{ marginLeft: i === 0 ? 0 : -10, zIndex: portfolio.length - i }}
+                    >
+                      <TokenImage src={asset.token.logoURI} className="w-full h-full" />
+                    </div>
+                  ))}
+                  {portfolio.length > 6 && (
+                    <div
+                      className="relative w-8 h-8 rounded-full ring-2 ring-[#030303] bg-white/10 flex items-center justify-center text-[10px] text-white/50 font-normal flex-none"
+                      style={{ marginLeft: -10 }}
+                    >
+                      +{portfolio.length - 6}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {/* Status */}
+            <div className="text-sm">
+              {isComplete ? (
+                <span className="font-normal flex items-center gap-1" style={{ color: '#D9A05B' }}>
+                  <Check size={13} /> Ready
+                </span>
+              ) : isOver ? (
+                <span className="font-normal text-red-400">+{totalWeight - 100}% over</span>
+              ) : (
+                <span style={{ color: `${AXIS_GOLD_GLOW}0.45)` }}>
+                  <span className="font-normal" style={{ color: AXIS_GOLD }}>{totalWeight}</span>% / 100%
+                </span>
+              )}
+            </div>
+          </div>
+          {/* Equal button */}
+          {portfolio.length >= 2 && (
+            <button
+              onClick={onDistributeEvenly}
+              className="flex items-center gap-1 text-xs font-normal px-3 py-1.5 rounded-lg transition-colors"
+              style={{
+                background: `${AXIS_GOLD_GLOW}0.08)`,
+                border: `1px solid ${AXIS_GOLD_GLOW}0.20)`,
+                color: '#D9A05B',
+              }}
+            >
+              <Percent size={11} /> Equal
+            </button>
+          )}
+        </div>
+
+        {/* Progress bar — brand copper-gold gradient */}
+        <div
+          className="relative h-2 rounded-full overflow-hidden"
+          style={{ background: 'rgba(199,125,54,0.08)' }}
+        >
+          <motion.div
+            className="absolute inset-y-0 left-0 rounded-full"
+            style={{
+              background: isOver
+                ? '#ef4444'
+                : isComplete
+                  ? 'linear-gradient(90deg, #4A230F, #8E4D1F, #C77D36, #D9A05B, #E8C28A)'
+                  : 'linear-gradient(90deg, #4A230F, #8E4D1F, #C77D36, #D9A05B)',
+              boxShadow: isOver ? 'none' : `0 0 8px 1px ${AXIS_GOLD_GLOW}0.35)`,
+            }}
+            animate={{ width: `${Math.min(totalWeight, 100)}%` }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          />
+        </div>
+
+        {/* Token legend */}
+        {portfolio.length > 0 && (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+            {portfolio.map((asset, i) => (
+              <div key={asset.token.address} className="flex items-center gap-1">
+                <div
+                  className="w-1.5 h-1.5 rounded-full flex-none"
+                  style={{ backgroundColor: PORTFOLIO_COLORS[i % PORTFOLIO_COLORS.length] }}
+                />
+                <span className="text-[10px] text-white/35">{asset.token.symbol} {asset.weight}%</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MobileBuilder
 // ─────────────────────────────────────────────────────────────────────────────
-export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) => {
+export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: BuilderProps) => {
   const {
     portfolio,
     searchQuery,
     setSearchQuery,
+    isSearching,
     isLoading,
     totalWeight,
     selectedIds,
@@ -551,13 +930,14 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
     setActiveTab,
     flyingToken,
     flyingCoords,
+    addTokenToComposition,
   } = dashboard;
 
   const { publicKey } = useWallet();
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [selectedDetailToken, setSelectedDetailToken] = useState<JupiterToken | null>(null);
   const mobileScrollRef = useRef<HTMLDivElement>(null);
-  const [selectedPredictionGroup, setSelectedPredictionGroup] = useState<PredictionGroup | null>(null);
+  const [isPredictionListOpen, setIsPredictionListOpen] = useState(false);
 
   const mobileVirtualizer = useVirtualizer({
     count: sortedVisibleTokens.length,
@@ -611,90 +991,133 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
     } catch { /* clipboard denied */ }
   }, [setSearchQuery]);
 
-  useEffect(() => {
-    if (portfolio.length === 0 && !isSelectorOpen) setIsSelectorOpen(true);
-  }, []);
+  // Removed: auto-open token selector on mount.
+  // Users should open it by scrolling to and clicking the "Add Token" button.
 
   return (
-    <div className="absolute inset-0 bg-[#030303] flex flex-col">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="absolute top-0 left-0 right-0 z-30 bg-[#030303]/90 backdrop-blur-md border-b border-white/5 safe-area-top"
-      >
-        <div className="px-4 py-3 flex items-center justify-between">
-          <button
-            onClick={onBack}
-            className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center active:bg-white/10 transition-colors"
-          >
-            <ArrowLeft size={20} className="text-white" />
-          </button>
-          <button
-            onClick={() => setIsSelectorOpen(true)}
-            className="btn-glass-gold w-10 h-10 rounded-full flex items-center justify-center transition-colors"
-          >
-            <Plus size={20} />
-          </button>
-        </div>
-      </motion.div>
+    <div className={inline ? 'flex flex-col h-full' : 'absolute inset-0 bg-[#030303] flex flex-col'}>
+      {/* Header — standalone mode only */}
+      {!inline && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="absolute top-0 left-0 right-0 z-30 bg-[#030303]/90 backdrop-blur-md border-b border-white/5 safe-area-top"
+        >
+          <div className="px-4 py-3 flex items-center justify-between">
+            <button
+              onClick={onBack}
+              className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center active:bg-white/10 transition-colors"
+            >
+              <ArrowLeft size={20} className="text-white" />
+            </button>
+            <button
+              onClick={() => setIsSelectorOpen(true)}
+              className="btn-glass-gold w-10 h-10 rounded-full flex items-center justify-center transition-colors"
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       {/* Scrollable Content */}
-      <div className="absolute inset-0 overflow-y-auto custom-scrollbar z-0">
-        <div className="h-[64px] safe-area-top" />
+      <div className={`${inline ? 'flex-1 min-h-0' : 'absolute inset-0 z-0'} overflow-y-auto custom-scrollbar`}>
+        {!inline && <div className="h-[64px] safe-area-top" />}
 
-        {/* Stats Header */}
-        <div className="sticky top-0 z-20 bg-[#030303]/95 border-b border-white/5 backdrop-blur-sm shadow-lg shadow-black/20 px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div
-              className={`relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center overflow-hidden border ${
+        {/* Stats bar — inline mode: compact pill row */}
+        {inline ? (
+          <div className="sticky top-0 z-20 backdrop-blur-sm bg-black/50 px-4 py-2.5 flex items-center gap-3">
+            {/* Allocation pill */}
+            <motion.div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-normal ${
                 totalWeight === 100
-                  ? 'bg-emerald-900/20 border-emerald-500/30'
+                  ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700/30'
                   : totalWeight > 100
-                    ? 'bg-red-900/20 border-red-500/30'
-                    : 'bg-amber-900/10 border-amber-500/20'
+                    ? 'bg-red-900/30 text-red-400 border border-red-700/30'
+                    : 'bg-amber-900/20 text-amber-500 border border-amber-800/20'
               }`}
+              animate={totalWeight === 100 ? { scale: [1, 1.05, 1] } : {}}
+              transition={{ duration: 0.3 }}
             >
-              <span
-                className={`text-2xl font-bold ${
-                  totalWeight === 100 ? 'text-emerald-400' : totalWeight > 100 ? 'text-red-400' : 'text-amber-500'
-                }`}
-              >
-                {totalWeight}
-              </span>
-              <span className="text-[10px] text-white/40 -mt-1">%</span>
-            </div>
-            <div>
-              <div className="text-[10px] text-white/40 font-bold uppercase tracking-wider">Allocation</div>
-              <div className="text-sm font-medium mt-0.5">
-                {totalWeight === 100 ? (
-                  <span className="text-emerald-400 flex items-center gap-1"><Check size={14} /> Ready</span>
-                ) : totalWeight > 100 ? (
-                  <span className="text-red-400">Over limit</span>
-                ) : (
-                  <span className="text-amber-500/80">{100 - totalWeight}% remaining</span>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-2">
+              {totalWeight === 100 ? (
+                <><Check size={11} /> Complete</>
+              ) : totalWeight > 100 ? (
+                <><AlertCircle size={11} /> {totalWeight - 100}% over</>
+              ) : (
+                <><span style={{ fontFamily: '"Times New Roman", serif' }}>{totalWeight}%</span> / 100</>
+              )}
+            </motion.div>
+
+            {/* Assets count */}
+            <span className="text-xs text-white/30">
+              {portfolio.length} asset{portfolio.length !== 1 ? 's' : ''}
+            </span>
+
+            <div className="flex-1" />
+
+            {/* Equal button */}
             {portfolio.length >= 2 && (
               <button
                 onClick={distributeEvenly}
-                className="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg bg-white/5 text-white/70 active:bg-white/10 transition-colors"
+                className="flex items-center gap-1 text-[11px] font-normal px-2.5 py-1.5 rounded-lg bg-white/5 text-white/50 active:bg-white/10 transition-colors"
               >
-                <Percent size={12} /> Equal
+                <Percent size={10} /> Equal
               </button>
             )}
-            <div className="text-xs text-white/30 font-mono">
-              {portfolio.length} Asset{portfolio.length !== 1 ? 's' : ''}
+
+            {/* Add token button */}
+            <button
+              onClick={() => setIsSelectorOpen(true)}
+              className="flex items-center gap-1.5 text-[11px] font-normal px-3 py-1.5 rounded-full btn-glass-gold transition-colors"
+            >
+              <Plus size={12} /> Add
+            </button>
+          </div>
+        ) : (
+          /* Stats Header — standalone mode */
+          <div className="sticky top-0 z-20 bg-[#030303]/95 border-b border-white/5 backdrop-blur-sm shadow-lg shadow-black/20 px-4 py-4 flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <div
+                className={`relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center overflow-hidden border ${
+                  totalWeight === 100
+                    ? 'bg-emerald-900/20 border-emerald-500/30'
+                    : totalWeight > 100
+                      ? 'bg-red-900/20 border-red-500/30'
+                      : 'bg-amber-900/10 border-amber-500/20'
+                }`}
+              >
+                <span className={`text-2xl font-normal ${totalWeight === 100 ? 'text-emerald-400' : totalWeight > 100 ? 'text-red-400' : 'text-amber-500'}`}>
+                  {totalWeight}
+                </span>
+                <span className="text-[10px] text-white/40 -mt-1">%</span>
+              </div>
+              <div>
+                <div className="text-[10px] text-white/40 font-normal uppercase tracking-wider">Allocation</div>
+                <div className="text-sm font-normal mt-0.5">
+                  {totalWeight === 100 ? (
+                    <span className="text-emerald-400 flex items-center gap-1"><Check size={14} /> Ready</span>
+                  ) : totalWeight > 100 ? (
+                    <span className="text-red-400">Over limit</span>
+                  ) : (
+                    <span className="text-amber-500/80">{100 - totalWeight}% remaining</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              {portfolio.length >= 2 && (
+                <button onClick={distributeEvenly} className="flex items-center gap-1.5 text-xs font-normal px-3 py-2 rounded-lg bg-white/5 text-white/70 active:bg-white/10 transition-colors">
+                  <Percent size={12} /> Equal
+                </button>
+              )}
+              <div className="text-xs text-white/30 font-mono">{portfolio.length} Asset{portfolio.length !== 1 ? 's' : ''}</div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Portfolio List */}
-        <div className="p-4 space-y-3 pb-40">
+        <div className={`p-4 space-y-3 ${inline ? 'pb-4' : 'pb-40'}`}>
           <AnimatePresence>
             {totalWeight > 100 && (
               <motion.div
@@ -702,7 +1125,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium mb-2"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-normal mb-2"
               >
                 <AlertCircle size={16} />
                 <span>Allocation exceeds 100%</span>
@@ -711,10 +1134,11 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
           </AnimatePresence>
 
           <AnimatePresence mode="popLayout">
-            {portfolio.map((item) => (
+            {portfolio.map((item, index) => (
               <MobileAssetCard
                 key={item.token.address}
                 item={item}
+                colorIndex={index}
                 totalWeight={totalWeight}
                 onUpdateWeight={updateWeight}
                 onRemove={removeToken}
@@ -724,55 +1148,33 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
 
           <motion.button
             layout
+            whileTap={{ scale: 0.98 }}
             onClick={() => setIsSelectorOpen(true)}
-            className="w-full py-6 rounded-3xl border border-dashed border-white/10 flex flex-col items-center justify-center gap-2 text-white/30 active:bg-white/5 transition-colors bg-white/[0.02]"
+            className="w-full py-4 rounded-2xl border border-dashed border-white/[0.08] flex items-center justify-center gap-2.5 text-white/25 active:bg-white/5 active:text-white/50 transition-colors"
           >
-            <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center shadow-inner">
-              <Plus size={24} />
-            </div>
-            <span className="text-sm font-medium">Tap to add asset</span>
+            <Plus size={17} />
+            <span className="text-sm font-normal">Add token</span>
           </motion.button>
         </div>
       </div>
 
-      {/* FAB - Add Token */}
-      {!isSelectorOpen && (
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="fixed bottom-6 right-6 z-40 safe-area-bottom">
-          <button
-            onClick={() => setIsSelectorOpen(true)}
-            className="btn-gold w-14 h-14 rounded-full flex items-center justify-center active:scale-95 transition-transform [background:var(--gold-button)] shadow-[var(--glow-sm)]"
+
+      {/* Token Selector Modal — portal to body so no parent overflow/transform interference */}
+      {isSelectorOpen && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm px-3"
+          onClick={() => setIsSelectorOpen(false)}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 8 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+            className="relative w-full max-w-lg pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
           >
-            <Plus size={28} />
-          </button>
-        </motion.div>
-      )}
-
-      {/* Next Step FAB */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] z-30 pointer-events-none">
-        <AnimatePresence>
-          {isValidAllocation && !isSelectorOpen && (
-            <motion.button
-              initial={{ y: 100, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 100, opacity: 0 }}
-              onClick={handleToIdentityMobile}
-              className="w-full h-14 btn-gold text-zinc-950 font-bold text-lg rounded-full flex items-center justify-center gap-2 pointer-events-auto active:scale-[0.98] transition-transform [background:var(--gold-button)] shadow-[0_4px_24px_rgba(0,0,0,0.6),var(--glow-sm)]"
-            >
-              Next Step <ChevronRight size={20} />
-            </motion.button>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Token Selector Modal */}
-      {isSelectorOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            onClick={() => setIsSelectorOpen(false)}
-          />
-          <div className="relative w-full px-2 pointer-events-auto safe-area-bottom safe-area-top">
-            <div className="w-full bg-[#121212] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden max-h-[82vh]">
+            <div className="w-full bg-[#121212] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+              style={{ maxHeight: 'min(88vh, 680px)' }}>
               <div className="shrink-0 bg-[#121212] border-b border-white/5 p-3 pb-2">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="relative flex-1">
@@ -815,33 +1217,38 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                   </button>
                 </div>
                 <TabSelector activeTab={activeTab} setActiveTab={setActiveTab} isWalletConnected={!!publicKey} />
+                
               </div>
 
-              <div ref={mobileScrollRef} className="flex-1 overflow-y-auto bg-[#121212] custom-scrollbar">
+              <div ref={mobileScrollRef} className="flex-1 overflow-y-auto bg-[#121212] custom-scrollbar" style={{ touchAction: 'pan-y' }}>
                 {isLoading ? (
-                  <div className="flex flex-col items-center justify-center h-48 gap-3">
-                    <Loader2 className="w-8 h-8 text-amber-300 animate-spin" />
+                  <div className="flex flex-col items-center justify-center h-48 gap-4">
+                    <AxisSpinner size={36} />
                     <span className="text-sm text-white/30">Loading tokens...</span>
                   </div>
+                ) : isSearching ? (
+                  <div className="flex flex-col items-center justify-center h-48 gap-4">
+                    <AxisSpinner size={30} />
+                    <span className="text-sm text-white/30">Searching...</span>
+                  </div>
                 ) : activeTab === 'prediction' ? (
-                  <div className="px-1 pt-3 pb-10">
-                  {groupedPredictions.map((group) => {
-                    let selectedSide: 'YES' | 'NO' | undefined = undefined;
-                    if (group.yesToken && selectedIds.has(group.yesToken.address)) selectedSide = 'YES';
-                    if (group.noToken && selectedIds.has(group.noToken.address)) selectedSide = 'NO';
-
-                    return (
-                      <PredictionEventCard
-                        key={`pred-${group.marketId}`}
-                        group={group}
-                        selectedSide={selectedSide}
-                        onClick={() => setSelectedPredictionGroup(group)}
-                      />
-                    );
-                  })}
-                    {groupedPredictions.length === 0 && (
-                      <div className="text-center py-20 text-white/20 text-sm">No predictions found</div>
-                    )}
+                  <div className="flex flex-col items-center justify-center h-full min-h-[200px] gap-4 px-6">
+                    <p className="text-xs text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                      {groupedPredictions.length} markets available · sorted by volume
+                    </p>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.97 }}
+                      onClick={() => setIsPredictionListOpen(true)}
+                      className="w-full py-3.5 rounded-2xl text-sm font-normal"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(201,168,76,0.15), rgba(201,168,76,0.08))',
+                        border: '1px solid rgba(201,168,76,0.25)',
+                        color: '#c9a84c',
+                      }}
+                    >
+                      Browse Prediction Markets
+                    </motion.button>
                   </div>
                 ) : sortedVisibleTokens.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-48 gap-3 text-white/20">
@@ -862,9 +1269,11 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                             <MobileTokenListItem
                               token={token}
                               isSelected={isSelected}
+                              isFav={preferences.isFavorite(token.address)}
                               onAdd={() => handleTokenSelect(token)}
                               onRemove={isSelected ? () => removeToken(token.address) : undefined}
                               onDetail={() => setSelectedDetailToken(token)}
+                              onToggleFav={(e) => { e.stopPropagation(); preferences.toggleFavorite(token.address); }}
                             />
                           </div>
                         </div>
@@ -874,21 +1283,24 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
                 )}
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
-      )}
+      , document.body)}
 
-      {/* Token Detail Modal */}
-      <AnimatePresence>
-        {selectedDetailToken && (
-          <TokenDetailModal
-            token={selectedDetailToken}
-            isSelected={selectedIds.has(selectedDetailToken.address)}
-            onAdd={() => handleTokenSelect(selectedDetailToken)}
-            onClose={() => setSelectedDetailToken(null)}
-          />
-        )}
-      </AnimatePresence>
+      {/* Token Detail Modal — portal to body */}
+      {createPortal(
+        <AnimatePresence>
+          {selectedDetailToken && (
+            <TokenDetailModal
+              token={selectedDetailToken}
+              isSelected={selectedIds.has(selectedDetailToken.address)}
+              onAdd={() => handleTokenSelect(selectedDetailToken)}
+              onClose={() => setSelectedDetailToken(null)}
+            />
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* Flying Particle */}
       <AnimatePresence>
@@ -909,18 +1321,12 @@ export const MobileBuilder = ({ dashboard, preferences, onBack }: BuilderProps) 
         )}
       </AnimatePresence>
 
-      <PredictionSelectModal
-        isOpen={selectedPredictionGroup !== null}
-        group={selectedPredictionGroup}
-        onClose={() => setSelectedPredictionGroup(null)}
+      <PredictionListModal
+        isOpen={isPredictionListOpen}
+        onClose={() => setIsPredictionListOpen(false)}
+        groups={groupedPredictions}
+        selectedIds={selectedIds}
         onSelect={handleTokenSelect}
-        selectedTokenAddress={
-          selectedPredictionGroup?.yesToken && selectedIds.has(selectedPredictionGroup.yesToken.address)
-            ? selectedPredictionGroup.yesToken.address
-            : selectedPredictionGroup?.noToken && selectedIds.has(selectedPredictionGroup.noToken.address)
-            ? selectedPredictionGroup.noToken.address
-            : undefined
-        }
       />
     </div>
   );
@@ -947,6 +1353,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
     setActiveTab,
     handleToIdentity,
     addTokenDirect,
+    addTokenToComposition,
     removeToken,
     updateWeight,
     distributeEvenly,
@@ -954,7 +1361,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
 
   const { publicKey } = useWallet();
 
-  const [selectedPredictionGroup, setSelectedPredictionGroup] = useState<PredictionGroup | null>(null);
+  const [isPredictionListOpen, setIsPredictionListOpen] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -989,7 +1396,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-none px-6 py-4 flex items-center justify-between border-b border-white/5 bg-black">
+      <div className="flex-none px-6 py-4 flex items-center justify-between border-b border-white/[0.06]">
         <div className="flex items-center gap-4">
           <button
             onClick={onBack}
@@ -1006,7 +1413,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
       <div className="flex-1 flex min-h-0">
         {/* Left Panel: Portfolio */}
         <div className="w-[55%] flex flex-col min-h-0 border-r border-white/5">
-          <div className="px-6 py-4 flex justify-between items-center border-b border-amber-900/10 bg-gradient-to-r from-[#050505] to-amber-950/5">
+          <div className="px-6 py-4 flex justify-between items-center">
             <div className="flex items-center gap-4">
               <div
                 className={`relative w-16 h-16 rounded-2xl flex flex-col items-center justify-center overflow-hidden ${
@@ -1026,7 +1433,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 <span className="text-[10px] text-white/40 -mt-1">%</span>
               </div>
               <div>
-                <div className="text-xs text-amber-700/70 font-medium uppercase tracking-wider">Total</div>
+                <div className="text-xs text-amber-700/70 font-normal uppercase tracking-wider">Total</div>
                 <div className="text-sm mt-1">
                   {totalWeight === 100 ? (
                     <span className="text-emerald-400 flex items-center gap-1.5"><Check size={14} /> Complete</span>
@@ -1063,10 +1470,11 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
               )}
             </AnimatePresence>
 
-            {portfolio.map((item) => (
+            {portfolio.map((item, index) => (
               <DesktopAssetCard
                 key={item.token.address}
                 item={item}
+                colorIndex={index}
                 totalWeight={totalWeight}
                 onUpdateWeight={updateWeight}
                 onRemove={removeToken}
@@ -1083,19 +1491,6 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
             )}
           </div>
 
-          <div className="p-4 border-t border-white/5">
-            <button
-              onClick={handleToIdentity}
-              disabled={!isValidAllocation}
-              className={`w-full py-4 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-all ${
-                isValidAllocation
-                  ? 'btn-gold text-zinc-950 [background:var(--gold-button)] shadow-[var(--glow-sm)] hover:brightness-110'
-                  : 'btn-glass text-white/20 cursor-not-allowed opacity-40'
-              }`}
-            >
-              Next <ChevronRight size={18} />
-            </button>
-          </div>
         </div>
 
         {/* Right Panel: Token Selector */}
@@ -1110,7 +1505,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 className="w-full bg-white/[0.04] border border-white/8 rounded-xl pl-11 pr-24 py-3 text-sm focus:border-amber-400/40 focus:bg-white/[0.06] outline-none transition-all placeholder:text-white/20 text-white"
               />
               <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {isSearching && <Loader2 className="text-amber-300 animate-spin" size={14} />}
+                {isSearching && <AxisSpinner size={16} />}
                 {searchQuery ? (
                   <button
                     onClick={() => setSearchQuery('')}
@@ -1121,7 +1516,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 ) : (
                   <button
                     onClick={handlePasteCA}
-                    className="btn-glass-gold flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold"
+                    className="btn-glass-gold flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-normal"
                   >
                     <ClipboardPaste size={11} /> Paste
                   </button>
@@ -1132,7 +1527,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
             {!searchQuery && preferences.searchHistory.length > 0 && (
               <div className="mb-3">
                 <div className="flex items-center justify-between mb-1.5 px-1">
-                  <span className="text-[10px] text-white/25 uppercase tracking-wider font-bold">Recent</span>
+                  <span className="text-[10px] text-white/25 uppercase tracking-wider font-normal">Recent</span>
                   <button
                     onClick={preferences.clearSearchHistory}
                     className="text-[10px] text-white/30 hover:text-amber-300 transition-colors"
@@ -1148,7 +1543,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                       className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 shrink-0 hover:bg-white/10 border border-white/5 transition-colors"
                     >
                       <TokenImage src={item.logoURI} className="w-3.5 h-3.5 rounded-full" />
-                      <span className="text-[10px] text-white/60 font-medium">{item.symbol}</span>
+                      <span className="text-[10px] text-white/60 font-normal">{item.symbol}</span>
                     </button>
                   ))}
                 </div>
@@ -1168,7 +1563,7 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
 
             <div className="flex items-center justify-between mt-2">
               <label className="flex items-center gap-1.5 cursor-pointer shrink-0 ml-2">
-                <span className="text-[10px] text-white/30 font-bold">Verified</span>
+                <span className="text-[10px] text-white/30 font-normal">Verified</span>
                 <div
                   className={`relative w-7 h-4 rounded-full transition-colors ${preferences.verifiedOnly ? 'bg-amber-400' : 'bg-white/10'}`}
                   onClick={() => preferences.setVerifiedOnly(!preferences.verifiedOnly)}
@@ -1181,33 +1576,38 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 </div>
               </label>
             </div>
+            
           </div>
 
           <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 pb-4 custom-scrollbar">
             {isLoading ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-3">
-                <Loader2 className="w-8 h-8 text-amber-300 animate-spin" />
+              <div className="flex flex-col items-center justify-center h-40 gap-4">
+                <AxisSpinner size={32} />
                 <span className="text-sm text-white/30">Loading tokens...</span>
               </div>
+            ) : isSearching ? (
+              <div className="flex flex-col items-center justify-center h-40 gap-4">
+                <AxisSpinner size={26} />
+                <span className="text-sm text-white/30">Searching...</span>
+              </div>
             ) : activeTab === 'prediction' ? (
-              <div className="px-2 pt-4">
-                {groupedPredictions.map((group) => {
-                let selectedSide: 'YES' | 'NO' | undefined = undefined;
-                if (group.yesToken && selectedIds.has(group.yesToken.address)) selectedSide = 'YES';
-                if (group.noToken && selectedIds.has(group.noToken.address)) selectedSide = 'NO';
-
-                return (
-                  <PredictionEventCard
-                    key={`pred-${group.marketId}`}
-                    group={group}
-                    selectedSide={selectedSide}
-                    onClick={() => setSelectedPredictionGroup(group)}
-                  />
-                );
-              })}
-                {groupedPredictions.length === 0 && (
-                  <div className="text-center py-20 text-white/20 text-sm">No predictions found</div>
-                )}
+              <div className="flex flex-col items-center justify-center h-full min-h-[180px] gap-4 px-4">
+                <p className="text-xs text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  {groupedPredictions.length} markets · sorted by volume
+                </p>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => setIsPredictionListOpen(true)}
+                  className="w-full py-3 rounded-xl text-sm font-normal"
+                  style={{
+                    background: 'rgba(201,168,76,0.1)',
+                    border: '1px solid rgba(201,168,76,0.2)',
+                    color: '#c9a84c',
+                  }}
+                >
+                  Browse Prediction Markets
+                </motion.button>
               </div>
             ) : activeTab === 'stock' ? (
               <div className="px-2 pt-4">
@@ -1264,18 +1664,12 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
                 </div>
               </>
             )}
-            <PredictionSelectModal
-              isOpen={selectedPredictionGroup !== null}
-              group={selectedPredictionGroup}
-              onClose={() => setSelectedPredictionGroup(null)}
+            <PredictionListModal
+              isOpen={isPredictionListOpen}
+              onClose={() => setIsPredictionListOpen(false)}
+              groups={groupedPredictions}
+              selectedIds={selectedIds}
               onSelect={handleTokenSelect}
-              selectedTokenAddress={
-                selectedPredictionGroup?.yesToken && selectedIds.has(selectedPredictionGroup.yesToken.address)
-                  ? selectedPredictionGroup.yesToken.address
-                  : selectedPredictionGroup?.noToken && selectedIds.has(selectedPredictionGroup.noToken.address)
-                  ? selectedPredictionGroup.noToken.address
-                  : undefined
-              }
             />
           </div>
         </div>

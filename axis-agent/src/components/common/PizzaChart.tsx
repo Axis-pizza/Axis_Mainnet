@@ -105,7 +105,7 @@ export const PizzaChart = ({
         style={{ width: size, height: size }}
         className="rounded-full border border-dashed border-[#B8863F]/30 flex items-center justify-center bg-[#080503]"
       >
-        <span className="text-[#B8863F]/50 text-sm font-serif italic">Select Assets</span>
+        <span className="text-[#B8863F]/50 text-sm font-serif">Select Assets</span>
       </div>
     );
   }
@@ -220,8 +220,8 @@ export const PizzaChart = ({
                 y={label.y - 4}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="text-[11px] font-serif font-bold fill-[#E7E5E4] drop-shadow-md"
-                style={{ fontFamily: '"Times New Roman", serif' }}
+                className="text-[11px] font-serif font-normal fill-[#E7E5E4] drop-shadow-md"
+                style={{ fontFamily: "'Lora', 'Times New Roman', serif" }}
               >
                 {label.symbol}
               </text>
@@ -231,7 +231,7 @@ export const PizzaChart = ({
                 textAnchor="middle"
                 dominantBaseline="middle"
                 className="text-[10px] font-serif fill-[#B8863F]"
-                style={{ fontFamily: '"Times New Roman", serif' }}
+                style={{ fontFamily: "'Lora', 'Times New Roman', serif" }}
               >
                 {label.weight}%
               </text>

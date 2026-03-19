@@ -50,7 +50,7 @@ export const StockTokenCard = memo(
         {/* Info */}
         <div className="text-center w-full">
           <div
-            className={`text-lg font-bold truncate mb-0.5 ${isSelected ? 'text-amber-400' : 'text-white'}`}
+            className={`text-lg font-normal truncate mb-0.5 ${isSelected ? 'text-amber-400' : 'text-white'}`}
           >
             {token.symbol}
           </div>

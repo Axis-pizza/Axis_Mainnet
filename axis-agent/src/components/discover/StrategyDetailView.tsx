@@ -27,7 +27,7 @@ import {
   ChevronRight,
   Settings,
 } from 'lucide-react';
-import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { useConnection, useWallet } from '../../hooks/useWallet';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,
@@ -139,13 +139,13 @@ const SwipeToConfirm = ({
         className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
         style={{ opacity: textOpacity }}
       >
-        <span className="font-bold text-xs tracking-[0.2em] text-white/50 animate-pulse">
+        <span className="font-normal text-xs tracking-[0.2em] text-white/50 animate-pulse">
           {isLoading ? 'PROCESSING...' : label}
         </span>
       </motion.div>
 
       {isSuccess && (
-        <div className="absolute inset-0 flex items-center justify-center z-20 text-white font-bold tracking-widest text-sm">
+        <div className="absolute inset-0 flex items-center justify-center z-20 text-white font-normal tracking-widest text-sm">
           SUCCESS
         </div>
       )}
@@ -273,7 +273,7 @@ const InvestSheet = ({
             <div className="flex bg-[#1C1C1E] p-1 rounded-full border border-white/5">
               <button
                 onClick={() => setMode('BUY')}
-                className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                className={`px-5 py-1.5 rounded-full text-xs font-normal transition-all ${
                   mode === 'BUY' ? 'bg-[#B8863F] text-black' : 'text-[#78716C]'
                 }`}
               >
@@ -281,7 +281,7 @@ const InvestSheet = ({
               </button>
               <button
                 onClick={() => setMode('SELL')}
-                className={`px-5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                className={`px-5 py-1.5 rounded-full text-xs font-normal transition-all ${
                   mode === 'SELL' ? 'bg-[#B8863F] text-black' : 'text-[#78716C]'
                 }`}
               >
@@ -297,12 +297,12 @@ const InvestSheet = ({
             <div className="flex flex-col items-center gap-2 mb-8">
               <div className="flex items-baseline justify-center gap-1">
                 <span
-                  className={`font-sans font-medium text-6xl tracking-tight ${amount === '0' ? 'text-[#57534E]' : 'text-white'}`}
+                  className={`font-sans font-normal text-6xl tracking-tight ${amount === '0' ? 'text-[#57534E]' : 'text-white'}`}
                 >
                   {amount}
                 </span>
               </div>
-              <span className="text-[#78716C] font-bold text-lg">
+              <span className="text-[#78716C] font-normal text-lg">
                 {mode === 'BUY' ? 'USDC' : ticker}
               </span>
             </div>
@@ -315,7 +315,7 @@ const InvestSheet = ({
               </span>
               <button
                 onClick={() => setAmount((currentBalance * (mode === 'BUY' ? 0.95 : 1)).toFixed(4))}
-                className="text-[#B8863F] text-xs font-bold uppercase hover:text-white transition-colors"
+                className="text-[#B8863F] text-xs font-normal uppercase hover:text-white transition-colors"
               >
                 Max
               </button>
@@ -341,7 +341,7 @@ const InvestSheet = ({
                   <button
                     key={key}
                     onClick={() => handleNum(key.toString())}
-                    className="h-14 text-2xl font-medium text-white hover:bg-white/5 active:bg-white/10 rounded-full transition-all flex items-center justify-center select-none"
+                    className="h-14 text-2xl font-normal text-white hover:bg-white/5 active:bg-white/10 rounded-full transition-all flex items-center justify-center select-none"
                   >
                     {key}
                   </button>
@@ -361,7 +361,7 @@ const InvestSheet = ({
               {status === 'SIGNING' || status === 'CONFIRMING' || status === 'PROCESSING' ? (
                 <div className="w-full h-16 bg-[#1C1C1E] rounded-full flex items-center justify-center gap-3 border border-white/5">
                   <Loader2 className="w-5 h-5 text-[#B8863F] animate-spin" />
-                  <span className="text-white font-bold tracking-wide text-sm">PROCESSING...</span>
+                  <span className="text-white font-normal tracking-wide text-sm">PROCESSING...</span>
                 </div>
               ) : (
                 <SwipeToConfirm
@@ -678,7 +678,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
 
         <motion.div
           style={{ opacity: headerOpacity, y: headerY }}
-          className="relative z-10 font-bold text-sm tracking-wide pointer-events-none"
+          className="relative z-10 font-normal text-sm tracking-wide pointer-events-none"
         >
           {strategy?.ticker}
         </motion.div>
@@ -710,14 +710,14 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         <div className="px-4 md:px-24 pt-24 space-y-6">
           {/* Hero Section */}
           <div className="flex flex-col items-start">
-            <h1 className="text-xl font-bold text-[#78716C] mb-1">{strategy?.name}</h1>
+            <h1 className="text-xl font-normal text-[#78716C] mb-1">{strategy?.name}</h1>
             <div className="flex items-baseline gap-3">
-              <span className="text-5xl font-serif font-bold tracking-tighter text-white">
+              <span className="text-5xl font-serif font-normal tracking-tighter text-white">
                 ${latestValue?.toFixed(2)}
               </span>
             </div>
             <div
-              className={`flex items-center gap-1 mt-2 text-sm font-bold ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}
+              className={`flex items-center gap-1 mt-2 text-sm font-normal ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}
             >
               {isPositive ? (
                 <TrendingUp className="w-4 h-4" />
@@ -738,9 +738,9 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             <div className="flex-shrink-0 min-w-[140px] p-4 bg-[#140E08] rounded-2xl border border-[rgba(184,134,63,0.08)] flex flex-col gap-1">
               <div className="flex items-center gap-1.5 text-[#78716C]">
                 <Layers className="w-3.5 h-3.5" />
-                <span className="text-[10px] uppercase font-bold tracking-wider">TVL</span>
+                <span className="text-[10px] uppercase font-normal tracking-wider">TVL</span>
               </div>
-              <p className="text-lg font-bold text-white">
+              <p className="text-lg font-normal text-white">
                 {typeof strategy?.tvl === 'number'
                   ? strategy.tvl >= 1000
                     ? `${(strategy.tvl / 1000).toFixed(1)}k`
@@ -753,10 +753,10 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             <div className="flex-shrink-0 min-w-[140px] p-4 bg-[#140E08] rounded-2xl border border-[rgba(184,134,63,0.08)] flex flex-col gap-1">
               <div className="flex items-center gap-1.5 text-[#78716C]">
                 <Activity className="w-3.5 h-3.5" />
-                <span className="text-[10px] uppercase font-bold tracking-wider">ROI (All)</span>
+                <span className="text-[10px] uppercase font-normal tracking-wider">ROI (All)</span>
               </div>
               <p
-                className={`text-lg font-bold ${changePct >= 0 ? 'text-[#B8863F]' : 'text-red-500'}`}
+                className={`text-lg font-normal ${changePct >= 0 ? 'text-[#B8863F]' : 'text-red-500'}`}
               >
                 {changePct > 0 ? '+' : ''}
                 {changePct?.toFixed(2)}%
@@ -769,7 +769,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             >
               <div className="flex items-center gap-1.5 text-[#78716C]">
                 <Copy className="w-3.5 h-3.5" />
-                <span className="text-[10px] uppercase font-bold tracking-wider">Contract</span>
+                <span className="text-[10px] uppercase font-normal tracking-wider">Contract</span>
               </div>
               <p className="text-sm font-mono text-[#A8A29E] truncate w-full group-hover:text-white">
                 {MASTER_MINT_ADDRESS.toString().slice(0, 4)}...
@@ -780,7 +780,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
 
           {/* Composition List */}
           <div>
-            <h3 className="text-sm font-bold text-[#78716C] uppercase tracking-widest mb-4 flex items-center gap-2">
+            <h3 className="text-sm font-normal text-[#78716C] uppercase tracking-widest mb-4 flex items-center gap-2">
               <PieChart className="w-4 h-4" /> Composition
             </h3>
 
@@ -801,19 +801,19 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
                               className="w-10 h-10 rounded-full bg-black object-cover"
                             />
                           ) : (
-                            <div className="w-10 h-10 rounded-full bg-[#292524] flex items-center justify-center font-bold text-xs text-[#B8863F]">
+                            <div className="w-10 h-10 rounded-full bg-[#292524] flex items-center justify-center font-normal text-xs text-[#B8863F]">
                               {token.symbol?.[0] || '?'}
                             </div>
                           )}
                         </div>
                         <div className="min-w-0">
-                          <h4 className="font-bold text-white text-sm">{token.symbol || 'UNK'}</h4>
+                          <h4 className="font-normal text-white text-sm">{token.symbol || 'UNK'}</h4>
                           <p className="text-[10px] text-[#78716C] truncate">
                             {token.name || 'Token'}
                           </p>
                         </div>
                       </div>
-                      <span className="font-bold text-white text-sm shrink-0 ml-2">
+                      <span className="font-normal text-white text-sm shrink-0 ml-2">
                         {token.weight}%
                       </span>
                     </div>
@@ -842,14 +842,14 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col">
             <span className="text-[10px] text-[#78716C] uppercase tracking-wider">Your AXIS</span>
-            <span className="text-lg font-serif font-bold text-white">
+            <span className="text-lg font-serif font-normal text-white">
               {userEtfBalance.toFixed(2)}
             </span>
           </div>
 
           <button
             onClick={() => setIsInvestOpen(true)}
-            className="bg-[#B8863F] text-black font-bold px-8 py-3 rounded-full shadow-[0_4px_20px_rgba(184,134,63,0.3)] active:scale-95 transition-all flex items-center gap-2"
+            className="bg-[#B8863F] text-black font-normal px-8 py-3 rounded-full shadow-[0_4px_20px_rgba(184,134,63,0.3)] active:scale-95 transition-all flex items-center gap-2"
           >
             Trade <ArrowRight className="w-4 h-4" />
           </button>

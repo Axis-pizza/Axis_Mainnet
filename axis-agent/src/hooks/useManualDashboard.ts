@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useWallet, useConnection, useLoginModal } from './useWallet';
 import { JupiterService, WalletService, type JupiterToken } from '../services/jupiter';
 import { fetchPredictionTokens, fetchStockTokens, fetchCommodityTokens } from '../services/dflow';
 import { fetchMarketCapMap } from '../services/coingecko';
@@ -11,6 +10,63 @@ import type {
   ManualDashboardProps,
   TabType,
 } from '../components/create/manual/types';
+
+// ETF / fund alternative search keywords (ticker → common search terms not in name/symbol)
+const ETF_ALIASES: Record<string, string[]> = {
+  QQQ:  ['nasdaq', 'invesco qqq', 'tech index'],
+  SPY:  ['s&p 500', 'sp500', 's&p500', 'standard poor'],
+  VOO:  ['vanguard s&p', 'vanguard 500'],
+  VTI:  ['vanguard total', 'total market'],
+  VGT:  ['vanguard tech', 'information technology'],
+  IWM:  ['russell 2000', 'small cap'],
+  GLD:  ['gold etf', 'gold fund', 'precious metal'],
+  SLV:  ['silver etf', 'silver fund'],
+  XLF:  ['financials', 'banking sector'],
+  XLK:  ['tech sector', 'technology sector'],
+  XLE:  ['energy sector'],
+  XLV:  ['healthcare sector', 'health sector'],
+  XLI:  ['industrials'],
+  XLP:  ['consumer staples'],
+  XLY:  ['consumer discretionary'],
+  XLU:  ['utilities'],
+  XLRE: ['real estate', 'reit'],
+  TLT:  ['long bond', 'treasury bond', '20 year'],
+  HYG:  ['high yield', 'junk bond', 'credit'],
+  BTC:  ['bitcoin'],
+  ETH:  ['ethereum'],
+  SOL:  ['solana'],
+};
+
+// Score a token against a query — higher = better match
+function scoreTokenMatch(token: JupiterToken, q: string): number {
+  const sym  = token.symbol.toLowerCase();
+  const name = token.name.toLowerCase();
+  let score  = 0;
+
+  // Symbol matches (highest priority)
+  if (sym === q)             score += 120;
+  else if (sym.startsWith(q)) score += 80;
+  else if (sym.includes(q))   score += 45;
+
+  // Name matches
+  if (name === q)              score += 100;
+  else if (name.startsWith(q)) score += 65;
+  else if (name.includes(q))   score += 28;
+
+  // ETF alias dictionary
+  const aliases = ETF_ALIASES[token.symbol.toUpperCase()];
+  if (aliases?.some((a) => a.includes(q) || q.includes(a))) score += 55;
+
+  // Boost verified / stock tokens
+  if (token.isVerified)           score += 6;
+  if (token.source === 'stock')   score += 4;
+
+  // Boost by liquidity (log scale so it doesn't overwhelm text matches)
+  if (token.marketCap && score > 0)
+    score += Math.min(8, Math.log10(token.marketCap + 1));
+
+  return score;
+}
 
 const POPULAR_SYMBOLS = [
   'SOL',
@@ -48,6 +104,8 @@ export const useManualDashboard = ({
   const [tokenFilter, setTokenFilter] = useState<
     'all' | 'crypto' | 'stock' | 'commodity' | 'prediction'
   >('all');
+  
+  // Prediction markets are always sorted by volume
 
   const [config, setConfig] = useState<StrategyConfig>({
     name: initialConfig?.name || '',
@@ -61,7 +119,7 @@ export const useManualDashboard = ({
 
   const { connected, publicKey } = useWallet();
   const { connection } = useConnection();
-  const { setVisible } = useWalletModal();
+  const { setVisible } = useLoginModal();
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const caFetchRef = useRef<string | null>(null);
 
@@ -80,27 +138,26 @@ export const useManualDashboard = ({
     if (searchQuery.trim()) {
       const lowerQ = searchQuery.trim().toLowerCase();
 
-      // 1. Local Search (手元の全リストから検索) - これが最速かつ情報リッチ
-      // Predictionトークン(source='dflow')は通常の検索結果には混ぜない（ノイズになるため）
-      const localMatches = allTokens.filter((t) => {
-        if (t.source === 'dflow') return false;
-        return (
-          t.symbol.toLowerCase().includes(lowerQ) ||
-          t.name.toLowerCase().includes(lowerQ) ||
-          t.address === searchQuery // アドレス完全一致
-        );
-      });
+      // 1. Local scored search — filters by any match (score > 0) then ranks
+      const localMatches = allTokens
+        .filter((t) => {
+          if (t.source === 'dflow') return false;
+          if (t.address === searchQuery) return true; // exact CA
+          return scoreTokenMatch(t, lowerQ) > 0;
+        })
+        .map((t) => ({ token: t, score: scoreTokenMatch(t, lowerQ) }))
+        .sort((a, b) => b.score - a.score)
+        .map((r) => r.token);
 
-      // 2. API Results (searchResults) - ローカルにないものだけ追加
-      // これにより、Memeコインなどの「手元にないトークン」もAPI経由で表示される
+      // 2. API results not already in local list (e.g. obscure meme coins)
       const uniqueApiResults = searchResults.filter(
         (apiToken) => !localMatches.some((local) => local.address === apiToken.address)
       );
 
-      // 3. Merge & Address Search
+      // 3. Merge: ranked local first, then unranked API tail
       const combined = [...localMatches, ...uniqueApiResults];
 
-      // アドレス検索でヒットしたフォールバックがあれば先頭に追加
+      // CA fallback token at top if not already present
       if (caFallbackToken && !combined.find((t) => t.address === caFallbackToken.address)) {
         combined.unshift(caFallbackToken);
       }
@@ -131,7 +188,20 @@ export const useManualDashboard = ({
         baseList = allTokens.filter(
           (t) => t.tags.includes('birdeye-trending') || (t.dailyVolume && t.dailyVolume > 1000000)
         );
-    } else baseList = allTokens; // 'all' タブ
+    } else {
+      // 'all' タブ: prediction(dflow)を除外 → marketCap降順 → symbol重複排除
+      // (同じsymbolの複数バージョン: wrapped/bridged USDCなどを除去)
+      const sorted = allTokens
+        .filter((t) => t.source !== 'dflow')
+        .sort((a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0));
+      const seenSymbols = new Set<string>();
+      baseList = sorted.filter((t) => {
+        const sym = t.symbol.toUpperCase();
+        if (seenSymbols.has(sym)) return false;
+        seenSymbols.add(sym);
+        return true;
+      });
+    }
 
     // カテゴリフィルタ (Allタブ内での絞り込み)
     if (activeTab === 'all' && tokenFilter !== 'all') {
@@ -202,7 +272,9 @@ export const useManualDashboard = ({
       );
     }
 
+    // Always sort by volume (highest first)
     result.sort((a: any, b: any) => (b.totalVolume || 0) - (a.totalVolume || 0));
+
     return result;
   }, [allTokens, searchQuery, activeTab]);
 
@@ -257,16 +329,30 @@ export const useManualDashboard = ({
         if (!isMounted) return;
 
         const uniqueMap = new Map<string, JupiterToken>();
+        const seenSymbols = new Set<string>();
 
         POPULAR_SYMBOLS.forEach((sym) => {
           const t = list.find((x) => x.symbol === sym);
-          if (t) uniqueMap.set(t.address, t);
+          if (t) {
+            uniqueMap.set(t.address, t);
+            seenSymbols.add(t.symbol.toUpperCase());
+          }
         });
-        [...predictionTokens, ...stockTokens, ...commodityTokens].forEach((t) =>
-          uniqueMap.set(t.address, t)
-        );
+        [...predictionTokens, ...stockTokens, ...commodityTokens].forEach((t) => {
+          const upperSym = t.symbol.toUpperCase();
+          if (seenSymbols.has(upperSym)) {
+            console.warn(`[Duplicate] Skipping ${t.symbol} from ${t.source}, already exists`);
+            return;
+          }
+          uniqueMap.set(t.address, t);
+          seenSymbols.add(upperSym);
+        });
         list.forEach((t) => {
-          if (!uniqueMap.has(t.address)) uniqueMap.set(t.address, t);
+          const upperSym = t.symbol.toUpperCase();
+          if (!uniqueMap.has(t.address) && !seenSymbols.has(upperSym)) {
+            uniqueMap.set(t.address, t);
+            seenSymbols.add(upperSym);
+          }
         });
 
         const enriched = Array.from(uniqueMap.values()).map((t) => {
@@ -363,6 +449,37 @@ export const useManualDashboard = ({
     });
     setSearchQuery('');
   }, []);
+
+  // One-click add function for prediction market cards
+  const addTokenToComposition = useCallback((token: JupiterToken, side?: 'YES' | 'NO') => {
+    triggerHaptic();
+    
+    // Check if already added
+    if (portfolio.some((p) => p.token.address === token.address)) {
+      toast.info('Already in ETF', { 
+        description: `${token.symbol} is already in your composition` 
+      });
+      return;
+    }
+    
+    // Add token directly (skip modal)
+    setPortfolio((prev) => {
+      const currentW = prev.reduce((s, i) => s + i.weight, 0);
+      let nextW = 0;
+      if (currentW < 100) {
+        nextW = Math.max(1, Math.floor((100 - currentW) / 2));
+        if (nextW === 0 && currentW < 100) nextW = 100 - currentW;
+      }
+      return [...prev, { token, weight: nextW, locked: false, id: token.address }];
+    });
+    
+    // Success toast
+    toast.success('Added to ETF ✓', {
+      description: `${token.symbol} ${side ? `(${side})` : ''} added successfully`
+    });
+    
+    setSearchQuery('');
+  }, [portfolio, triggerHaptic]);
 
   const removeToken = useCallback(
     (address: string) => {
@@ -476,6 +593,7 @@ export const useManualDashboard = ({
     triggerAddAnimation,
     handleAnimationComplete,
     addTokenDirect,
+    addTokenToComposition,
     removeToken,
     updateWeight,
     distributeEvenly,

@@ -144,7 +144,7 @@ export const WeightControl = ({
               onChange={handleInputChange}
               onBlur={handleInputBlur}
               onKeyDown={handleKeyDown}
-              className={`w-full h-10 bg-black/50 border-2 rounded-xl text-center text-lg font-bold outline-none ${
+              className={`w-full h-10 bg-black/50 border-2 rounded-xl text-center text-lg font-normal outline-none ${
                 isOverLimit ? 'border-red-500 text-red-400' : 'border-orange-500 text-white'
               }`}
               maxLength={3}
@@ -154,7 +154,7 @@ export const WeightControl = ({
             <button
               onClick={handleInputFocus}
               disabled={disabled}
-              className={`w-full h-10 rounded-xl font-mono font-bold text-lg transition-all ${textColor} ${
+              className={`w-full h-10 rounded-xl font-mono font-normal text-lg transition-all ${textColor} ${
                 disabled
                   ? 'bg-white/5 cursor-not-allowed'
                   : 'bg-white/10 hover:bg-white/15 active:scale-95'
@@ -175,7 +175,7 @@ export const WeightControl = ({
               key={qv}
               onClick={() => handleQuickSet(qv)}
               disabled={disabled}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-normal transition-all ${
                 value === qv
                   ? 'bg-orange-500 text-white'
                   : disabled
@@ -196,7 +196,7 @@ export const WeightControl = ({
           <button
             onClick={handleDecrement}
             disabled={disabled || value <= 0}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-normal transition-all ${
               disabled || value <= 0
                 ? 'bg-white/5 text-white/20 cursor-not-allowed'
                 : 'bg-white/10 text-white/60 hover:bg-red-500/20 hover:text-red-400 active:scale-95'
@@ -209,7 +209,7 @@ export const WeightControl = ({
           <button
             onClick={handleIncrement}
             disabled={disabled || value >= 100}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-normal transition-all ${
               disabled || value >= 100
                 ? 'bg-white/5 text-white/20 cursor-not-allowed'
                 : 'bg-white/10 text-white/60 hover:bg-green-500/20 hover:text-green-400 active:scale-95'

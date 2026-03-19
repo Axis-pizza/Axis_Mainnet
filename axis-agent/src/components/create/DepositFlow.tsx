@@ -113,9 +113,22 @@ export const DepositFlow = ({
       setStatus('PROCESSING');
       const latestBlockhash = await connection.getLatestBlockhash();
       transaction.recentBlockhash = latestBlockhash.blockhash;
+      // 一時的にユーザーを feePayer に設定（シリアライズに必要）
       transaction.feePayer = publicKey;
 
-      const signedTx = await signTransaction(transaction);
+      // 運営ウォレットにガス代を委任
+      let txToSign = transaction;
+      try {
+        const serialized = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
+        const { transaction: feePayerSignedBase64 } = await api.signAsFeePayer(
+          Buffer.from(serialized).toString('base64')
+        );
+        txToSign = Transaction.from(Buffer.from(feePayerSignedBase64, 'base64'));
+      } catch {
+        // バックエンドが失敗した場合はユーザーがガス代を負担するフォールバック
+      }
+
+      const signedTx = await signTransaction(txToSign);
       const serializedTx = signedTx.serialize();
       const signature = await connection.sendRawTransaction(serializedTx, {
         skipPreflight: false,
@@ -229,7 +242,7 @@ export const DepositFlow = ({
             <ArrowLeft className="w-5 h-5 text-[#E7E5E4]" />
           </button>
           <div className="px-4 py-1.5 rounded-full bg-white/5 border border-white/5 backdrop-blur-md">
-            <span className="text-xs font-bold tracking-wider text-[#E7E5E4]">
+            <span className="text-xs font-normal tracking-wider text-[#E7E5E4]">
               {strategyType} MODE
             </span>
           </div>
@@ -267,7 +280,7 @@ export const DepositFlow = ({
                   />
                 </motion.div>
 
-                <h1 className="text-3xl font-serif font-bold text-[#E7E5E4] mb-2">
+                <h1 className="text-3xl font-serif font-normal text-[#E7E5E4] mb-2">
                   {strategyName}
                 </h1>
                 <div className="flex flex-wrap justify-center gap-2">
@@ -291,7 +304,7 @@ export const DepositFlow = ({
                     <span className="text-[#E7E5E4] font-mono">{balance.toFixed(2)} USDC</span>
                     <button
                       onClick={() => setAmount(balance.toFixed(2))}
-                      className="text-[#B8863F] hover:text-[#D4A261] font-bold transition-colors"
+                      className="text-[#B8863F] hover:text-[#D4A261] font-normal transition-colors"
                     >
                       MAX
                     </button>
@@ -305,11 +318,11 @@ export const DepositFlow = ({
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0.00"
-                    className="w-full bg-[#080503] border border-white/10 rounded-2xl py-6 px-4 text-4xl font-bold text-center text-white focus:outline-none focus:border-[#B8863F]/50 transition-all placeholder:text-[#292524]"
+                    className="w-full bg-[#080503] border border-white/10 rounded-2xl py-6 px-4 text-4xl font-normal text-center text-white focus:outline-none focus:border-[#B8863F]/50 transition-all placeholder:text-[#292524]"
                     disabled={status !== 'INPUT' && status !== 'ERROR'}
                   />
                   <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <span className="text-sm font-bold text-[#78716C]">USDC</span>
+                    <span className="text-sm font-normal text-[#78716C]">USDC</span>
                   </div>
                 </div>
 
@@ -318,7 +331,7 @@ export const DepositFlow = ({
                     <button
                       key={val}
                       onClick={() => setAmount(val.toString())}
-                      className="py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-sm font-medium text-[#A8A29E] hover:text-[#E7E5E4] transition-all"
+                      className="py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-sm font-normal text-[#A8A29E] hover:text-[#E7E5E4] transition-all"
                     >
                       {val} USDC
                     </button>
@@ -339,7 +352,7 @@ export const DepositFlow = ({
                 <button
                   onClick={status === 'ERROR' ? handleRetry : handleDeposit}
                   disabled={!isValidAmount || (status !== 'INPUT' && status !== 'ERROR')}
-                  className="w-full py-4 bg-gradient-to-r from-[#B8863F] to-[#8B5E28] rounded-xl font-bold text-[#080503] shadow-lg shadow-orange-900/20 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 transition-all flex items-center justify-center gap-2"
+                  className="w-full py-4 bg-gradient-to-r from-[#B8863F] to-[#8B5E28] rounded-xl font-normal text-[#080503] shadow-lg shadow-orange-900/20 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 transition-all flex items-center justify-center gap-2"
                 >
                   {status === 'INPUT' && (
                     <>
@@ -388,7 +401,7 @@ const DepositSuccess = ({
           <Sparkles className="w-10 h-10 text-green-500" />
         </div>
         <motion.div
-          className="absolute -top-2 -right-2 bg-green-500 text-[#080503] text-xs font-bold px-2 py-1 rounded-full border-4 border-[#030303]"
+          className="absolute -top-2 -right-2 bg-green-500 text-[#080503] text-xs font-normal px-2 py-1 rounded-full border-4 border-[#030303]"
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.3 }}
@@ -397,10 +410,10 @@ const DepositSuccess = ({
         </motion.div>
       </div>
 
-      <h1 className="text-4xl font-serif font-bold text-[#E7E5E4] mb-2">Strategy Live</h1>
+      <h1 className="text-4xl font-serif font-normal text-[#E7E5E4] mb-2">Strategy Live</h1>
       <p className="text-[#A8A29E] mb-8 max-w-xs mx-auto text-sm leading-relaxed">
         Your liquidity has been seeded. <br />
-        <span className="text-white font-bold">{strategyName}</span> is now active on-chain.
+        <span className="text-white font-normal">{strategyName}</span> is now active on-chain.
       </p>
 
       <div className="w-full bg-[#E7E5E4] text-[#080503] rounded-lg p-6 mb-8 relative overflow-hidden font-mono text-xs">
@@ -410,11 +423,11 @@ const DepositSuccess = ({
         />
         <div className="flex justify-between mb-2">
           <span className="opacity-60">INITIAL DEPOSIT</span>
-          <span className="font-bold">{amount} USDC</span>
+          <span className="font-normal">{amount} USDC</span>
         </div>
         <div className="flex justify-between mb-4">
           <span className="opacity-60">STATUS</span>
-          <span className="font-bold flex items-center gap-1 text-green-700">
+          <span className="font-normal flex items-center gap-1 text-green-700">
             <CheckCircle2 className="w-3 h-3" /> CONFIRMED
           </span>
         </div>
@@ -434,7 +447,7 @@ const DepositSuccess = ({
 
       <button
         onClick={onComplete}
-        className="w-full py-4 bg-[#140E08] border border-white/10 rounded-xl font-bold text-[#E7E5E4] hover:bg-white/5 transition-all flex items-center justify-center gap-2"
+        className="w-full py-4 bg-[#140E08] border border-white/10 rounded-xl font-normal text-[#E7E5E4] hover:bg-white/5 transition-all flex items-center justify-center gap-2"
       >
         <TrendingUp className="w-4 h-4" />
         Go to Dashboard

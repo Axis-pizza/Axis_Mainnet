@@ -12,6 +12,7 @@ import uploadRoutes from './routes/upload';
 import shareRoutes from './routes/share';
 import { runPriceSnapshot } from './services/snapshot';
 import dflowRoutes from './routes/dflow';
+import mobileRoutes from './routes/mobile';
 // @ts-ignore
 import { EmailMessage } from "cloudflare:email";
 import { createMimeMessage } from "mimetext";
@@ -76,6 +77,7 @@ app.route('/upload', uploadRoutes);
 app.route('/share', shareRoutes);
 app.route('/api/jupiter', jupiterRouter);
 app.route('/api/dflow', dflowRoutes);
+app.route('/mobile', mobileRoutes);
 
 app.post('/report', async (c) => {
   try {

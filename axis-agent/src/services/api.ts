@@ -23,6 +23,11 @@ const _invalidate = (prefix: string) => {
   }
 };
 
+export const clearStrategyCache = () => {
+  _invalidate('discover_');
+  _invalidate('strats_');
+};
+
 export const api = {
   get: async (endpoint: string) => {
     const url = `${API_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;

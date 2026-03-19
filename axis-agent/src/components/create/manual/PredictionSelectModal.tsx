@@ -1,5 +1,5 @@
-import React from 'react';
-import { X, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, TrendingUp, TrendingDown } from 'lucide-react';
 import { TokenImage } from '../../common/TokenImage';
 import type { PredictionGroup } from './PredictionEventCard';
 import type { JupiterToken } from '../../../services/jupiter';
@@ -13,90 +13,153 @@ interface Props {
 }
 
 export const PredictionSelectModal = ({ group, isOpen, onClose, onSelect, selectedTokenAddress }: Props) => {
-  if (!isOpen || !group) return null;
+  if (!group) return null;
 
-  const yesProb = group.yesToken?.price != null ? (group.yesToken.price * 100).toFixed(1) : '50.0';
-  const noProb = group.noToken?.price != null ? (group.noToken.price * 100).toFixed(1) : '50.0';
+  const yesProb = group.yesToken?.price != null ? (group.yesToken.price * 100) : 50;
+  const noProb = group.noToken?.price != null ? (group.noToken.price * 100) : 50;
+  const yesProbStr = yesProb.toFixed(1);
+  const noProbStr = noProb.toFixed(1);
 
   const isYesSelected = selectedTokenAddress === group.yesToken?.address;
   const isNoSelected = selectedTokenAddress === group.noToken?.address;
 
   return (
-    <div 
-      // ★ z-index を 10000 にしてスマホのドロワーより手前に表示
-      className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity" 
-      onClick={onClose}
-    >
-      <div 
-        className="w-full max-w-md bg-[#111] border border-white/10 rounded-[32px] overflow-hidden p-6 animate-in slide-in-from-bottom-4 sm:slide-in-from-bottom-0 sm:zoom-in-95 shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-start mb-6">
-          <div className="flex gap-4 items-center flex-1 pr-2">
-            {/* ★ group.image をそのまま表示 */}
-            <TokenImage src={group.image} className="w-16 h-16 rounded-2xl bg-white/5 flex-none object-cover" />
-            <div>
-              <div className="text-xs text-amber-500 font-bold uppercase mb-1 tracking-wider line-clamp-1">
-                {group.eventTitle}
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)' }}
+          onClick={onClose}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 40, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.96 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+            className="w-full max-w-md overflow-hidden rounded-3xl shadow-2xl"
+            style={{
+              background: 'linear-gradient(160deg, #1a1208 0%, #0d0d0b 60%, #0a0a08 100%)',
+              border: '1px solid rgba(201,168,76,0.15)',
+              boxShadow: '0 32px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(201,168,76,0.08)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Gold top accent line */}
+            <div className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent, rgba(201,168,76,0.5), transparent)' }} />
+
+            <div className="p-6">
+              {/* Header */}
+              <div className="flex justify-between items-start mb-5">
+                <div className="flex gap-3 items-center flex-1 pr-3">
+                  <div className="relative flex-none">
+                    <div className="w-14 h-14 rounded-2xl overflow-hidden" style={{ border: '1px solid rgba(201,168,76,0.2)', background: 'rgba(201,168,76,0.05)' }}>
+                      <TokenImage src={group.image} className="w-full h-full object-cover" />
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[10px] tracking-[0.15em] uppercase mb-1" style={{ color: '#c9a84c' }}>
+                      {group.eventTitle}
+                    </div>
+                    <h2 className="text-sm font-normal leading-snug text-white/90 line-clamp-2">
+                      {group.marketQuestion}
+                    </h2>
+                  </div>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="flex-none p-2 rounded-xl transition-colors"
+                  style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.3)' }}
+                >
+                  <X size={16} />
+                </button>
               </div>
-              <h2 className="text-base sm:text-lg font-bold text-white leading-tight">
-                {group.marketQuestion}
-              </h2>
+
+              {/* Probability bar */}
+              <div className="mb-6">
+                <div className="flex justify-between text-xs mb-2 px-0.5">
+                  <span className="font-mono" style={{ color: '#4cc38a' }}>YES · {yesProbStr}%</span>
+                  <span className="font-mono" style={{ color: '#ff6369' }}>NO · {noProbStr}%</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full overflow-hidden flex" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${yesProbStr}%` }}
+                    transition={{ duration: 0.8, ease: 'easeOut', delay: 0.1 }}
+                    className="h-full rounded-l-full"
+                    style={{ background: 'linear-gradient(90deg, #30a46c, #4cc38a)' }}
+                  />
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${noProbStr}%` }}
+                    transition={{ duration: 0.8, ease: 'easeOut', delay: 0.1 }}
+                    className="h-full rounded-r-full"
+                    style={{ background: 'linear-gradient(90deg, #e54d2e, #ff6369)' }}
+                  />
+                </div>
+              </div>
+
+              {/* YES / NO buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* YES */}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => { if (group.yesToken) onSelect(group.yesToken); onClose(); }}
+                  className="relative flex flex-col items-center justify-center py-6 rounded-2xl overflow-hidden transition-all"
+                  style={{
+                    background: isYesSelected
+                      ? 'linear-gradient(160deg, rgba(48,164,108,0.25), rgba(76,195,138,0.12))'
+                      : 'rgba(48,164,108,0.06)',
+                    border: isYesSelected
+                      ? '1px solid rgba(76,195,138,0.5)'
+                      : '1px solid rgba(76,195,138,0.15)',
+                    boxShadow: isYesSelected ? '0 0 24px rgba(76,195,138,0.15)' : 'none',
+                  }}
+                >
+                  <TrendingUp size={20} style={{ color: '#4cc38a', marginBottom: 8 }} />
+                  <span className="text-2xl font-normal" style={{ color: '#4cc38a', letterSpacing: '0.05em' }}>YES</span>
+                  <span className="font-mono text-sm mt-1" style={{ color: 'rgba(76,195,138,0.7)' }}>{yesProbStr}%</span>
+                  {isYesSelected && (
+                    <div className="absolute inset-0 rounded-2xl pointer-events-none" style={{ boxShadow: 'inset 0 0 20px rgba(76,195,138,0.1)' }} />
+                  )}
+                </motion.button>
+
+                {/* NO */}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => { if (group.noToken) onSelect(group.noToken); onClose(); }}
+                  className="relative flex flex-col items-center justify-center py-6 rounded-2xl overflow-hidden transition-all"
+                  style={{
+                    background: isNoSelected
+                      ? 'linear-gradient(160deg, rgba(229,77,46,0.25), rgba(255,99,105,0.12))'
+                      : 'rgba(229,77,46,0.06)',
+                    border: isNoSelected
+                      ? '1px solid rgba(255,99,105,0.5)'
+                      : '1px solid rgba(255,99,105,0.15)',
+                    boxShadow: isNoSelected ? '0 0 24px rgba(255,99,105,0.15)' : 'none',
+                  }}
+                >
+                  <TrendingDown size={20} style={{ color: '#ff6369', marginBottom: 8 }} />
+                  <span className="text-2xl font-normal" style={{ color: '#ff6369', letterSpacing: '0.05em' }}>NO</span>
+                  <span className="font-mono text-sm mt-1" style={{ color: 'rgba(255,99,105,0.7)' }}>{noProbStr}%</span>
+                  {isNoSelected && (
+                    <div className="absolute inset-0 rounded-2xl pointer-events-none" style={{ boxShadow: 'inset 0 0 20px rgba(255,99,105,0.1)' }} />
+                  )}
+                </motion.button>
+              </div>
+
+              <p className="text-center text-[11px] mt-4" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                Select a position to add to your ETF
+              </p>
             </div>
-          </div>
-          <button 
-            onClick={onClose} 
-            className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-white/40 hover:text-white transition flex-none"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="mb-8">
-          <div className="flex justify-between text-sm font-mono mb-2 px-1">
-            <span className="text-emerald-400 font-bold">YES {yesProb}%</span>
-            <span className="text-red-400 font-bold">NO {noProb}%</span>
-          </div>
-          <div className="h-3 w-full bg-white/5 rounded-full overflow-hidden flex">
-            <div style={{ width: `${yesProb}%` }} className="h-full bg-emerald-500 transition-all duration-700 ease-out" />
-            <div style={{ width: `${noProb}%` }} className="h-full bg-red-500 transition-all duration-700 ease-out" />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <button
-            onClick={() => {
-              if (group.yesToken) onSelect(group.yesToken);
-              onClose();
-            }}
-            className={`relative flex flex-col items-center p-5 rounded-2xl border-2 transition-all ${
-              isYesSelected 
-                ? 'bg-emerald-500/20 border-emerald-500/50 scale-[0.98]' 
-                : 'bg-white/5 border-transparent hover:border-emerald-500/30 hover:bg-white/10'
-            }`}
-          >
-            <span className="text-emerald-400 font-black text-2xl mb-1">YES</span>
-            <span className="text-white font-mono text-xl">{yesProb}%</span>
-            {isYesSelected && <div className="absolute top-3 right-3 text-emerald-500"><Check size={20} /></div>}
-          </button>
-
-          <button
-            onClick={() => {
-              if (group.noToken) onSelect(group.noToken);
-              onClose();
-            }}
-            className={`relative flex flex-col items-center p-5 rounded-2xl border-2 transition-all ${
-              isNoSelected 
-                ? 'bg-red-500/20 border-red-500/50 scale-[0.98]' 
-                : 'bg-white/5 border-transparent hover:border-red-500/30 hover:bg-white/10'
-            }`}
-          >
-            <span className="text-red-400 font-black text-2xl mb-1">NO</span>
-            <span className="text-white font-mono text-xl">{noProb}%</span>
-            {isNoSelected && <div className="absolute top-3 right-3 text-red-500"><Check size={20} /></div>}
-          </button>
-        </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 };

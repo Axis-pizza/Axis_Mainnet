@@ -186,7 +186,7 @@ export const ProfileEditModal = ({
           className="w-full max-w-md bg-gradient-to-b from-[#140E08] to-[#080503] border border-[rgba(184,134,63,0.15)] rounded-3xl overflow-hidden flex flex-col shadow-2xl"
         >
           <div className="p-6 border-b border-[rgba(184,134,63,0.1)] flex items-center justify-between">
-            <h2 className="text-xl font-bold text-[#F2E0C8]">
+            <h2 className="text-xl font-normal text-[#F2E0C8]">
               {isExistingUser ? 'Edit Profile' : 'Create Account'}
             </h2>
             <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full text-white/70">
@@ -269,7 +269,7 @@ export const ProfileEditModal = ({
                         className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-[#1D9BF0]/10 border border-[#1D9BF0]/30 rounded-xl"
                       >
                         <XIcon className="w-4 h-4 fill-[#1D9BF0]" />
-                        <span className="text-sm text-[#1D9BF0] font-medium">
+                        <span className="text-sm text-[#1D9BF0] font-normal">
                           {twitterName || 'Connected'}
                         </span>
                         <Check className="w-4 h-4 text-[#1D9BF0]" />
@@ -278,7 +278,7 @@ export const ProfileEditModal = ({
                       <button
                         onClick={handleConnectTwitter}
                         disabled={twitterLoading}
-                        className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-black border border-white/15 rounded-xl text-white/80 text-sm font-medium hover:bg-white/5 hover:border-white/25 transition-colors disabled:opacity-50"
+                        className="mt-3 flex items-center gap-2 px-5 py-2.5 bg-black border border-white/15 rounded-xl text-white/80 text-sm font-normal hover:bg-white/5 hover:border-white/25 transition-colors disabled:opacity-50"
                       >
                         {twitterLoading ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -315,7 +315,7 @@ export const ProfileEditModal = ({
               <button
                 onClick={handleSave}
                 disabled={loading || uploading}
-                className="w-full py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#140D07] font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 shadow-[0_0_12px_rgba(184,134,63,0.35)]"
+                className="w-full py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#140D07] font-normal rounded-xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 shadow-[0_0_12px_rgba(184,134,63,0.35)]"
               >
                 {loading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
