@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Menu, X, BookOpen, FileText } from 'lucide-react';
+import { Menu, X, BookOpen, FileText, Layers, LayoutGrid } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SwipeDiscoverView } from './SwipeDiscoverView';
@@ -56,9 +56,28 @@ export const DiscoverView = ({ onStrategySelect, onOverlayChange, viewMode, onVi
 
   return (
     <div className="relative min-h-screen bg-[#080503]">
-      {/* Header — right side buttons only (toggle は FloatingNav PC バーに統合済み) */}
+      {/* Header — swipe/list toggle + menu */}
       <div className="flex items-center justify-end w-full px-4 py-3 z-50 absolute top-0 md:top-16 left-0 right-0 pointer-events-none">
-        <div className="flex items-center gap-3 pointer-events-auto">
+        <div className="flex items-center gap-2 pointer-events-auto">
+
+          {/* Swipe / List toggle */}
+          <div className="flex items-center bg-black/40 backdrop-blur-md border border-white/10 rounded-full p-1 gap-0.5">
+            {(['swipe', 'list'] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => onViewModeChange(mode)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-normal transition-all active:scale-95 ${
+                  viewMode === mode
+                    ? 'bg-white/15 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
+                    : 'text-white/40 hover:text-white/65'
+                }`}
+              >
+                {mode === 'swipe' ? <Layers size={12} /> : <LayoutGrid size={12} />}
+                {mode === 'swipe' ? 'Swipe' : 'List'}
+              </button>
+            ))}
+          </div>
+
           {/* Menu button */}
           <div className="relative">
             <button
