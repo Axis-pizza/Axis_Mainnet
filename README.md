@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://pbs.twimg.com/profile_banners/1932708558791192578/1769731339/1500x500" alt="Axis Logo" width="1000" />
+  <img src="https://pbs.twimg.com/profile_banners/1932708558791192578/1773736105/600x200" alt="Axis Logo" width="1000" />
   <h1>Axis Protocol</h1>
   <p>
     <strong>First onchain index Funds</strong>
