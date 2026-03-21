@@ -9,4 +9,5 @@ export type MainTabParamList = {
   Discover: undefined;
   Create: undefined;
   Profile: undefined;
+  Leaderboard: undefined;
 };

@@ -1,7 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Compass, PlusCircle, User } from 'lucide-react-native';
+import { Compass, PlusCircle, User, Trophy } from 'lucide-react-native';
 import { colors } from '../config/theme';
 import type { RootStackParamList, MainTabParamList } from './types';
 
@@ -10,6 +10,7 @@ import { DiscoverScreen } from '../screens/discover/DiscoverScreen';
 import { CreateScreen } from '../screens/create/CreateScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { StrategyDetailScreen } from '../screens/strategy/StrategyDetailScreen';
+import { LeaderboardScreen } from '../screens/leaderboard/LeaderboardScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -46,6 +47,13 @@ function MainTabs() {
         component={CreateScreen}
         options={{
           tabBarIcon: ({ color, size }) => <PlusCircle size={size} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Leaderboard"
+        component={LeaderboardScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => <Trophy size={size} color={color} />,
         }}
       />
       <Tab.Screen

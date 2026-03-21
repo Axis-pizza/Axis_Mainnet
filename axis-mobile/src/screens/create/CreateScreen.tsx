@@ -44,7 +44,7 @@ export function CreateScreen() {
     setStep('DASHBOARD');
   };
 
-  const canGoBack = step !== 'LANDING' && step !== 'DASHBOARD';
+  const canGoBack = step !== 'LANDING' && step !== 'DASHBOARD' && step !== 'BUILDER';
 
   const goBack = () => {
     switch (step) {
@@ -56,15 +56,15 @@ export function CreateScreen() {
   };
 
   return (
-    <View className="flex-1" style={{ backgroundColor: colors.background, paddingTop: insets.top }}>
-      {/* Header */}
+    <View className="flex-1" style={{ backgroundColor: colors.background, paddingTop: step === 'BUILDER' ? 0 : insets.top }}>
+      {/* Header — hidden for BUILDER (it has its own header) */}
       {canGoBack && (
         <View className="flex-row items-center px-4 py-3">
           <Pressable onPress={goBack} className="p-1 mr-3">
             <ArrowLeft size={22} color={colors.text} />
           </Pressable>
           <Text className="text-lg font-bold" style={{ color: '#F2E0C8' }}>
-            {step === 'BUILDER' ? 'Select Tokens' : step === 'IDENTITY' ? 'Strategy Info' : 'Review & Deploy'}
+            {step === 'IDENTITY' ? 'Strategy Info' : 'Review & Deploy'}
           </Text>
         </View>
       )}
@@ -74,7 +74,7 @@ export function CreateScreen() {
         <CreateLanding onCreate={() => setStep('BUILDER')} />
       )}
       {step === 'BUILDER' && (
-        <ManualBuilder onComplete={handleBuilderComplete} />
+        <ManualBuilder onComplete={handleBuilderComplete} onBack={() => setStep('LANDING')} />
       )}
       {step === 'IDENTITY' && (
         <IdentityStep
