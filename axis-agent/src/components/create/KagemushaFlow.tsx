@@ -17,8 +17,6 @@ class SimpleErrorBoundary extends React.Component<
     return { hasError: true, error };
   }
 
-  componentDidCatch() {}
-
   componentDidCatch(error: any) {
     console.error('[KagemushaFlow] caught error:', error);
   }

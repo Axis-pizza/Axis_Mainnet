@@ -17,12 +17,6 @@ import { getUsdcBalance } from './services/usdc';
 type View = 'DISCOVER' | 'CREATE' | 'PROFILE' | 'STRATEGY_DETAIL';
 const TUTORIAL_KEY = 'kagemusha-onboarding-v2';
 const DISCOVER_VIEW_KEY = 'axis-discover-view-mode';
-const pageVariants = {
-  enter:  { opacity: 1, transition: { duration: 0 } },
-  center: { opacity: 1 },
-  exit:   { opacity: 0, transition: { duration: 0.2, ease: [0.4, 0, 0.2, 1] } },
-};
-const pageTransition = { duration: 0 };
 
 export default function Home() {
   const [view, setView] = useState<View>('CREATE');
