@@ -519,12 +519,19 @@ const { showToast } = useToast();
             By signing in you agree to our Terms of Service
           </p>
 
-          {/* DEBUG: UA表示 (Seeker確認後に削除) */}
+          {/* DEBUG: Seeker検出確認 (確認後に削除) */}
           <div className="mt-8 p-3 rounded-lg" style={{ background: '#0a0500', border: '1px solid rgba(184,134,63,0.15)' }}>
-            <p className="text-[9px] uppercase tracking-widest mb-2" style={{ color: '#4A3010' }}>User Agent</p>
-            <p className="text-[10px] break-all leading-relaxed" style={{ color: '#8B6030' }}>
-              {navigator.userAgent}
-            </p>
+            <p className="text-[9px] uppercase tracking-widest mb-2" style={{ color: '#4A3010' }}>Seeker Detection Debug</p>
+            {[
+              ['solanaMobile', 'solanaMobile' in window ? JSON.stringify((window as any).solanaMobile) : 'undefined'],
+              ['phantom.isMobile', String((window as any).phantom?.solana?.isMobile ?? 'undefined')],
+              ['window.solana', 'solana' in window ? 'exists' : 'undefined'],
+            ].map(([key, val]) => (
+              <div key={key} className="flex gap-2 mb-1">
+                <span className="text-[10px] shrink-0" style={{ color: '#4A3010' }}>{key}:</span>
+                <span className="text-[10px] break-all" style={{ color: '#8B6030' }}>{val}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
