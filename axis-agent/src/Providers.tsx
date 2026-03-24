@@ -9,10 +9,9 @@ const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID || 'cmmty4ru802060cjplths
 
 const isMobile = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-// On mobile: use specific wallet names (deep links) + WalletConnect
-// On desktop: use specific names + auto-detected browser extensions
+// detected_solana_wallets で Seeker 含む注入済みウォレットを自動検出
 const walletList = isMobile
-  ? ['phantom', 'solflare', 'backpack', 'wallet_connect'] as any
+  ? ['phantom', 'solflare', 'backpack', 'detected_solana_wallets', 'wallet_connect'] as any
   : ['phantom', 'solflare', 'backpack', 'detected_solana_wallets'] as any;
 
 export const Providers: FC<{ children: ReactNode }> = ({ children }) => {

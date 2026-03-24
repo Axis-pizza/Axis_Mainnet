@@ -1,7 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Compass, Plus, Rocket, ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 interface TutorialOverlayProps {
   onComplete: () => void;
@@ -10,276 +8,341 @@ interface TutorialOverlayProps {
 
 const SLIDES = [
   {
-    badge: 'Welcome to Axis',
-    title: 'Shadow Strategy',
-    subtitle: 'Institutional-grade DeFi portfolios, powered by AI. Built on Solana.',
-    icon: Shield,
-    accentColor: '#B8863F',
+    number: '01',
+    badge: 'Welcome',
+    headline: 'The First\nOn-Chain\nIndex Fund.',
+    sub: 'Built on Solana.',
+    accentHex: '#E8883A',
+    videoSrc: '/1.mp4',
+    bgColor: '#3d1a00',
   },
   {
+    number: '02',
     badge: 'Discover',
-    title: 'Scout Elite Alpha',
-    subtitle: 'Swipe through community-built portfolios. Copy the best performers with one tap.',
-    icon: Compass,
-    accentColor: '#D4A261',
+    headline: 'Swipe to\nInvest.',
+    sub: 'Browse community strategies like Tinder.',
+    accentHex: '#3ABDE8',
+    videoSrc: '/2.mp4',
+    bgColor: '#00303d',
   },
   {
+    number: '03',
     badge: 'Create',
-    title: 'Forge Your ETF',
-    subtitle: 'Select tokens, set allocations, and deploy an on-chain index fund in seconds.',
-    icon: Plus,
-    accentColor: '#8B5E28',
+    headline: 'Launch\nAny\nNarrative.',
+    sub: 'Go live in seconds.',
+    accentHex: '#A83AE8',
+    videoSrc: '/3.mp4',
+    bgColor: '#1f003d',
   },
   {
-    badge: 'Get Started',
-    title: 'Enter the Market',
-    subtitle: 'The shadow market awaits. Dive in now to explore strategies.',
-    icon: Rocket,
-    accentColor: '#B8863F',
+    number: '04',
+    badge: 'The Axis Edge',
+    headline: 'MEV\nLosses →\nYour Yield.',
+    sub: '350 users. 1,700 ETFs live.',
+    accentHex: '#3AE88A',
+    videoSrc: '/4.mp4',
+    bgColor: '#003d1a',
   },
 ] as const;
 
 const SWIPE_THRESHOLD = 50;
 
-// Variants adjusted for the "Orb" container effect
-const slideVariants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? '50%' : '-50%',
-    opacity: 0,
-    scale: 0.8,
-    rotateY: direction > 0 ? 45 : -45,
-  }),
-  center: {
-    x: 0,
-    opacity: 1,
-    scale: 1,
-    rotateY: 0,
-  },
-  exit: (direction: number) => ({
-    x: direction > 0 ? '-50%' : '50%',
-    opacity: 0,
-    scale: 0.8,
-    rotateY: direction > 0 ? -45 : 45,
-  }),
-};
-
 export const TutorialOverlay = ({ onComplete, onConnectWallet }: TutorialOverlayProps) => {
   const [current, setCurrent] = useState(0);
-  const [direction, setDirection] = useState(0);
+  const [videoReady, setVideoReady] = useState<boolean[]>(SLIDES.map(() => false));
+  const touchStartX = useRef<number | null>(null);
 
-  const isLast = current === SLIDES.length - 1;
   const slide = SLIDES[current];
-  const Icon = slide.icon;
+  const isLast = current === SLIDES.length - 1;
 
   const goNext = useCallback(() => {
-    if (current < SLIDES.length - 1) {
-      setDirection(1);
-      setCurrent((prev) => prev + 1);
-    }
-  }, [current]);
+    setCurrent((prev) => (prev < SLIDES.length - 1 ? prev + 1 : prev));
+  }, []);
 
   const goPrev = useCallback(() => {
-    if (current > 0) {
-      setDirection(-1);
-      setCurrent((prev) => prev - 1);
-    }
-  }, [current]);
+    setCurrent((prev) => (prev > 0 ? prev - 1 : prev));
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goNext();
-      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') goPrev();
+      if (e.key === 'ArrowRight') goNext();
+      else if (e.key === 'ArrowLeft') goPrev();
       else if (e.key === 'Escape') onComplete();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goNext, goPrev, onComplete]);
 
-  const handleDragEnd = (_: unknown, info: { offset: { x: number } }) => {
-    if (info.offset.x < -SWIPE_THRESHOLD) goNext();
-    else if (info.offset.x > SWIPE_THRESHOLD) goPrev();
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
   };
 
-  const handleConnect = () => {
-    onConnectWallet(); // Connect
-    // We don't close immediately to let them see the connection UI,
-    // or you could call onComplete() here too depending on UX preference.
-    onComplete();
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const diff = touchStartX.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > SWIPE_THRESHOLD) {
+      diff > 0 ? goNext() : goPrev();
+    }
+    touchStartX.current = null;
+  };
+
+  const handleTap = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.clientX < window.innerWidth * 0.3) goPrev();
+    else goNext();
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[1000000] bg-[#080503] text-[#F2E0C8] overflow-hidden font-sans perspective-[1000px]">
-      {/* 1. Improved Background: Darker overlay to help text pop */}
-      <div className="absolute inset-0 bg-black/40 z-0 pointer-events-none" />
-
-      {/* Dynamic Ambient Glow */}
-      <div className="absolute inset-0 pointer-events-none z-0">
-        <motion.div
-          key={`glow-${current}`}
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 0.4, scale: 1 }} // Increased opacity slightly
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.8 }}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-[100px]"
-          style={{ backgroundColor: slide.accentColor }}
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000000,
+        overflow: 'hidden',
+        backgroundColor: slide.bgColor,
+        transition: 'background-color 0.4s ease',
+        fontFamily: "'DM Serif Display', Georgia, serif",
+      }}
+    >
+      {/* Videos — all in DOM, opacity switch only */}
+      {SLIDES.map((s, i) => (
+        <video
+          key={i}
+          src={s.videoSrc}
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="auto"
+          onPlaying={() =>
+            setVideoReady((prev) => {
+              const next = [...prev];
+              next[i] = true;
+              return next;
+            })
+          }
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            opacity: i === current && videoReady[i] ? 1 : 0,
+            transition: 'opacity 0.6s ease',
+          }}
         />
-      </div>
+      ))}
 
-      {/* Prominent Skip Button (Top Right) */}
-      <button
-        onClick={onComplete}
-        className="absolute top-8 right-8 z-50 group flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20 transition-all"
+      {/* Gradient overlay — テキスト可読性のため下部のみ暗く */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(to bottom, transparent 0%, transparent 40%, rgba(0,0,0,0.7) 75%, rgba(0,0,0,0.92) 100%)',
+        }}
+      />
+
+      {/* Progress bars */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          display: 'flex',
+          gap: 4,
+          padding: '16px 16px 0',
+          zIndex: 10,
+        }}
       >
-        <span className="text-xs font-normal tracking-wider text-white/60 group-hover:text-white uppercase">
-          Skip Intro
-        </span>
-        <X className="w-3 h-3 text-white/40 group-hover:text-white" />
-      </button>
-
-      {/* Main Content Area */}
-      <AnimatePresence mode="wait" custom={direction}>
-        <motion.div
-          key={current}
-          custom={direction}
-          variants={slideVariants}
-          initial="enter"
-          animate="center"
-          exit="exit"
-          transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-          drag="x"
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.1}
-          onDragEnd={handleDragEnd}
-          className="absolute inset-0 flex items-center justify-center p-6 cursor-grab active:cursor-grabbing z-10"
-        >
-          {/* THE LARGE ORB CONTAINER 
-            This addresses "Center text in circle" and "Readability".
-            The text sits inside this dark glass lens.
-          */}
-          <div className="relative w-full max-w-[380px] aspect-square rounded-full flex flex-col items-center justify-center text-center p-12 shadow-2xl">
-            {/* Glass Background of the Orb */}
-            <div className="absolute inset-0 rounded-full bg-black/60 backdrop-blur-xl border border-white/10 shadow-[0_0_40px_-10px_rgba(0,0,0,0.5)]" />
-
-            {/* Inner Ring Decoration */}
-            <div className="absolute inset-4 rounded-full border border-white/5 pointer-events-none" />
-
-            {/* Content Container (Relative to sit above glass) */}
-            <div className="relative z-10 flex flex-col items-center">
-              {/* Animated Icon */}
-              <motion.div
-                initial={{ scale: 0.8, opacity: 0, y: 10 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="mb-6 relative"
-              >
-                <div
-                  className="absolute inset-0 bg-white/20 blur-xl rounded-full"
-                  style={{ color: slide.accentColor }}
-                />
-                <Icon
-                  className="w-10 h-10 relative drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]"
-                  style={{ color: slide.accentColor }}
-                  strokeWidth={2}
-                />
-              </motion.div>
-
-              {/* Text Content - Higher Contrast */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-              >
-                <span
-                  className="block text-[10px] font-normal tracking-[0.3em] uppercase mb-3"
-                  style={{ color: slide.accentColor }}
-                >
-                  {slide.badge}
-                </span>
-
-                <h2 className="text-3xl font-serif text-white mb-4 tracking-tight leading-none">
-                  {slide.title}
-                </h2>
-
-                <p className="text-zinc-400 text-sm leading-relaxed font-light mx-auto max-w-[260px]">
-                  {slide.subtitle}
-                </p>
-              </motion.div>
-
-              {/* Action Buttons (Only on Last Slide) */}
-              {isLast && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.4 }}
-                  className="mt-8 flex flex-col gap-3 w-full max-w-[220px]"
-                >
-                  {/* Primary Action: Just Enter (Low Friction) */}
-                  <button
-                    onClick={onComplete}
-                    className="w-full py-3 rounded-full font-normal text-xs tracking-wide text-[#140D07] transition-all hover:scale-105 active:scale-95 shadow-[0_0_12px_rgba(184,134,63,0.35)]"
-                    style={{ background: 'linear-gradient(135deg, #6B4420, #B8863F, #E8C890)' }}
-                  >
-                    Enter Shadow Market
-                  </button>
-
-                  {/* Secondary Action: Connect (Optional) */}
-                  <button
-                    onClick={handleConnect}
-                    className="w-full py-2 rounded-full font-normal text-xs tracking-wide text-zinc-500 hover:text-white transition-colors"
-                  >
-                    Connect Wallet
-                  </button>
-                </motion.div>
-              )}
-            </div>
-          </div>
-        </motion.div>
-      </AnimatePresence>
-
-      {/* Navigation Indicators */}
-      <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex gap-4 z-50">
         {SLIDES.map((_, i) => (
-          <button
+          <div
             key={i}
-            onClick={() => {
-              setDirection(i > current ? 1 : -1);
-              setCurrent(i);
+            style={{
+              flex: 1,
+              height: 2,
+              borderRadius: 100,
+              backgroundColor: 'rgba(255,255,255,0.25)',
+              overflow: 'hidden',
             }}
-            className="group py-2" // Larger hit area
           >
             <div
-              className={`rounded-full transition-all duration-500 ease-out border ${
-                i === current
-                  ? 'w-3 h-3 bg-transparent border-white scale-110'
-                  : 'w-1.5 h-1.5 bg-white/20 border-transparent group-hover:bg-white/40'
-              }`}
               style={{
-                borderColor: i === current ? slide.accentColor : undefined,
-                backgroundColor: i === current ? slide.accentColor : undefined,
+                height: '100%',
+                borderRadius: 100,
+                backgroundColor: 'rgba(255,255,255,0.9)',
+                width: i < current ? '100%' : i === current ? '100%' : '0%',
+                transition: i === current ? 'width 6s linear' : 'none',
               }}
             />
-          </button>
+          </div>
         ))}
       </div>
 
-      {/* Navigation Hints (Arrows) */}
-      {!isLast && (
-        <>
+      {/* Skip button */}
+      <button
+        onClick={onComplete}
+        style={{
+          position: 'absolute',
+          top: 40,
+          right: 16,
+          zIndex: 20,
+          fontFamily: "'DM Sans', sans-serif",
+          fontSize: 11,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: 'rgba(255,255,255,0.6)',
+          padding: '6px 12px',
+          border: '0.5px solid rgba(255,255,255,0.2)',
+          borderRadius: 100,
+          background: 'rgba(0,0,0,0.3)',
+          cursor: 'pointer',
+        }}
+      >
+        Skip
+      </button>
+
+      {/* Tap zone */}
+      <div
+        onClick={handleTap}
+        style={{ position: 'absolute', inset: 0, zIndex: 5 }}
+      />
+
+      {/* Main content — bottom left, NO Framer Motion */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: '0 24px 112px',
+          zIndex: 15,
+          pointerEvents: 'none',
+        }}
+      >
+        {/* Accent line */}
+        <div
+          style={{
+            width: 40,
+            height: 2,
+            backgroundColor: slide.accentHex,
+            marginBottom: 20,
+            transition: 'background-color 0.4s ease',
+          }}
+        />
+
+        {/* Badge */}
+        <span
+          style={{
+            display: 'block',
+            fontFamily: "'DM Sans', sans-serif",
+            fontSize: 10,
+            letterSpacing: '0.25em',
+            textTransform: 'uppercase',
+            color: slide.accentHex,
+            marginBottom: 12,
+            transition: 'color 0.4s ease',
+          }}
+        >
+          {slide.number} — {slide.badge}
+        </span>
+
+        {/* Headline */}
+        <h1
+          style={{
+            fontSize: 'clamp(52px, 14vw, 88px)',
+            fontWeight: 400,
+            lineHeight: 0.92,
+            letterSpacing: '-0.02em',
+            color: '#FFFFFF',
+            marginBottom: 20,
+            whiteSpace: 'pre-line',
+          }}
+        >
+          {slide.headline}
+        </h1>
+
+        {/* Sub */}
+        <p
+          style={{
+            fontFamily: "'DM Sans', sans-serif",
+            fontSize: 15,
+            fontWeight: 300,
+            color: 'rgba(255,255,255,0.6)',
+            marginBottom: isLast ? 32 : 0,
+          }}
+        >
+          {slide.sub}
+        </p>
+
+        {/* CTA (last slide) */}
+        {isLast && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, pointerEvents: 'auto' }}>
+            <button
+              onClick={onComplete}
+              style={{
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: 14,
+                fontWeight: 500,
+                color: '#000',
+                background: '#fff',
+                border: 'none',
+                borderRadius: 100,
+                padding: '16px 32px',
+                cursor: 'pointer',
+                width: '100%',
+              }}
+            >
+              Enter Axis →
+            </button>
+            <button
+              onClick={() => { onConnectWallet(); onComplete(); }}
+              style={{
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: 13,
+                color: 'rgba(255,255,255,0.45)',
+                background: 'transparent',
+                border: 'none',
+                padding: 10,
+                cursor: 'pointer',
+              }}
+            >
+              Connect Wallet
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Dot nav */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 32,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          gap: 12,
+          zIndex: 20,
+        }}
+      >
+        {SLIDES.map((_, i) => (
           <button
-            onClick={goPrev}
-            disabled={current === 0}
-            className={`absolute left-4 top-1/2 -translate-y-1/2 p-4 text-white/20 hover:text-white/60 transition-colors ${current === 0 ? 'opacity-0' : 'opacity-100'}`}
-          >
-            <ChevronLeft className="w-8 h-8" />
-          </button>
-          <button
-            onClick={goNext}
-            className="absolute right-4 top-1/2 -translate-y-1/2 p-4 text-white/20 hover:text-white/60 transition-colors"
-          >
-            <ChevronRight className="w-8 h-8" />
-          </button>
-        </>
-      )}
+            key={i}
+            onClick={(e) => { e.stopPropagation(); setCurrent(i); }}
+            style={{
+              width: i === current ? 20 : 5,
+              height: 5,
+              borderRadius: 100,
+              backgroundColor: i === current ? '#fff' : 'rgba(255,255,255,0.25)',
+              transition: 'all 0.4s ease',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+            }}
+          />
+        ))}
+      </div>
     </div>,
     document.body
   );
