@@ -2,7 +2,7 @@
  * Home - Kagemusha AI Strategy Factory
  * Main entry with floating navigation and tactical interface
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useWallet, useConnection, useLoginModal } from './hooks/useWallet';
 import { FloatingNav, type ViewState } from './components/common/FloatingNav';
@@ -17,12 +17,6 @@ import { getUsdcBalance } from './services/usdc';
 type View = 'DISCOVER' | 'CREATE' | 'PROFILE' | 'STRATEGY_DETAIL';
 const TUTORIAL_KEY = 'kagemusha-onboarding-v2';
 const DISCOVER_VIEW_KEY = 'axis-discover-view-mode';
-const pageVariants = {
-  enter: { opacity: 0, scale: 0.97, filter: 'blur(14px)' },
-  center: { opacity: 1, scale: 1,    filter: 'blur(0px)'  },
-  exit:   { opacity: 0, scale: 1.02, filter: 'blur(14px)' },
-};
-const pageTransition = { duration: 0.62, ease: [0.4, 0, 0.2, 1] };
 
 export default function Home() {
   const [view, setView] = useState<View>('CREATE');
@@ -94,6 +88,16 @@ export default function Home() {
     setView(newView);
   }, []);
 
+  useLayoutEffect(() => {
+    // mobile-styles.css の `* { scroll-behavior: smooth }` を一時的に無効化して
+    // 即座にスクロールリセット（smooth だと遷移中に黒画面が見えてしまう）
+    document.documentElement.style.scrollBehavior = 'auto';
+    document.body.style.scrollBehavior = 'auto';
+    window.scrollTo(0, 0);
+    document.documentElement.style.scrollBehavior = '';
+    document.body.style.scrollBehavior = '';
+  }, [view]);
+
   const handleNavigate = (newView: ViewState) => navigateTo(newView as View);
 
   return (
@@ -107,71 +111,37 @@ export default function Home() {
           style={{ willChange: 'transform', backfaceVisibility: 'hidden' }} />
       </div>
 
-      {/* Main views — blur morph transition */}
-      <AnimatePresence mode="wait">
-        {view === 'DISCOVER' && (
-          <motion.div
-            key="DISCOVER"
-            variants={pageVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={pageTransition}
-            className="relative z-10 pb-32"
-            style={{ willChange: 'opacity, transform, filter' }}
-          >
-            <DiscoverView
-              onStrategySelect={handleStrategySelect}
-              onOverlayChange={setIsOverlayActive}
-              viewMode={discoverViewMode}
-              onViewModeChange={handleDiscoverViewModeChange}
-              focusedStrategyId={newStrategyId}
-            />
-          </motion.div>
-        )}
-
-        {view === 'CREATE' && (
-          <motion.div
-            key="CREATE"
-            variants={pageVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={pageTransition}
-            className="relative z-10 pb-32"
-            style={{ willChange: 'opacity, transform, filter' }}
-          >
-            <KagemushaFlow
-              onStepChange={(step, strategyId) => {
-                setHideNavInCreate(step !== 'LANDING' && step !== 'DASHBOARD');
-
-                if (step === 'DASHBOARD') {
-                  // strategyId が取れた場合はそれを、なければ publicKey を
-                  // シグナルとして使い「このユーザーの最新策略を先頭に」を伝える
-                  setNewStrategyId(strategyId || publicKey?.toBase58() || 'my-newest');
-                  navigateTo('DISCOVER');
-                  setHideNavInCreate(false);
-                }
-              }}
-            />
-          </motion.div>
-        )}
-
-        {view === 'PROFILE' && (
-          <motion.div
-            key="PROFILE"
-            variants={pageVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={pageTransition}
-            className="relative z-10 pb-32"
-            style={{ willChange: 'opacity, transform, filter' }}
-          >
-            <ProfileView onStrategySelect={handleStrategySelect} />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Main views — no animation (debug) */}
+      {view === 'DISCOVER' && (
+        <div className="relative z-20 pb-32">
+          <DiscoverView
+            onStrategySelect={handleStrategySelect}
+            onOverlayChange={setIsOverlayActive}
+            viewMode={discoverViewMode}
+            onViewModeChange={handleDiscoverViewModeChange}
+            focusedStrategyId={newStrategyId}
+          />
+        </div>
+      )}
+      {view === 'CREATE' && (
+        <div className="relative z-20 pb-32">
+          <KagemushaFlow
+            onStepChange={(step, strategyId) => {
+              setHideNavInCreate(step !== 'LANDING' && step !== 'DASHBOARD');
+              if (step === 'DASHBOARD') {
+                setNewStrategyId(strategyId || publicKey?.toBase58() || 'my-newest');
+                navigateTo('DISCOVER');
+                setHideNavInCreate(false);
+              }
+            }}
+          />
+        </div>
+      )}
+      {view === 'PROFILE' && (
+        <div className="relative z-20 pb-32">
+          <ProfileView onStrategySelect={handleStrategySelect} />
+        </div>
+      )}
 
       {/* STRATEGY DETAIL — slide up with spring bounce */}
       <AnimatePresence>

@@ -369,6 +369,7 @@ const MobileTokenListItem = memo(
   }) {
     const x = useMotionValue(0);
     const THRESHOLD = 64;
+    const hasDragged = useRef(false);
 
     // Hint backgrounds revealed as user drags
     const addOpacity = useTransform(x, [0, THRESHOLD], [0, 1]);
@@ -419,7 +420,9 @@ const MobileTokenListItem = memo(
           dragMomentum={false}
           dragDirectionLock
           style={{ x, touchAction: 'pan-y' }}
-          onTap={onDetail}
+          onPointerDown={() => { hasDragged.current = false; }}
+          onDragStart={() => { hasDragged.current = true; }}
+          onTap={() => { if (!hasDragged.current) onDetail(); }}
           onDragEnd={handleDragEnd}
           className={`flex items-center gap-3 px-3 py-2.5 rounded-xl min-h-[64px] ${
             isSelected

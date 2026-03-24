@@ -65,8 +65,8 @@
     touch-action: manipulation;
   }
 
-  /* Smooth scrolling */
-  * {
+  /* Smooth scrolling — only for user-initiated scrolling in containers, not programmatic scrollTo */
+  .smooth-scroll {
     scroll-behavior: smooth;
   }
 
