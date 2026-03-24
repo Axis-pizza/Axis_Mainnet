@@ -518,6 +518,14 @@ const { showToast } = useToast();
           <p className="text-[10px] mt-6" style={{ color: '#2E1A08' }}>
             By signing in you agree to our Terms of Service
           </p>
+
+          {/* DEBUG: UA表示 (Seeker確認後に削除) */}
+          <div className="mt-8 p-3 rounded-lg" style={{ background: '#0a0500', border: '1px solid rgba(184,134,63,0.15)' }}>
+            <p className="text-[9px] uppercase tracking-widest mb-2" style={{ color: '#4A3010' }}>User Agent</p>
+            <p className="text-[10px] break-all leading-relaxed" style={{ color: '#8B6030' }}>
+              {navigator.userAgent}
+            </p>
+          </div>
         </div>
       </div>
     );
