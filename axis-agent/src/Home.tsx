@@ -43,7 +43,7 @@ export default function Home() {
   };
 
   const { setVisible: openLogin } = useLoginModal();
-  const { connected, publicKey } = useWallet();
+  const { connected, publicKey, mwaConnecting } = useWallet();
   const { connection } = useConnection();
   const [balance, setBalance] = useState<number | null>(null);
 
@@ -189,7 +189,7 @@ export default function Home() {
       </AnimatePresence>
 
       {/* Floating Navigation (Tutorial targets this) */}
-      {view !== 'STRATEGY_DETAIL' && !hideNavInCreate && !isOverlayActive && (
+      {view !== 'STRATEGY_DETAIL' && !hideNavInCreate && !isOverlayActive && !mwaConnecting && (
         <FloatingNav
           currentView={view as ViewState}
           onNavigate={handleNavigate}

@@ -41,14 +41,21 @@ export function useMobileWalletAdapter(connection: Connection): MWAWalletState {
     return adapterRef.current;
   }, []);
 
+  const [error, setError] = useState<string | null>(null);
+
   const connect = useCallback(async () => {
     setConnecting(true);
+    setError(null);
     try {
       const adapter = getAdapter();
       await adapter.connect();
       if (adapter.publicKey) {
         setPublicKey(new PublicKey(adapter.publicKey.toBytes()));
       }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Connection failed';
+      setError(msg);
+      throw e;
     } finally {
       setConnecting(false);
     }

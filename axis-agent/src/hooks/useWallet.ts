@@ -21,6 +21,7 @@ export interface WalletContextState {
   wallet: any;
   connectMWA: () => Promise<void>;
   isMWA: boolean;
+  mwaConnecting: boolean;
 }
 
 export function useConnection() {
@@ -150,5 +151,6 @@ export function useWallet(): WalletContextState {
     wallet: mwa.connected ? null : wallet,
     connectMWA: mwa.connect,
     isMWA: mwa.connected,
+    mwaConnecting: mwa.connecting,
   };
 }
