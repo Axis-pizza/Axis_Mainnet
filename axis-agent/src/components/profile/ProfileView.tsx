@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWallet, useConnection, useLoginModal } from '../../hooks/useWallet';
+import { isAndroidChrome } from '../../utils/seekerDetect';
 import { api } from '../../services/api';
 import { getUsdcBalance } from '../../services/usdc';
 import { TokenImage } from '../common/TokenImage';
@@ -158,7 +159,7 @@ interface ProfileViewProps {
 }
 
 export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
-  const { publicKey, disconnect } = useWallet();
+  const { publicKey, disconnect, connectMWA } = useWallet();
   const { connection } = useConnection();
   const { setVisible: openLogin } = useLoginModal();
 const { showToast } = useToast();
@@ -498,41 +499,46 @@ const { showToast } = useToast();
             </h1>
           </div>
   
-          {/* Button */}
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            onClick={() => openLogin(true)}
-            className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-150 hover:border-[rgba(184,134,63,0.4)] active:opacity-80"
-            style={{
-              background: '#0F0A05',
-              border: '1px solid rgba(184,134,63,0.2)',
-            }}
-          >
-            <img src="/solanalogo.png" alt="Solana" width={20} height={17} className="shrink-0 opacity-90" />
-            <span style={{ color: '#F2E0C8' }} className="text-sm font-normal flex-1 text-left">
-              Log in with Solana
-            </span>
-            <span style={{ color: 'rgba(184,134,63,0.35)' }} className="text-base leading-none">›</span>
-          </motion.button>
-  
+          {/* Buttons */}
+          <div className="flex flex-col gap-3">
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={() => openLogin(true)}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-150 hover:border-[rgba(184,134,63,0.4)] active:opacity-80"
+              style={{
+                background: '#0F0A05',
+                border: '1px solid rgba(184,134,63,0.2)',
+              }}
+            >
+              <img src="/solanalogo.png" alt="Solana" width={20} height={17} className="shrink-0 opacity-90" />
+              <span style={{ color: '#F2E0C8' }} className="text-sm font-normal flex-1 text-left">
+                Log in with Solana
+              </span>
+              <span style={{ color: 'rgba(184,134,63,0.35)' }} className="text-base leading-none">›</span>
+            </motion.button>
+
+            {isAndroidChrome() && (
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={connectMWA}
+                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-150 active:opacity-80"
+                style={{
+                  background: '#0A0F05',
+                  border: '1px solid rgba(100,184,63,0.25)',
+                }}
+              >
+                <img src="/solanalogo.png" alt="Seeker" width={20} height={17} className="shrink-0 opacity-90" />
+                <span style={{ color: '#F2E0C8' }} className="text-sm font-normal flex-1 text-left">
+                  Connect with Seeker
+                </span>
+                <span style={{ color: 'rgba(100,184,63,0.4)' }} className="text-base leading-none">›</span>
+              </motion.button>
+            )}
+          </div>
+
           <p className="text-[10px] mt-6" style={{ color: '#2E1A08' }}>
             By signing in you agree to our Terms of Service
           </p>
-
-          {/* DEBUG: Seeker検出確認 (確認後に削除) */}
-          <div className="mt-8 p-3 rounded-lg" style={{ background: '#0a0500', border: '1px solid rgba(184,134,63,0.15)' }}>
-            <p className="text-[9px] uppercase tracking-widest mb-2" style={{ color: '#4A3010' }}>Seeker Detection Debug</p>
-            {[
-              ['solanaMobile', 'solanaMobile' in window ? JSON.stringify((window as any).solanaMobile) : 'undefined'],
-              ['phantom.isMobile', String((window as any).phantom?.solana?.isMobile ?? 'undefined')],
-              ['window.solana', 'solana' in window ? 'exists' : 'undefined'],
-            ].map(([key, val]) => (
-              <div key={key} className="flex gap-2 mb-1">
-                <span className="text-[10px] shrink-0" style={{ color: '#4A3010' }}>{key}:</span>
-                <span className="text-[10px] break-all" style={{ color: '#8B6030' }}>{val}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     );

@@ -1,11 +1,11 @@
-// src/hooks/useWallet.ts — Privy-backed wallet hook
-// Based on privy-io examples and docs
+// src/hooks/useWallet.ts — Privy-backed wallet hook (+ MWA for Seeker)
 import { useEffect, useRef, useMemo, useCallback, useContext } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets as useSolanaWallets, useSignTransaction } from '@privy-io/react-auth/solana';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { ConnectionContext } from '../context/ConnectionContext';
 import ReactGA from 'react-ga4';
+import { useMobileWalletAdapter } from './useMobileWalletAdapter';
 
 const FORCE_LOGOUT_KEY = 'axis_force_logged_out';
 
@@ -19,6 +19,8 @@ export interface WalletContextState {
   ready: boolean;
   authenticated: boolean;
   wallet: any;
+  connectMWA: () => Promise<void>;
+  isMWA: boolean;
 }
 
 export function useConnection() {
@@ -42,10 +44,13 @@ export function useLoginModal() {
 
 export function useWallet(): WalletContextState {
   const { authenticated, ready: privyReady, logout, user } = usePrivy();
+  const { connection } = useContext(ConnectionContext);
 
   // Solana wallets from /solana entry — needed for signTransaction
   const { wallets: solanaWallets } = useSolanaWallets();
   const { signTransaction: privySignTransaction } = useSignTransaction();
+
+  const mwa = useMobileWalletAdapter(connection);
 
   const isForceLoggedOut = typeof window !== 'undefined' && localStorage.getItem(FORCE_LOGOUT_KEY) === 'true';
 
@@ -100,39 +105,50 @@ export function useWallet(): WalletContextState {
     };
   }, [wallet, privySignTransaction]);
 
+  // MWA が接続済みの場合はそちらを優先
+  const effectivePublicKey = mwa.connected ? mwa.publicKey : publicKey;
+  const effectiveConnected = mwa.connected || connected;
+  const effectiveSignTransaction = mwa.connected ? mwa.signTransaction : signTransaction;
+
   const disconnect = useCallback(async () => {
+    if (mwa.connected) {
+      await mwa.disconnect();
+      return;
+    }
     localStorage.setItem(FORCE_LOGOUT_KEY, 'true');
     try { await logout(); } catch { /* ignored */ }
     window.location.reload();
-  }, [logout]);
+  }, [logout, mwa]);
 
   // GA tracking
   const hasTrackedRef = useRef(false);
   useEffect(() => {
-    if (connected && publicKey) {
+    if (effectiveConnected && effectivePublicKey) {
       if (!hasTrackedRef.current) {
         ReactGA.event({
           category: 'Wallet',
           action: 'Connect',
-          label: publicKey.toString(),
+          label: effectivePublicKey.toString(),
         });
         hasTrackedRef.current = true;
       }
     }
-    if (!connected) {
+    if (!effectiveConnected) {
       hasTrackedRef.current = false;
     }
-  }, [connected, publicKey]);
+  }, [effectiveConnected, effectivePublicKey]);
 
   return {
-    connected,
-    connecting: !privyReady,
-    publicKey,
-    signTransaction,
+    connected: effectiveConnected,
+    connecting: mwa.connecting || !privyReady,
+    publicKey: effectivePublicKey,
+    signTransaction: effectiveSignTransaction,
     signAllTransactions: undefined,
     disconnect,
     ready: privyReady,
-    authenticated: connected,
-    wallet,
+    authenticated: effectiveConnected,
+    wallet: mwa.connected ? null : wallet,
+    connectMWA: mwa.connect,
+    isMWA: mwa.connected,
   };
 }
