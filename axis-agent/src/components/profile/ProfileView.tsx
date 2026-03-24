@@ -472,18 +472,6 @@ const { showToast } = useToast();
   const pnlVal = userProfile?.pnlPercent || 0;
   const isPos = pnlVal >= 0;
 
-  if (mwaConnecting) {
-    return (
-      <div className="fixed inset-0 z-[9990] flex flex-col items-center justify-center"
-        style={{ background: 'rgba(8,5,3,0.97)' }}>
-        <div className="w-12 h-12 rounded-full border-2 border-t-transparent animate-spin mb-6"
-          style={{ borderColor: 'rgba(184,134,63,0.4)', borderTopColor: 'transparent' }} />
-        <p className="text-sm font-normal" style={{ color: '#B8863F' }}>Waiting for Seeker...</p>
-        <p className="text-xs mt-2" style={{ color: '#4A3010' }}>Approve the connection in Seeker</p>
-      </div>
-    );
-  }
-
   if (!publicKey) {
     return (
       <div className="relative min-h-[85vh] flex flex-col items-center justify-center px-6 overflow-hidden pt-24 pb-32">
@@ -548,7 +536,7 @@ const { showToast } = useToast();
               >
                 <img src="/solanalogo.png" alt="Seeker" width={20} height={17} className="shrink-0 opacity-90" />
                 <span style={{ color: '#F2E0C8' }} className="text-sm font-normal flex-1 text-left">
-                  {mwaConnecting ? 'Waiting for Seeker...' : 'Connect with Seeker'}
+                  {mwaConnecting ? 'Connecting...' : 'Connect with Seeker'}
                 </span>
                 <span style={{ color: 'rgba(100,184,63,0.4)' }} className="text-base leading-none">›</span>
               </motion.button>
