@@ -18,11 +18,11 @@ type View = 'DISCOVER' | 'CREATE' | 'PROFILE' | 'STRATEGY_DETAIL';
 const TUTORIAL_KEY = 'kagemusha-onboarding-v2';
 const DISCOVER_VIEW_KEY = 'axis-discover-view-mode';
 const pageVariants = {
-  enter: { opacity: 0, scale: 0.97, filter: 'blur(14px)' },
-  center: { opacity: 1, scale: 1,    filter: 'blur(0px)'  },
-  exit:   { opacity: 0, scale: 1.02, filter: 'blur(14px)' },
+  enter: { opacity: 0, scale: 0.98 },
+  center: { opacity: 1, scale: 1 },
+  exit:   { opacity: 0, scale: 1.01 },
 };
-const pageTransition = { duration: 0.62, ease: [0.4, 0, 0.2, 1] };
+const pageTransition = { duration: 0.35, ease: [0.4, 0, 0.2, 1] };
 
 export default function Home() {
   const [view, setView] = useState<View>('CREATE');
@@ -108,7 +108,7 @@ export default function Home() {
       </div>
 
       {/* Main views — blur morph transition */}
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
         {view === 'DISCOVER' && (
           <motion.div
             key="DISCOVER"
@@ -117,8 +117,8 @@ export default function Home() {
             animate="center"
             exit="exit"
             transition={pageTransition}
-            className="relative z-10 pb-32"
-            style={{ willChange: 'opacity, transform, filter' }}
+            className="relative z-20 pb-32"
+            style={{ willChange: 'opacity, transform' }}
           >
             <DiscoverView
               onStrategySelect={handleStrategySelect}
@@ -138,8 +138,8 @@ export default function Home() {
             animate="center"
             exit="exit"
             transition={pageTransition}
-            className="relative z-10 pb-32"
-            style={{ willChange: 'opacity, transform, filter' }}
+            className="relative z-20 pb-32"
+            style={{ willChange: 'opacity, transform' }}
           >
             <KagemushaFlow
               onStepChange={(step, strategyId) => {
@@ -165,8 +165,8 @@ export default function Home() {
             animate="center"
             exit="exit"
             transition={pageTransition}
-            className="relative z-10 pb-32"
-            style={{ willChange: 'opacity, transform, filter' }}
+            className="relative z-20 pb-32"
+            style={{ willChange: 'opacity, transform' }}
           >
             <ProfileView onStrategySelect={handleStrategySelect} />
           </motion.div>
