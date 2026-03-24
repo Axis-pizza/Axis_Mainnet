@@ -407,6 +407,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
           camera={{ position: [0, 0, 5.0], fov: 45 }}
           gl={{ antialias: !isMobile, alpha: false }}
           dpr={isMobile ? 1 : [1, 1.5]}
+          resize={{ debounce: 300 }}
         >
           <Scene mobile={isMobile} />
         </Canvas>
