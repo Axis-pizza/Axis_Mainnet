@@ -513,7 +513,7 @@ const { showToast } = useToast();
             </p>
           </div>
 
-          {/* Wallet Solana — Privy (Phantom, Solflare, Backpack) */}
+          {/* Connect Wallet — opens wallet-adapter modal on mobile, Privy on desktop */}
           <motion.button
             whileTap={{ scale: 0.98 }}
             onClick={() => openLogin(true)}
@@ -538,39 +538,10 @@ const { showToast } = useToast();
               </svg>
             </div>
             <div className="relative text-left flex-1">
-              <p className="text-[#F2E0C8] font-normal text-[15px] leading-tight">Continue with Solana</p>
-              <p className="text-[#7A5A30] text-xs mt-0.5">Phantom · Solflare · Backpack</p>
+              <p className="text-[#F2E0C8] font-normal text-[15px] leading-tight">Connect Wallet</p>
+              <p className="text-[#7A5A30] text-xs mt-0.5">Seed Vault · Phantom · Solflare</p>
             </div>
             <span className="relative text-[#9945ff]/40 group-hover:text-[#9945ff]/70 transition-colors text-lg">›</span>
-          </motion.button>
-
-          {/* Wallet Seeker — registers MWA then opens Privy login */}
-          <motion.button
-            whileTap={{ scale: 0.97 }}
-            disabled={mwaConnecting}
-            onClick={async () => {
-              try {
-                await connectMWA();
-                openLogin(true);
-              } catch {}
-            }}
-            className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl mt-3 transition-all active:opacity-80 disabled:opacity-50"
-            style={{
-              background: 'linear-gradient(135deg, #0A0F05 0%, #050805 100%)',
-              border: '1px solid rgba(184,134,63,0.2)',
-            }}
-          >
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: 'rgba(184,134,63,0.1)', border: '1px solid rgba(184,134,63,0.15)' }}>
-              <Smartphone className="w-5 h-5" style={{ color: '#B8863F' }} />
-            </div>
-            <div className="text-left flex-1">
-              <p className="text-[#F2E0C8] font-normal text-[15px] leading-tight">
-                {mwaConnecting ? 'Enabling Seed Vault...' : 'Connect with Seeker'}
-              </p>
-              <p className="text-[#7A5A30] text-xs mt-0.5">Seed Vault · MWA</p>
-            </div>
-            <span className="text-[#B8863F]/40 text-lg leading-none">›</span>
           </motion.button>
 
           <p className="text-center text-[11px] mt-6 leading-relaxed" style={{ color: '#2E1A08' }}>

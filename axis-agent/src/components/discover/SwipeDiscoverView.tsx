@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { SwipeCard } from './SwipeCard';
 import { api } from '../../services/api';
-import { useWallet, useConnection } from '../../hooks/useWallet';
+import { useWallet, useConnection, useLoginModal } from '../../hooks/useWallet';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import {
   getAssociatedTokenAddress,
@@ -692,6 +692,7 @@ export const SwipeDiscoverView = ({
   const { publicKey } = wallet;
   const { connection } = useConnection();
   const { showToast } = useToast();
+  const { setVisible: openWalletModal } = useLoginModal();
 
   const [strategies, setStrategies] = useState<any[]>([]);
   const [currentIndex, setCurrentIndex] = useState(_savedSwipeIndex);
@@ -1025,7 +1026,8 @@ export const SwipeDiscoverView = ({
   const handleBuyFromOverlay = () => {
     if (!matchedStrategy) return;
     if (!publicKey) {
-      showToast('Connect Wallet', 'error');
+      showToast('Connect your wallet first', 'info');
+      openWalletModal(true);
       return;
     }
     setInvestTarget(matchedStrategy);
@@ -1034,7 +1036,8 @@ export const SwipeDiscoverView = ({
 
   const handleDeposit = async (amountStr: string, mode: 'BUY' | 'SELL' = 'BUY') => {
     if (!wallet.publicKey || !investTarget) {
-      showToast('Connect Wallet', 'error');
+      showToast('Connect your wallet first', 'info');
+      openWalletModal(true);
       return;
     }
     setInvestStatus('SIGNING');
