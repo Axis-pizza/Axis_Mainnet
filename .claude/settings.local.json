@@ -8,7 +8,24 @@
       "Bash(pnpm tsc:*)",
       "Bash(python3:*)",
       "Bash(lsof:*)",
-      "Bash(kill 17016:*)"
+      "Bash(kill 17016:*)",
+      "Bash(ls /Users/kikutayuusuke/Documents/GitHub/Axis_MVP/axis-agent/public/*.mp4)",
+      "Bash(ls -lh /Users/kikutayuusuke/Documents/GitHub/Axis_MVP/axis-agent/public/*.mp4)",
+      "Bash(ffmpeg -i 1.mp4 -c:v libvpx-vp9 -crf 35 -b:v 0 -vf scale=-2:720 -an -deadline good -cpu-used 2 1.webm -y)",
+      "Bash(ffmpeg -i 2.mp4 -c:v libvpx-vp9 -crf 35 -b:v 0 -vf scale=-2:720 -an -deadline good -cpu-used 2 2.webm -y)",
+      "Bash(ffmpeg -i 3.mp4 -c:v libvpx-vp9 -crf 35 -b:v 0 -vf scale=-2:720 -an -deadline good -cpu-used 2 3.webm -y)",
+      "Bash(ffmpeg -i 4.mp4 -c:v libvpx-vp9 -crf 35 -b:v 0 -vf scale=-2:720 -an -deadline good -cpu-used 2 4.webm -y)",
+      "Bash(ls -lh *.webm *.mp4)",
+      "Bash(ffmpeg -i 4.mp4 -c:v libvpx-vp9 -crf 42 -b:v 0 -vf scale=-2:720 -an -deadline good -cpu-used 4 4.webm -y)",
+      "Bash(ffprobe -v quiet -print_format json -show_streams /Users/kikutayuusuke/Documents/GitHub/Axis_MVP/axis-agent/public/1.mp4)",
+      "Bash(for i:*)",
+      "Bash(do echo:*)",
+      "Bash(ffprobe -v quiet -print_format json -show_format /Users/kikutayuusuke/Documents/GitHub/Axis_MVP/axis-agent/public/1.mp4)",
+      "Bash(do ffmpeg:*)",
+      "Read(//Users/kikutayuusuke/Documents/GitHub/Axis_MVP/axis-agent/public/**)",
+      "Bash(ls -lh *.mp4)",
+      "Bash(do mv:*)",
+      "Bash(ls -lh *.mp4 *.webm)"
     ]
   }
 }
