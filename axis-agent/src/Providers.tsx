@@ -12,13 +12,33 @@ import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { AxisWalletModalProvider } from './components/common/WalletModal';
 
+// --- MWA: register once at module load on Android Chrome ---
+import {
+  registerMwa,
+  createDefaultAuthorizationCache,
+  createDefaultChainSelector,
+  createDefaultWalletNotFoundHandler,
+} from '@solana-mobile/wallet-standard-mobile';
+
+if (isAndroidChrome()) {
+  registerMwa({
+    appIdentity: {
+      name: 'Axis',
+      uri: window.location.origin,
+      icon: '/icon.png',
+    },
+    authorizationCache: createDefaultAuthorizationCache(),
+    chains: ['solana:devnet'],
+    chainSelector: createDefaultChainSelector(),
+    onWalletNotFound: createDefaultWalletNotFoundHandler(),
+  });
+}
+
 const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID || 'cmmty4ru802060cjplthsx04y';
 const IS_MOBILE_WALLET_PATH = isAndroidChrome();
 const desktopWalletList = ['phantom', 'solflare', 'backpack', 'detected_solana_wallets'] as any;
 
 // --- Mobile Providers (wallet-adapter) ---
-// WalletProvider auto-detects Android and injects SolanaMobileWalletAdapter.
-// No need to call registerMwa() — wallet-adapter handles it internally.
 const MobileProviders: FC<{ children: ReactNode }> = ({ children }) => {
   const endpoint = useMemo(
     () => import.meta.env.VITE_RPC_URL || clusterApiUrl('devnet'),
