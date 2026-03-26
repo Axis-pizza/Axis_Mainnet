@@ -1,16 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
-import {
-  SolanaMobileWalletAdapter,
-  createDefaultAuthorizationResultCache,
-  createDefaultAddressSelector,
-} from '@solana-mobile/wallet-adapter-mobile';
 import { PublicKey, Transaction, Connection } from '@solana/web3.js';
 
-const MWA_APP_IDENTITY = {
-  name: 'Axis Protocol',
-  uri: 'https://axis-agent.pages.dev',
-  icon: 'favicon.ico',
-} as const;
+const APP_IDENTITY = {
+  name: 'Axis Pizza',
+  uri: 'https://axs.pizza',
+  icon: '/icon.png',
+};
 
 export interface MWAWalletState {
   connected: boolean;
@@ -19,71 +14,68 @@ export interface MWAWalletState {
   signTransaction: ((tx: Transaction) => Promise<Transaction>) | undefined;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
+  error: string | null;
 }
 
-export function useMobileWalletAdapter(connection: Connection): MWAWalletState {
-  const [publicKey, setPublicKey] = useState<PublicKey | null>(null);
+let mwaRegistered = false;
+
+/**
+ * Registers MWA as a wallet standard provider using @solana-mobile/wallet-standard-mobile.
+ * This is the Privy-recommended approach.
+ *
+ * Called ONLY when user clicks "Connect with Seeker" — not on page load.
+ * After registration, Privy's login modal will show Seed Vault as a wallet option.
+ */
+async function ensureMwaRegistered() {
+  if (mwaRegistered) return;
+  const {
+    registerMwa,
+    createDefaultAuthorizationCache,
+    createDefaultChainSelector,
+    createDefaultWalletNotFoundHandler,
+  } = await import('@solana-mobile/wallet-standard-mobile');
+
+  registerMwa({
+    appIdentity: APP_IDENTITY,
+    authorizationCache: createDefaultAuthorizationCache(),
+    chains: ['solana:devnet'],
+    chainSelector: createDefaultChainSelector(),
+    onWalletNotFound: createDefaultWalletNotFoundHandler(),
+  });
+  mwaRegistered = true;
+}
+
+/**
+ * MWA hook — registers the wallet standard provider on-demand,
+ * then opens Privy's login modal which will now show Seed Vault.
+ */
+export function useMobileWalletAdapter(_connection: Connection): MWAWalletState {
   const [connecting, setConnecting] = useState(false);
-  const adapterRef = useRef<SolanaMobileWalletAdapter | null>(null);
-
-  const getAdapter = useCallback(() => {
-    if (!adapterRef.current) {
-      adapterRef.current = new SolanaMobileWalletAdapter({
-        addressSelector: createDefaultAddressSelector(),
-        appIdentity: MWA_APP_IDENTITY,
-        authorizationResultCache: createDefaultAuthorizationResultCache(),
-        cluster: 'devnet',
-        onWalletNotFound: async () => {
-          throw new Error('Seeker wallet not found');
-        },
-      });
-    }
-    return adapterRef.current;
-  }, []);
-
   const [error, setError] = useState<string | null>(null);
 
   const connect = useCallback(async () => {
     setConnecting(true);
     setError(null);
     try {
-      const adapter = getAdapter();
-      await adapter.connect();
-      if (adapter.publicKey) {
-        setPublicKey(new PublicKey(adapter.publicKey.toBytes()));
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Connection failed';
-      setError(msg);
-      throw e;
-    } finally {
+      await ensureMwaRegistered();
+      // After registration, Privy will detect MWA as a wallet.
+      // The caller (ProfileView) should then open Privy's login modal.
       setConnecting(false);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Registration failed';
+      setError(msg);
+      setConnecting(false);
+      throw e;
     }
-  }, [getAdapter]);
-
-  const disconnect = useCallback(async () => {
-    const adapter = adapterRef.current;
-    if (adapter) {
-      try { await adapter.disconnect(); } catch { /* ignored */ }
-    }
-    setPublicKey(null);
   }, []);
 
-  const signTransaction = useCallback(
-    async (tx: Transaction): Promise<Transaction> => {
-      const adapter = getAdapter();
-      const [signed] = await adapter.signAllTransactions([tx]);
-      return signed;
-    },
-    [getAdapter]
-  );
-
   return {
-    connected: !!publicKey,
+    connected: false, // Privy handles the actual connection state
     connecting,
-    publicKey,
-    signTransaction: publicKey ? signTransaction : undefined,
+    publicKey: null,
+    signTransaction: undefined,
     connect,
-    disconnect,
+    disconnect: async () => {},
+    error,
   };
 }
