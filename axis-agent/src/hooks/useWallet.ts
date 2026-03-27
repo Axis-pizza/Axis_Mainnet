@@ -73,16 +73,27 @@ export function useLoginModal() {
     if (!open) { showModal(false); return; }
 
     if (IS_MOBILE) {
-      // Mobile: select MWA and connect directly — no modal overlay.
-      // MWA's built-in UI (LNA dialog, wallet picker) handles everything
-      // at z-index 1, so we must NOT render any overlay on top of it.
+      // Mobile (Seeker/Android Chrome): trigger MWA directly — no modal overlay.
+      // MWA's built-in UI (LNA dialog, Seed Vault) renders at z-index 1,
+      // so we must NOT render any overlay on top of it.
+
+      // If MWA is already the selected wallet, connect directly.
+      if (wa.wallet?.adapter.name === MWA_WALLET_NAME && !wa.connected) {
+        wa.connect().catch(() => {});
+        return;
+      }
+
       const mwa = wa.wallets.find((w) => w.adapter.name === MWA_WALLET_NAME);
       if (mwa) {
         wa.select(mwa.adapter.name as any);
-        // connect() triggers MWA's full flow: LNA permission → wallet app
-        wa.connect().catch(() => {});
-      } else if (wa.wallet && !wa.connected) {
-        wa.connect().catch(() => {});
+        // IMPORTANT: wa.connect() uses a stale closure — wallet state hasn't
+        // updated yet after select() due to React 18 batching. Call the adapter
+        // directly to preserve the user gesture and avoid WalletNotSelectedError.
+        mwa.adapter.connect().catch(() => {});
+      } else {
+        // MWA not detected (device not Android or Seed Vault unavailable).
+        // Fall back to the wallet picker so the user sees what's happening.
+        showModal(true);
       }
     } else {
       // Desktop: show wallet picker modal (Phantom, Solflare, etc.)

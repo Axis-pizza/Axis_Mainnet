@@ -46,17 +46,23 @@ function WalletModal({ visible, onClose }: { visible: boolean; onClose: () => vo
   // select() + connect() in the same click handler preserves the user gesture
   // chain that Android Chrome requires for MWA intents.
   const handleSelect = useCallback(async (walletName: WalletName) => {
+    const targetWallet = wallets.find((w) => w.adapter.name === walletName);
     select(walletName);
     // Close our modal FIRST so it doesn't block MWA's LNA permission dialog
     onClose();
     try {
-      await connect();
+      if (targetWallet) {
+        // Call adapter.connect() directly: wa.connect() has a stale closure
+        // (wallet state hasn't updated after select() due to React 18 batching),
+        // so calling it would throw WalletNotSelectedError silently.
+        await targetWallet.adapter.connect();
+      } else {
+        await connect();
+      }
     } catch {
-      // connect() may fail if the adapter isn't ready yet after select().
-      // That's OK — the wallet is now selected, and the user can tap
-      // Connect again (which will call connect() with the adapter ready).
+      // Ignore — adapter may not be ready if adapter.connect() isn't available.
     }
-  }, [select, connect, onClose]);
+  }, [select, connect, onClose, wallets]);
 
   const installed = wallets.filter((w) => w.readyState === 'Installed');
   const loadable = wallets.filter((w) => w.readyState === 'Loadable');
