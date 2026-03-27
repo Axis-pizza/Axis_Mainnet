@@ -288,7 +288,17 @@ const RankedRow = memo(({ user, leaderboardTab, myPubkey }: {
 export function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const { publicKey, connected, connect, disconnect } = useWallet();
+  const {
+    publicKey,
+    connected,
+    connect,
+    connecting,
+    restoring,
+    disconnect,
+    walletLabel,
+    accountLabel,
+    error: walletError,
+  } = useWallet();
   const { showToast } = useToast();
 
   // UI State
@@ -543,7 +553,7 @@ export function ProfileScreen() {
   const handleDisconnect = async () => {
     try {
       setIsDisconnecting(true);
-      disconnect();
+      await disconnect();
       showToast('Wallet disconnected', 'info');
     } catch {
       showToast('Failed to disconnect wallet', 'error');
@@ -566,6 +576,13 @@ export function ProfileScreen() {
   // ── Not connected ────────────────────────────────────────────────────────────
 
   if (!connected) {
+    const isBusy = connecting || restoring;
+    const connectLabel = restoring
+      ? 'Restoring wallet session...'
+      : connecting
+        ? 'Opening Solana wallet...'
+        : 'Connect Solana Wallet';
+
     return (
       <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
         <Animated.View style={[styles.iconCircle, { opacity: new Animated.Value(1) }]}>
@@ -573,11 +590,12 @@ export function ProfileScreen() {
         </Animated.View>
         <Text style={styles.notConnectedTitle}>Connect Wallet</Text>
         <Text style={styles.notConnectedSub}>
-          Access your portfolio, track referrals, and climb the leaderboard.
+          Native Solana Mobile connection for Seed Vault compatible wallets.
         </Text>
         <Pressable
           onPress={connect}
-          style={({ pressed }) => [styles.connectBtn, pressed && { opacity: 0.85 }]}
+          disabled={isBusy}
+          style={({ pressed }) => [styles.connectBtn, (pressed || isBusy) && { opacity: 0.85 }]}
         >
           <LinearGradient
             colors={['#6B4420', '#B8863F', '#E8C890']}
@@ -585,9 +603,11 @@ export function ProfileScreen() {
             end={{ x: 1, y: 0 }}
             style={{ paddingHorizontal: 32, paddingVertical: 13, borderRadius: 12 }}
           >
-            <Text style={{ color: '#140D07', fontWeight: 'bold', fontSize: 15 }}>Connect Wallet</Text>
+            <Text style={{ color: '#140D07', fontWeight: 'bold', fontSize: 15 }}>{connectLabel}</Text>
           </LinearGradient>
         </Pressable>
+        <Text style={styles.connectHint}>No browser permission sheet. Wallet auth opens natively.</Text>
+        {!!walletError && <Text style={styles.connectError}>{walletError}</Text>}
       </View>
     );
   }
@@ -682,6 +702,11 @@ export function ProfileScreen() {
                   <Wallet size={11} color="rgba(242,224,200,0.3)" />
                   <Text style={styles.heroAddress}>{formatAddress(pubkeyStr)}</Text>
                 </View>
+                {(walletLabel || accountLabel) && (
+                  <Text style={styles.walletMeta}>
+                    Connected via {[walletLabel, accountLabel].filter(Boolean).join(' · ')}
+                  </Text>
+                )}
               </View>
             </View>
 
@@ -969,6 +994,20 @@ const styles = StyleSheet.create({
   notConnectedTitle: { fontSize: 22, fontWeight: 'bold', color: colors.text, fontFamily: serifFont, marginBottom: 8 },
   notConnectedSub: { fontSize: 13, color: colors.textMuted, textAlign: 'center', marginBottom: 32, paddingHorizontal: 32 },
   connectBtn: { borderRadius: 12, overflow: 'hidden' },
+  connectHint: {
+    fontSize: 11,
+    color: 'rgba(242,224,200,0.45)',
+    textAlign: 'center',
+    marginTop: 12,
+    paddingHorizontal: 28,
+  },
+  connectError: {
+    fontSize: 12,
+    color: '#F87171',
+    textAlign: 'center',
+    marginTop: 10,
+    paddingHorizontal: 28,
+  },
 
   // Hero card
   heroCard: {
@@ -1005,6 +1044,7 @@ const styles = StyleSheet.create({
     color: '#4ade80', fontSize: 12, fontWeight: 'bold',
   },
   heroAddress: { fontSize: 11, fontFamily: mono, color: 'rgba(242,224,200,0.35)', letterSpacing: 0.5 },
+  walletMeta: { fontSize: 11, color: 'rgba(242,224,200,0.45)', marginTop: 4 },
   biText: { fontSize: 13, color: colors.textMuted, lineHeight: 20 },
   bioPlaceholder: { fontSize: 12, color: 'rgba(122,90,48,0.5)' },
 

@@ -3,7 +3,8 @@ import { useEffect, useRef, useCallback } from 'react';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import ReactGA from 'react-ga4';
 import { useWallet as useWA, useConnection as useWAConnection } from '@solana/wallet-adapter-react';
-import { useAxisWalletModal } from '../components/common/WalletModal';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { SolanaMobileWalletAdapterWalletName } from '@solana-mobile/wallet-standard-mobile';
 import { isAndroidChrome } from '../utils/seekerDetect';
 
 export interface WalletContextState {
@@ -21,7 +22,6 @@ export interface WalletContextState {
   mwaConnecting: boolean;
 }
 
-const MWA_WALLET_NAME = 'Mobile Wallet Adapter';
 const IS_MOBILE = isAndroidChrome();
 
 export function useWallet(): WalletContextState {
@@ -56,7 +56,7 @@ export function useWallet(): WalletContextState {
     authenticated: wa.connected,
     wallet: wa.wallet,
     connectMWA,
-    isMWA: wa.wallet?.adapter?.name === MWA_WALLET_NAME,
+    isMWA: wa.wallet?.adapter?.name === SolanaMobileWalletAdapterWalletName,
     mwaConnecting: wa.connecting,
   };
 }
@@ -66,24 +66,25 @@ export function useConnection() {
 }
 
 export function useLoginModal() {
-  const { setVisible: showModal } = useAxisWalletModal();
+  const { setVisible: showModal } = useWalletModal();
   const wa = useWA();
 
   const setVisible = useCallback((open: boolean) => {
     if (!open) { showModal(false); return; }
 
     if (IS_MOBILE) {
-      // Mobile (Seeker/Android Chrome): trigger MWA directly — no modal overlay.
-      // MWA's built-in UI (LNA dialog, Seed Vault) renders at z-index 1,
-      // so we must NOT render any overlay on top of it.
+      // Android Chrome: hand off directly to MWA so Seed Vault / installed
+      // wallet UX stays in the official flow.
 
       // If MWA is already the selected wallet, connect directly.
-      if (wa.wallet?.adapter.name === MWA_WALLET_NAME && !wa.connected) {
+      if (wa.wallet?.adapter.name === SolanaMobileWalletAdapterWalletName && !wa.connected) {
         wa.connect().catch(() => {});
         return;
       }
 
-      const mwa = wa.wallets.find((w) => w.adapter.name === MWA_WALLET_NAME);
+      const mwa = wa.wallets.find(
+        (w) => w.adapter.name === SolanaMobileWalletAdapterWalletName
+      );
       if (mwa) {
         wa.select(mwa.adapter.name as any);
         // IMPORTANT: wa.connect() uses a stale closure — wallet state hasn't
@@ -96,7 +97,7 @@ export function useLoginModal() {
         showModal(true);
       }
     } else {
-      // Desktop: show wallet picker modal (Phantom, Solflare, etc.)
+      // Desktop / non-Android browsers: fall back to the standard wallet picker.
       if (wa.wallet && !wa.connected) {
         wa.connect().catch(() => showModal(true));
       } else if (!wa.connected) {

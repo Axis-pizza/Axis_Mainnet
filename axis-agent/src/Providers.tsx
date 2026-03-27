@@ -3,13 +3,14 @@ import type { FC, ReactNode } from 'react';
 import { clusterApiUrl } from '@solana/web3.js';
 import { WalletError } from '@solana/wallet-adapter-base';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { AxisWalletModalProvider } from './components/common/WalletModal';
+import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import {
   registerMwa,
   createDefaultAuthorizationCache,
   createDefaultChainSelector,
   createDefaultWalletNotFoundHandler,
 } from '@solana-mobile/wallet-standard-mobile';
+import '@solana/wallet-adapter-react-ui/styles.css';
 
 // --- Register MWA (handles non-Android gracefully) ---
 
@@ -45,9 +46,9 @@ export const Providers: FC<{ children: ReactNode }> = ({ children }) => {
   return (
     <ConnectionProvider endpoint={endpoint} config={{ commitment: 'confirmed' }}>
       <WalletProvider wallets={[]} autoConnect onError={onError}>
-        <AxisWalletModalProvider>
+        <WalletModalProvider>
           {children}
-        </AxisWalletModalProvider>
+        </WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
   );

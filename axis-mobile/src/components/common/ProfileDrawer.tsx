@@ -23,7 +23,17 @@ const formatAddress = (addr: string) => `${addr.slice(0, 4)}...${addr.slice(-4)}
 
 export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
   const { showToast } = useToast();
-  const { publicKey, connected, connect, disconnect } = useWallet();
+  const {
+    publicKey,
+    connected,
+    connect,
+    connecting,
+    restoring,
+    disconnect,
+    walletLabel,
+    accountLabel,
+    error: walletError,
+  } = useWallet();
 
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -149,18 +159,32 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
                   <Wallet size={32} color={colors.textMuted} />
                 </View>
                 <Text style={{ color: 'rgba(242,224,200,0.6)', textAlign: 'center', marginBottom: 32, paddingHorizontal: 16 }}>
-                  Connect your Solana wallet to claim XP and manage your portfolio.
+                  Native Solana Mobile connection for Seed Vault compatible wallets.
                 </Text>
-                <Pressable onPress={connect} style={{ width: '100%', borderRadius: 12, overflow: 'hidden' }}>
+                <Pressable
+                  onPress={connect}
+                  disabled={connecting || restoring}
+                  style={{ width: '100%', borderRadius: 12, overflow: 'hidden', opacity: connecting || restoring ? 0.85 : 1 }}
+                >
                   <LinearGradient
                     colors={['#6B4420', '#B8863F', '#E8C890']}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                     style={{ paddingVertical: 16, alignItems: 'center', borderRadius: 12 }}
                   >
-                    <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 16 }}>Connect Wallet</Text>
+                    <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 16 }}>
+                      {restoring ? 'Restoring wallet session...' : connecting ? 'Opening Solana wallet...' : 'Connect Solana Wallet'}
+                    </Text>
                   </LinearGradient>
                 </Pressable>
+                <Text style={{ color: 'rgba(242,224,200,0.45)', fontSize: 11, textAlign: 'center', marginTop: 12 }}>
+                  No browser permission sheet. Wallet auth opens natively.
+                </Text>
+                {!!walletError && (
+                  <Text style={{ color: '#F87171', fontSize: 12, textAlign: 'center', marginTop: 10 }}>
+                    {walletError}
+                  </Text>
+                )}
               </View>
             )}
 
@@ -225,6 +249,11 @@ export function ProfileDrawer({ visible, onClose }: ProfileDrawerProps) {
                     <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: 'monospace' }}>{formatAddress(pubkeyStr)}</Text>
                     <Copy size={12} color={colors.textMuted} />
                   </Pressable>
+                  {(walletLabel || accountLabel) && (
+                    <Text style={{ fontSize: 11, color: 'rgba(242,224,200,0.45)', marginTop: 8, textAlign: 'center' }}>
+                      Connected via {[walletLabel, accountLabel].filter(Boolean).join(' · ')}
+                    </Text>
+                  )}
                 </View>
 
                 {/* XP Card */}
