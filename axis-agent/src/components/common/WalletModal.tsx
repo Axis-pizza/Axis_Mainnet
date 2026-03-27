@@ -36,28 +36,27 @@ export const AxisWalletModalProvider: FC<{ children: ReactNode }> = ({ children 
 
 function WalletModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { wallets, select, connect, connected, connecting, wallet } = useWA();
-  const [pendingConnect, setPendingConnect] = useState(false);
 
   // Close modal once connected
   useEffect(() => {
     if (connected && visible) onClose();
   }, [connected, visible, onClose]);
 
-  // After select() sets the wallet, connect() once the adapter is ready
-  useEffect(() => {
-    if (pendingConnect && wallet) {
-      setPendingConnect(false);
-      connect().catch((err) => {
-        console.error('Wallet connect error:', err);
-      });
-    }
-  }, [pendingConnect, wallet, connect]);
-
-  const handleSelect = useCallback((walletName: WalletName) => {
+  // When user selects a wallet, select it and connect.
+  // select() + connect() in the same click handler preserves the user gesture
+  // chain that Android Chrome requires for MWA intents.
+  const handleSelect = useCallback(async (walletName: WalletName) => {
     select(walletName);
-    setPendingConnect(true);
+    // Close our modal FIRST so it doesn't block MWA's LNA permission dialog
     onClose();
-  }, [select, onClose]);
+    try {
+      await connect();
+    } catch {
+      // connect() may fail if the adapter isn't ready yet after select().
+      // That's OK — the wallet is now selected, and the user can tap
+      // Connect again (which will call connect() with the adapter ready).
+    }
+  }, [select, connect, onClose]);
 
   const installed = wallets.filter((w) => w.readyState === 'Installed');
   const loadable = wallets.filter((w) => w.readyState === 'Loadable');
@@ -128,15 +127,19 @@ function WalletModal({ visible, onClose }: { visible: boolean; onClose: () => vo
 
               {/* Wallet list */}
               <div className="space-y-2 overflow-y-auto" style={{ maxHeight: '45vh' }}>
-                {available.map((w) => (
-                  <WalletButton
-                    key={w.adapter.name}
-                    name={w.adapter.name}
-                    icon={w.adapter.icon}
-                    tag={w.readyState === 'Installed' ? 'Detected' : undefined}
-                    onClick={() => handleSelect(w.adapter.name as WalletName)}
-                  />
-                ))}
+                {available.map((w) => {
+                  const isMwa = w.adapter.name.toLowerCase().includes('mobile wallet adapter');
+                  const displayName = isMwa ? 'Use Installed Wallet' : w.adapter.name;
+                  return (
+                    <WalletButton
+                      key={w.adapter.name}
+                      name={displayName}
+                      icon={w.adapter.icon}
+                      tag={w.readyState === 'Installed' ? 'Detected' : undefined}
+                      onClick={() => handleSelect(w.adapter.name as WalletName)}
+                    />
+                  );
+                })}
 
                 {other.length > 0 && available.length > 0 && (
                   <div className="pt-3 pb-1">
