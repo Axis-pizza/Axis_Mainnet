@@ -1,63 +1,73 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import type { FC, ReactNode } from 'react';
 import { Connection, clusterApiUrl } from '@solana/web3.js';
-import { ConnectionContext } from './context/ConnectionContext';
-import { isAndroidChrome } from './utils/seekerDetect';
-
-// --- Desktop: Privy ---
+import { WalletError } from '@solana/wallet-adapter-base';
+import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
+import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { PrivyProvider } from '@privy-io/react-auth';
 import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana';
-
-// --- Mobile: wallet-adapter ---
-import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { AxisWalletModalProvider } from './components/common/WalletModal';
-
-// --- MWA: register once at module load on Android Chrome ---
 import {
   registerMwa,
   createDefaultAuthorizationCache,
   createDefaultChainSelector,
   createDefaultWalletNotFoundHandler,
 } from '@solana-mobile/wallet-standard-mobile';
+import { ConnectionContext } from './context/ConnectionContext';
+import { setupMwaHostObserver } from './utils/setupMwaHostObserver';
+import { isAndroidChrome, isIOSBrowser } from './utils/seekerDetect';
+import '@solana/wallet-adapter-react-ui/styles.css';
 
-if (isAndroidChrome()) {
+const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID || 'cmmty4ru802060cjplthsx04y';
+const IS_ANDROID_MWA = isAndroidChrome();
+const IS_IOS_BROWSER = isIOSBrowser();
+const DESKTOP_WALLET_LIST = ['phantom', 'solflare', 'backpack', 'detected_solana_wallets'] as const;
+const IOS_WALLET_LIST = ['phantom', 'solflare', 'backpack', 'jupiter'] as const;
+const PRIVY_WALLET_LIST = IS_IOS_BROWSER ? IOS_WALLET_LIST : DESKTOP_WALLET_LIST;
+
+// --- Register MWA only for Android Chrome / TWA ---
+
+function getUriForAppIdentity() {
+  const location = globalThis.location;
+  if (!location) return undefined;
+  return `${location.protocol}//${location.host}`;
+}
+
+if (IS_ANDROID_MWA) {
+  setupMwaHostObserver();
   registerMwa({
     appIdentity: {
       name: 'Axis',
-      uri: window.location.origin,
+      uri: getUriForAppIdentity(),
       icon: '/icon.png',
     },
     authorizationCache: createDefaultAuthorizationCache(),
-    chains: ['solana:devnet'],
+    chains: ['solana:devnet', 'solana:mainnet'],
     chainSelector: createDefaultChainSelector(),
     onWalletNotFound: createDefaultWalletNotFoundHandler(),
   });
 }
 
-const PRIVY_APP_ID = import.meta.env.VITE_PRIVY_APP_ID || 'cmmty4ru802060cjplthsx04y';
-const IS_MOBILE_WALLET_PATH = isAndroidChrome();
-const desktopWalletList = ['phantom', 'solflare', 'backpack', 'detected_solana_wallets'] as any;
-
-// --- Mobile Providers (wallet-adapter) ---
 const MobileProviders: FC<{ children: ReactNode }> = ({ children }) => {
   const endpoint = useMemo(
     () => import.meta.env.VITE_RPC_URL || clusterApiUrl('devnet'),
     []
   );
+  const onError = useCallback((err: WalletError) => {
+    console.error('[Wallet]', err.name, err.message);
+  }, []);
 
   return (
     <ConnectionProvider endpoint={endpoint} config={{ commitment: 'confirmed' }}>
-      <WalletProvider wallets={[]} autoConnect onError={(err) => console.error('[Wallet]', err)}>
-        <AxisWalletModalProvider>
+      <WalletProvider wallets={[]} autoConnect onError={onError}>
+        <WalletModalProvider>
           {children}
-        </AxisWalletModalProvider>
+        </WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
   );
 };
 
-// --- Desktop Providers (Privy) ---
-const DesktopProviders: FC<{ children: ReactNode }> = ({ children }) => {
+const PrivyProviders: FC<{ children: ReactNode }> = ({ children }) => {
   const endpoint = useMemo(
     () => import.meta.env.VITE_RPC_URL || clusterApiUrl('devnet'),
     []
@@ -71,7 +81,7 @@ const DesktopProviders: FC<{ children: ReactNode }> = ({ children }) => {
         appearance: {
           showWalletLoginFirst: true,
           walletChainType: 'solana-only',
-          walletList: desktopWalletList,
+          walletList: [...PRIVY_WALLET_LIST],
           theme: 'dark',
           accentColor: '#D97706',
           logo: '/AxisLogoo.png',
@@ -97,8 +107,9 @@ const DesktopProviders: FC<{ children: ReactNode }> = ({ children }) => {
 };
 
 export const Providers: FC<{ children: ReactNode }> = ({ children }) => {
-  if (IS_MOBILE_WALLET_PATH) {
+  if (IS_ANDROID_MWA) {
     return <MobileProviders>{children}</MobileProviders>;
   }
-  return <DesktopProviders>{children}</DesktopProviders>;
+
+  return <PrivyProviders>{children}</PrivyProviders>;
 };

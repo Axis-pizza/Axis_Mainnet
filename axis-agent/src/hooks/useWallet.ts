@@ -1,18 +1,20 @@
-// src/hooks/useWallet.ts — Unified wallet hook (Privy on desktop, wallet-adapter on mobile)
 import { useEffect, useRef, useMemo, useCallback, useContext } from 'react';
+import { Buffer } from 'buffer';
 import { PublicKey, Transaction } from '@solana/web3.js';
+import ReactGA from 'react-ga4';
+import { useWallet as useWA, useConnection as useWAConnection } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { SolanaMobileWalletAdapterWalletName } from '@solana-mobile/wallet-standard-mobile';
+import { useConnectWallet, usePrivy } from '@privy-io/react-auth';
+import {
+  useWallets as usePrivySolanaWallets,
+  useSignTransaction as usePrivySignTransaction,
+} from '@privy-io/react-auth/solana';
 import { ConnectionContext } from '../context/ConnectionContext';
 import { isAndroidChrome } from '../utils/seekerDetect';
-import ReactGA from 'react-ga4';
-
-// Platform-conditional imports — both are always bundled but only one path executes
-import { useWallet as useWA, useConnection as useWAConnection } from '@solana/wallet-adapter-react';
-import { useAxisWalletModal } from '../components/common/WalletModal';
-import { usePrivy } from '@privy-io/react-auth';
-import { useWallets as useSolanaWallets, useSignTransaction } from '@privy-io/react-auth/solana';
 
 const FORCE_LOGOUT_KEY = 'axis_force_logged_out';
-const IS_MOBILE_WALLET_PATH = isAndroidChrome();
+const IS_ANDROID_MWA = isAndroidChrome();
 
 export interface WalletContextState {
   connected: boolean;
@@ -29,9 +31,7 @@ export interface WalletContextState {
   mwaConnecting: boolean;
 }
 
-// ─── Mobile: wallet-adapter ───────────────────────────────────────────────────
-
-function useWalletMobile(): WalletContextState {
+function useWalletAndroid(): WalletContextState {
   const wa = useWA();
 
   const hasTrackedRef = useRef(false);
@@ -44,14 +44,12 @@ function useWalletMobile(): WalletContextState {
   }, [wa.connected, wa.publicKey]);
 
   const connectMWA = useCallback(async () => {
-    if (wa.wallet) {
-      await wa.connect();
-    }
-  }, [wa]);
+    if (wa.wallet) await wa.connect();
+  }, [wa.wallet, wa.connect]);
 
   const disconnect = useCallback(async () => {
     await wa.disconnect();
-  }, [wa]);
+  }, [wa.disconnect]);
 
   return {
     connected: wa.connected,
@@ -64,67 +62,80 @@ function useWalletMobile(): WalletContextState {
     authenticated: wa.connected,
     wallet: wa.wallet,
     connectMWA,
-    isMWA: wa.wallet?.adapter?.name?.toLowerCase().includes('mobile') ?? false,
+    isMWA: wa.wallet?.adapter?.name === SolanaMobileWalletAdapterWalletName,
     mwaConnecting: wa.connecting,
   };
 }
 
-function useConnectionMobile() {
-  return useWAConnection();
-}
+function useWalletPrivy(): WalletContextState {
+  const { authenticated, ready: privyReady, logout, user } = usePrivy();
+  const { connectWallet } = useConnectWallet();
+  const { wallets: solanaWallets } = usePrivySolanaWallets();
+  const { signTransaction: privySignTransaction } = usePrivySignTransaction();
 
-function useLoginModalMobile() {
-  const { setVisible } = useAxisWalletModal();
-  return { setVisible, visible: false };
-}
-
-// ─── Desktop: Privy ───────────────────────────────────────────────────────────
-
-function useWalletDesktop(): WalletContextState {
-  const { authenticated, ready: privyReady, logout, user, login } = usePrivy();
-  const { wallets: solanaWallets } = useSolanaWallets();
-  const { signTransaction: privySignTransaction } = useSignTransaction();
-
-  const isForceLoggedOut = typeof window !== 'undefined' && localStorage.getItem(FORCE_LOGOUT_KEY) === 'true';
+  const isForceLoggedOut =
+    typeof window !== 'undefined' && localStorage.getItem(FORCE_LOGOUT_KEY) === 'true';
 
   const targetAddress = useMemo(() => {
     if (isForceLoggedOut) return null;
-    const linkedWallets = user?.linkedAccounts?.filter(
-      (a: any) => a.type === 'wallet' && a.chainType === 'solana'
-    ) ?? [];
-    const external = linkedWallets.find((w: any) => w.walletClientType !== 'privy');
-    if (external) return (external as any).address;
-    const embedded = linkedWallets.find((w: any) => w.walletClientType === 'privy');
-    if (embedded) return (embedded as any).address;
+
+    const linkedWallets = ((user?.linkedAccounts ?? []).filter(
+      (account) => account.type === 'wallet' && account.chainType === 'solana'
+    ) as any[]);
+    const externalWallet = linkedWallets.find((wallet: any) => wallet.walletClientType !== 'privy');
+    if (externalWallet) return externalWallet.address as string;
+
+    const embeddedWallet = linkedWallets.find((wallet: any) => wallet.walletClientType === 'privy');
+    if (embeddedWallet) return embeddedWallet.address as string;
+
     return solanaWallets[0]?.address ?? null;
-  }, [user, solanaWallets, isForceLoggedOut]);
+  }, [isForceLoggedOut, solanaWallets, user]);
 
   const wallet = useMemo(() => {
     if (!targetAddress) return null;
-    return solanaWallets.find((w: any) => w.address === targetAddress) ?? solanaWallets[0] ?? null;
+    return solanaWallets.find((candidate: any) => candidate.address === targetAddress) ?? solanaWallets[0] ?? null;
   }, [solanaWallets, targetAddress]);
 
   const publicKey = useMemo(() => {
     if (!targetAddress) return null;
-    try { return new PublicKey(targetAddress); } catch { return null; }
+    try {
+      return new PublicKey(targetAddress);
+    } catch {
+      return null;
+    }
   }, [targetAddress]);
 
   const privyConnected = authenticated && !!publicKey && !isForceLoggedOut;
 
   const signTransaction = useMemo(() => {
     if (!wallet) return undefined;
+
     return async (tx: Transaction): Promise<Transaction> => {
       const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-      const { signedTransaction } = await privySignTransaction({ transaction: serialized, wallet });
-      return Transaction.from(signedTransaction);
+      const { signedTransaction } = await privySignTransaction({
+        transaction: serialized,
+        wallet,
+        chain: 'solana:mainnet',
+      });
+
+      return Transaction.from(Buffer.from(signedTransaction));
     };
-  }, [wallet, privySignTransaction]);
+  }, [privySignTransaction, wallet]);
 
   const disconnect = useCallback(async () => {
     localStorage.setItem(FORCE_LOGOUT_KEY, 'true');
-    try { await logout(); } catch {}
+    try {
+      await logout();
+    } catch (error) {
+      console.warn('[Privy] logout failed, forcing local reset', error);
+    }
     window.location.reload();
   }, [logout]);
+
+  const openPrivyWalletConnect = useCallback(async () => {
+    localStorage.removeItem(FORCE_LOGOUT_KEY);
+    connectWallet();
+  }, [connectWallet]);
 
   const hasTrackedRef = useRef(false);
   useEffect(() => {
@@ -145,46 +156,71 @@ function useWalletDesktop(): WalletContextState {
     ready: privyReady,
     authenticated: privyConnected,
     wallet,
-    connectMWA: async () => { login(); },
+    connectMWA: openPrivyWalletConnect,
     isMWA: false,
     mwaConnecting: false,
   };
 }
 
-function useConnectionDesktop() {
+function useConnectionPrivy() {
   const { connection } = useContext(ConnectionContext);
   return { connection };
 }
 
-function useLoginModalDesktop() {
-  const { login, ready } = usePrivy();
-  const setVisible = useCallback(
-    (visible: boolean) => {
-      if (visible && ready) {
-        localStorage.removeItem(FORCE_LOGOUT_KEY);
-        login();
-      }
-    },
-    [login, ready]
-  );
+function useLoginModalAndroid() {
+  const { setVisible: showModal } = useWalletModal();
+  const wa = useWA();
+
+  const setVisible = useCallback((open: boolean) => {
+    if (!open) {
+      showModal(false);
+      return;
+    }
+
+    if (wa.wallet?.adapter.name === SolanaMobileWalletAdapterWalletName && !wa.connected) {
+      wa.connect().catch(() => {});
+      return;
+    }
+
+    const mwa = wa.wallets.find(
+      (wallet) => wallet.adapter.name === SolanaMobileWalletAdapterWalletName
+    );
+    if (mwa) {
+      wa.select(mwa.adapter.name as any);
+      mwa.adapter.connect().catch(() => {});
+      return;
+    }
+
+    showModal(true);
+  }, [showModal, wa]);
+
   return { setVisible, visible: false };
 }
 
-// ─── Exports (branch by platform) ────────────────────────────────────────────
-// IS_MOBILE_WALLET_PATH is constant per page load (based on userAgent),
-// so the hook call order is stable — safe to branch.
+function useLoginModalPrivy() {
+  const { ready } = usePrivy();
+  const { connectWallet } = useConnectWallet();
+
+  const setVisible = useCallback((visible: boolean) => {
+    if (!visible || !ready) return;
+    localStorage.removeItem(FORCE_LOGOUT_KEY);
+    connectWallet();
+  }, [connectWallet, ready]);
+
+  return { setVisible, visible: false };
+}
 
 export function useWallet(): WalletContextState {
-  if (IS_MOBILE_WALLET_PATH) return useWalletMobile(); // eslint-disable-line react-hooks/rules-of-hooks
-  return useWalletDesktop(); // eslint-disable-line react-hooks/rules-of-hooks
+  if (IS_ANDROID_MWA) return useWalletAndroid(); // eslint-disable-line react-hooks/rules-of-hooks
+  return useWalletPrivy(); // eslint-disable-line react-hooks/rules-of-hooks
 }
 
 export function useConnection() {
-  if (IS_MOBILE_WALLET_PATH) return useConnectionMobile(); // eslint-disable-line react-hooks/rules-of-hooks
-  return useConnectionDesktop(); // eslint-disable-line react-hooks/rules-of-hooks
+  if (IS_ANDROID_MWA) return useWAConnection(); // eslint-disable-line react-hooks/rules-of-hooks
+  return useConnectionPrivy(); // eslint-disable-line react-hooks/rules-of-hooks
 }
 
 export function useLoginModal() {
-  if (IS_MOBILE_WALLET_PATH) return useLoginModalMobile(); // eslint-disable-line react-hooks/rules-of-hooks
-  return useLoginModalDesktop(); // eslint-disable-line react-hooks/rules-of-hooks
+  if (IS_ANDROID_MWA) return useLoginModalAndroid(); // eslint-disable-line react-hooks/rules-of-hooks
+  return useLoginModalPrivy(); // eslint-disable-line react-hooks/rules-of-hooks
 }

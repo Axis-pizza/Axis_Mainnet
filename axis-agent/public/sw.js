@@ -1,5 +1,5 @@
 // Service Worker for Axis Pizza PWA
-const CACHE_NAME = 'axis-v1';
+const CACHE_NAME = 'axis-v2';
 
 // Cache the app shell on install
 self.addEventListener('install', (event) => {
@@ -31,6 +31,10 @@ self.addEventListener('fetch', (event) => {
   // Skip non-GET requests and API calls
   if (event.request.method !== 'GET') return;
   if (event.request.url.includes('/api/') || event.request.url.includes('axis-api')) return;
+
+  // Skip MWA local network requests (wallet communication via localhost)
+  const url = new URL(event.request.url);
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]') return;
 
   event.respondWith(
     fetch(event.request)

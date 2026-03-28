@@ -537,11 +537,17 @@ body {
     0 0 48px -10px rgba(199, 125,  54, 0.08);
 }
 
-/* ── MWA Embedded Modal Override ─────────────────────────────────────────
-   The @solana-mobile/wallet-standard-mobile library injects an
-   authorization dialog with z-index:1 and no backdrop.
-   Override to sit above everything with a proper dark backdrop.
-   ──────────────────────────────────────────────────────────────────────── */
+/* MWA mounts its modal into a closed shadow DOM host appended to <body>.
+   Lift the host itself above app overlays so the official Seed Vault / LNA
+   permission flow stays clickable inside TWAs and standalone PWAs. */
+[data-axis-mwa-shadow-host="true"] {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+}
+
+/* Keep the official MWA modal styling intact. */
 #mobile-wallet-adapter-embedded-root-ui {
   z-index: 300000 !important;
   position: fixed !important;
@@ -549,9 +555,6 @@ body {
 }
 .mobile-wallet-adapter-embedded-modal-container {
   z-index: 300000 !important;
-  background: rgba(0, 0, 0, 0.85) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
 }
 .mobile-wallet-adapter-embedded-modal-card {
   z-index: 300001 !important;

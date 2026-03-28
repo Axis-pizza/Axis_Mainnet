@@ -171,7 +171,7 @@ export default function Home() {
 
 {/* Luxury Tutorial Overlay */}
       <AnimatePresence>
-        {showTutorial && (
+        {showTutorial && !mwaConnecting && (
           <TutorialOverlay
             onComplete={handleTutorialComplete}
             onConnectWallet={handleConnectWallet}
