@@ -10,6 +10,7 @@ import {
   createDefaultChainSelector,
   createDefaultWalletNotFoundHandler,
 } from '@solana-mobile/wallet-standard-mobile';
+import { setupMwaHostObserver } from './utils/setupMwaHostObserver';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 // --- Register MWA (handles non-Android gracefully) ---
@@ -19,6 +20,8 @@ function getUriForAppIdentity() {
   if (!location) return undefined;
   return `${location.protocol}//${location.host}`;
 }
+
+setupMwaHostObserver();
 
 registerMwa({
   appIdentity: {
