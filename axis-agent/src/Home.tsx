@@ -73,15 +73,29 @@ export default function Home() {
 
   const handleConnectWallet = () => { openLogin(true); };
 
+  // Handle browser back button when on strategy detail
+  useEffect(() => {
+    const onPopState = () => {
+      if (view === 'STRATEGY_DETAIL') {
+        setView(previousView);
+        setSelectedStrategy(null);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [view, previousView]);
+
   const handleStrategySelect = (strategy: Strategy) => {
     setPreviousView(view);
     setSelectedStrategy(strategy);
     setView('STRATEGY_DETAIL');
+    window.history.pushState(null, '', `/strategy/${strategy.id}`);
   };
 
   const handleBackFromDetail = () => {
     setView(previousView);
     setSelectedStrategy(null);
+    window.history.pushState(null, '', '/');
   };
 
   const navigateTo = useCallback((newView: View) => {
