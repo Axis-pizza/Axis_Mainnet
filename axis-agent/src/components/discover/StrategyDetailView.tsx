@@ -506,8 +506,9 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
 
   const handleShareToX = () => {
     const text = `Check out ${strategy.name} ($${strategy.ticker}) on Axis! 🚀`;
+    const shareUrl = `${window.location.origin}/strategy/${strategy.id}`;
     window.open(
-      `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(window.location.href)}`,
+      `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`,
       '_blank'
     );
   };
