@@ -129,10 +129,21 @@ export async function runPriceSnapshot(db: any): Promise<void> {
   // 6. Execute in batches (D1 batch limit)
   await batchExecute(db, [...snapshotStmts, ...baselineStmts, ...tokenPriceStmts]);
 
+  // 7. Purge records older than 1 week
+  const oneWeekAgo = tsBucket - 7 * 24 * 3600;
+  await db.batch([
+    db.prepare(
+      'DELETE FROM strategy_price_snapshots WHERE ts_bucket_utc < ?'
+    ).bind(oneWeekAgo),
+    db.prepare(
+      `DELETE FROM token_prices WHERE recorded_at < datetime('now', '-7 days')`
+    ),
+  ]);
+
   const elapsed = Date.now() - startMs;
   console.log(
     `[Snapshot] Done: ${rows.length} strategies, ${allMints.size} mints, ` +
-    `bucket=${tsBucket}, ${elapsed}ms`
+    `bucket=${tsBucket}, purged before=${oneWeekAgo}, ${elapsed}ms`
   );
 }
 

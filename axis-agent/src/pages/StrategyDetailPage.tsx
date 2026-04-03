@@ -50,12 +50,11 @@ export const StrategyDetailPage = () => {
           // Not a valid pubkey or not found on chain, ignore and try API
         }
 
-        // 2. If not found on chain, try API Cache (Discover list)
+        // 2. If not found on chain, fetch directly by UUID
         if (!fetchedData) {
-          const strategies = await api.discoverStrategies(100);
-          const found = strategies.strategies.find((s: any) => s.id === id);
-          if (found) {
-            fetchedData = found;
+          const res = await api.getStrategyById(id);
+          if (res.success && res.strategy) {
+            fetchedData = res.strategy;
           }
         }
 

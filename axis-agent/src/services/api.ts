@@ -522,6 +522,12 @@ export const api = {
     }
   },
 
+  async getStrategyById(strategyId: string) {
+    const res = await fetch(`${API_BASE}/strategies/id/${strategyId}`);
+    const result = await res.json();
+    return result;
+  },
+
   async discoverStrategies(limit = 50, offset = 0) {
     const cacheKey = `discover_${limit}_${offset}`;
     const cached = _getCached(cacheKey, 60 * 1000);
