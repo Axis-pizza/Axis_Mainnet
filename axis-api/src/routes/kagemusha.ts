@@ -112,6 +112,43 @@ app.get('/tokens/:address/history', async (c) => {
 // -----------------------------------------------------------
 
 /**
+ * GET /strategies/id/:strategyId - Get a single strategy by UUID
+ */
+app.get('/strategies/id/:strategyId', async (c) => {
+  try {
+    const strategyId = c.req.param('strategyId');
+    const s = await c.env.axis_db.prepare(
+      `SELECT * FROM strategies WHERE id = ? LIMIT 1`
+    ).bind(strategyId).first();
+
+    if (!s) {
+      return c.json({ success: false, error: 'Strategy not found' }, 404);
+    }
+
+    const strategy = {
+      id: s.id,
+      ownerPubkey: s.owner_pubkey,
+      name: s.name,
+      ticker: s.ticker,
+      type: s.type,
+      tokens: s.composition ? JSON.parse(s.composition as string) : (s.config ? JSON.parse(s.config as string) : []),
+      config: s.config ? JSON.parse(s.config as string) : {},
+      description: s.description || '',
+      tvl: s.tvl || s.total_deposited || 0,
+      totalDeposited: s.total_deposited || 0,
+      status: s.status,
+      mintAddress: s.mint_address,
+      vaultAddress: s.vault_address,
+      createdAt: s.created_at,
+    };
+
+    return c.json({ success: true, strategy });
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500);
+  }
+});
+
+/**
  * GET /strategies/:pubkey - Get user's strategies
  */
 app.get('/strategies/:pubkey', async (c) => {
