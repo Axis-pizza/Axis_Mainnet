@@ -89,7 +89,7 @@ export const DeploymentBlueprint = ({
         const balance = await getUsdcBalance(connection, wallet.publicKey);
         if (balance < amountUsdc) {
           showToast(
-            `Insufficient USDC: you have ${balance.toFixed(2)} but need ${amountUsdc} USDC. Use the faucet to get devnet USDC.`,
+            `Insufficient USDC: you have ${balance.toFixed(2)} but need ${amountUsdc} USDC.`,
             'error'
           );
           setIsDeploying(false);
@@ -115,8 +115,8 @@ export const DeploymentBlueprint = ({
 
         if (!fromAtaInfo) {
           throw new Error(
-            'USDC token account not found. Please get Axis devnet USDC from the faucet first.\n' +
-            `(USDC mint: Gh9ZwEmd...)`
+            'USDC token account not found. Please ensure you have USDC in your wallet.\n' +
+            `(USDC mint: EPjFWdd5...)`
           );
         }
 
@@ -176,7 +176,7 @@ export const DeploymentBlueprint = ({
       }
 
       // 2. API call
-      setDeployStep('Minting ETF tokens...');
+      setDeployStep('Minting basket tokens...');
       const strategyData = {
         ownerPubkey: wallet.publicKey.toBase58(),
         name: strategyName,
@@ -220,17 +220,14 @@ export const DeploymentBlueprint = ({
     <div className="max-w-2xl mx-auto animate-in slide-in-from-bottom-8 duration-500 text-white">
       <div className="text-center mb-6">
         <h2 className="text-2xl font-serif font-normal text-white/90 mb-1">
-          This is Your ETF-Token
+          This is Your Basket Token
         </h2>
-        <p className="text-white/40 text-sm">Review your ETF specifications.</p>
+        <p className="text-white/40 text-sm">Review your basket specifications.</p>
       </div>
 
       <div className="backdrop-blur-sm bg-white/[0.04] border border-white/[0.08] rounded-2xl p-6 md:p-8 shadow-2xl relative overflow-hidden mb-6">
         <div className="relative border-b border-white/[0.08] pb-5 mb-6 flex justify-between items-start">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 border border-white/10 rounded-xl flex items-center justify-center bg-white/5 overflow-hidden">
-              <img src="/ETFtoken.png" alt="Strategy Icon" className="w-full h-full object-cover" />
-            </div>
             <div>
               <h1 className="text-2xl font-normal uppercase tracking-wide text-white">{strategyName}</h1>
               <div className="flex items-center gap-2 mt-1">
@@ -355,7 +352,7 @@ export const DeploymentBlueprint = ({
 
               {usdcBalance === 0 && (
                 <div className="mb-4 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400">
-                  No devnet USDC found. Mint with 0 USDC or get some from the faucet first.
+                  No USDC found in wallet. Mint with 0 USDC or deposit USDC first.
                 </div>
               )}
 

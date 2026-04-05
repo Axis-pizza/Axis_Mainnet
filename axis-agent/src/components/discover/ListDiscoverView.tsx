@@ -436,7 +436,7 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search ETF, token, type..."
+              placeholder="Search basket, token, type..."
               className="w-full bg-white/[0.05] border border-white/[0.08] rounded-lg pl-9 pr-9 py-2 text-sm text-white placeholder-white/20 focus:outline-none focus:border-amber-500/40 transition-all"
             />
             <AnimatePresence>
@@ -464,7 +464,7 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
           <div className="w-10 px-1 py-2 shrink-0" />
           {/* Name */}
           <div className="flex-1 px-2 py-2">
-            <SortHeader label="ETF" sortKey="name" current={sortKey} dir={sortDir} align="left" onSort={handleSort} />
+            <SortHeader label="Basket" sortKey="name" current={sortKey} dir={sortDir} align="left" onSort={handleSort} />
           </div>
           {/* TVL */}
           <div className="w-24 px-3 py-2 flex justify-end shrink-0">
@@ -522,7 +522,7 @@ export const ListDiscoverView = ({ onStrategySelect, onOpenInSwipe }: ListDiscov
           <div className="py-8 text-center text-[11px] text-white/15 font-mono">
             {searchQuery
               ? `${displayed.length} matched "${searchQuery}"`
-              : `${displayed.length} ETFs`}
+              : `${displayed.length} Baskets`}
           </div>
         </div>
       )}
@@ -539,9 +539,9 @@ const EmptyState = () => (
     <div className="w-16 h-16 rounded-full bg-white/[0.04] border border-white/[0.08] flex items-center justify-center mb-6">
       <Layers className="w-7 h-7 text-white/20" />
     </div>
-    <h3 className="text-base text-white/60 mb-2">No ETFs yet</h3>
+    <h3 className="text-base text-white/60 mb-2">No Baskets yet</h3>
     <p className="text-white/25 text-sm max-w-xs leading-relaxed">
-      Be the first to create an ETF. It will appear here for the community to discover.
+      Be the first to create a Basket. It will appear here for the community to discover.
     </p>
   </motion.div>
 );

@@ -319,7 +319,7 @@ function InlineIdentityStep({
         >
           {connected ? (
             <>
-              Review ETF <Check size={22} />
+              Review Basket <Check size={22} />
             </>
           ) : (
             'Connect Wallet'
@@ -429,9 +429,9 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
             className="font-normal leading-[0.9] tracking-tighter text-white"
             style={{ fontSize: 'clamp(4rem, 10vw, 8rem)' }}
           >
-            Your Idea.
+            Your
             <br />
-            <span className="gradient-text">Your ETF.</span>
+            <span className="gradient-text">Basket.</span>
           </motion.h1>
 
           <motion.p

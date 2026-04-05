@@ -1,11 +1,32 @@
 import { RouterProvider } from 'react-router-dom';
 import router from './router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ToastProvider } from './context/ToastContext';
 import ReactGA from 'react-ga4';
+import { InviteGate, INVITE_GRANTED_KEY } from './components/common/InviteGate';
+import { useLoginModal } from './hooks/useWallet';
 
 const GA_MEASUREMENT_ID = 'G-523HYF8JTN';
 const CLARITY_PROJECT_ID = 't0od4wxooa';
+
+function InviteGateWrapper() {
+  // Any stored value means the code was already verified
+  const [granted, setGranted] = useState(() =>
+    !!localStorage.getItem(INVITE_GRANTED_KEY)
+  );
+  const { setVisible: openLogin } = useLoginModal();
+
+  if (granted) return null;
+
+  return (
+    <InviteGate
+      onConnectWallet={() => {
+        setGranted(true); // lift gate, hand off to Privy wallet flow
+        openLogin(true);
+      }}
+    />
+  );
+}
 
 function App() {
   useEffect(() => {
@@ -42,6 +63,7 @@ function App() {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white selection:bg-orange-500/30">
       <ToastProvider>
+        <InviteGateWrapper />
         <RouterProvider router={router} />
       </ToastProvider>
     </div>

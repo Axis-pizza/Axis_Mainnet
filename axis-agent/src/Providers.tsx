@@ -41,7 +41,7 @@ if (IS_ANDROID_MWA) {
       icon: '/icon.png',
     },
     authorizationCache: createDefaultAuthorizationCache(),
-    chains: ['solana:devnet', 'solana:mainnet'],
+    chains: ['solana:mainnet'],
     chainSelector: createDefaultChainSelector(),
     onWalletNotFound: createDefaultWalletNotFoundHandler(),
   });
@@ -49,7 +49,7 @@ if (IS_ANDROID_MWA) {
 
 const MobileProviders: FC<{ children: ReactNode }> = ({ children }) => {
   const endpoint = useMemo(
-    () => import.meta.env.VITE_RPC_URL || clusterApiUrl('devnet'),
+    () => import.meta.env.VITE_RPC_URL || 'https://rpc.ankr.com/solana',
     []
   );
   const onError = useCallback((err: WalletError) => {
@@ -69,7 +69,7 @@ const MobileProviders: FC<{ children: ReactNode }> = ({ children }) => {
 
 const PrivyProviders: FC<{ children: ReactNode }> = ({ children }) => {
   const endpoint = useMemo(
-    () => import.meta.env.VITE_RPC_URL || clusterApiUrl('devnet'),
+    () => import.meta.env.VITE_RPC_URL || 'https://rpc.ankr.com/solana',
     []
   );
   const connection = useMemo(() => new Connection(endpoint, 'confirmed'), [endpoint]);

@@ -434,7 +434,7 @@ const DepositSuccess = ({
         <div className="border-t border-[#080503]/10 pt-3 text-center">
           {txSignature && (
             <a
-              href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`}
+              href={`https://explorer.solana.com/tx/${txSignature}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-1 opacity-60 hover:opacity-100 transition-opacity"

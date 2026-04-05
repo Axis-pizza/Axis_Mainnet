@@ -87,7 +87,7 @@ export const StrategyDetailModal = ({ isOpen, onClose, strategy }: StrategyDetai
                       </span>
                       <span>•</span>
                       <a
-                        href={`https://solscan.io/account/${strategy.address || strategy.id}?cluster=devnet`}
+                        href={`https://solscan.io/account/${strategy.address || strategy.id}`}
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center gap-1 hover:text-[#D4A261]"
@@ -139,7 +139,7 @@ export const StrategyDetailModal = ({ isOpen, onClose, strategy }: StrategyDetai
 
                 <div className="bg-[#080503] p-4 rounded-xl border border-[rgba(184,134,63,0.08)]">
                   <label className="text-xs text-[#7A5A30] font-normal uppercase mb-2 block">
-                    Deposit Amount (USDC)
+                    Deposit Amount (SOL)
                   </label>
                   <div className="flex gap-3">
                     <input

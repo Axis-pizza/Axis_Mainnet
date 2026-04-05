@@ -6,6 +6,6 @@ export const SERVER_WALLET_PUBKEY = new PublicKey('BTcWoRe6Z9VaCPCxrcr5dQmn8cA8K
 
 export const MINT_DECIMALS = 9;
 
-// Devnet USDC
-export const USDC_MINT = new PublicKey('Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr');
+// Mainnet USDC
+export const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 export const USDC_DECIMALS = 6;

@@ -351,7 +351,7 @@ export const SwipeCardBody = ({
       {/* --- Footer --- */}
       <div className={`mt-auto flex justify-center border-t border-white/5 bg-gradient-to-t from-black/40 to-transparent ${c ? 'p-2' : 'p-3'}`}>
         <a
-          href={`https://solscan.io/token/${strategy.mintAddress || strategy.id}?cluster=devnet`}
+          href={`https://solscan.io/token/${strategy.mintAddress || strategy.id}`}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}

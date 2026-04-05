@@ -238,9 +238,9 @@ export const CreateLanding = ({ onCreate, isLoading }: CreateLandingProps) => {
             className="font-normal leading-[0.95] tracking-tighter text-white"
             style={{ fontSize: 'clamp(3.5rem, 9vw, 7rem)' }}
           >
-            Your Idea.
+            Your
             <br />
-            <span className="gradient-text">Your ETF.</span>
+            <span className="gradient-text">Basket.</span>
           </motion.h1>
 
           <motion.p
@@ -304,7 +304,7 @@ export const CreateLanding = ({ onCreate, isLoading }: CreateLandingProps) => {
                   <Loader2 className="w-6 h-6 animate-spin" />
                 ) : (
                   <>
-                    Create Your ETF
+                    Create Your Basket
                     <span
                       className="flex items-center justify-center w-7 h-7 rounded-full shrink-0"
                       style={{

@@ -115,7 +115,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(({ strategy 
                   {strategy.ticker}
                 </span>
                 <span className="text-2xl font-mono" style={{ color: textGray }}>
-                  Axis Protocol ETF
+                  Axis Protocol Basket
                 </span>
               </div>
             </div>

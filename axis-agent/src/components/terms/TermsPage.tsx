@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ShieldAlert, TestTube2 } from 'lucide-react';
+import { ArrowLeft, ShieldAlert } from 'lucide-react';
 
 export const TermsPage = () => {
   const navigate = useNavigate();
@@ -15,27 +15,26 @@ export const TermsPage = () => {
           >
             <ArrowLeft size={20} className="text-white/70" />
           </button>
-          <h1 className="text-lg font-normal tracking-tight">Terms of Service (Devnet Beta)</h1>
+          <h1 className="text-lg font-normal tracking-tight">Terms of Service (Mainnet Beta)</h1>
         </div>
       </div>
 
       {/* Content */}
       <div className="max-w-3xl mx-auto px-6 py-12">
-        {/* Devnet Warning Banner */}
+        {/* Mainnet Beta Warning Banner */}
         <div className="mb-10 p-5 border border-amber-500/20 bg-amber-500/10 rounded-xl flex gap-4 items-start">
-          <TestTube2 className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" />
+          <ShieldAlert className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" />
           <div className="text-sm text-amber-200/90 leading-relaxed">
             <strong className="text-amber-400 block text-base mb-2">
-              Notice: Devnet Environment Only
+              Notice: Mainnet Beta
             </strong>
             <p>
-              This application is currently running on the <strong>Solana Devnet</strong>. All
-              transactions, tokens, and balances displayed are for{' '}
-              <strong>testing and simulation purposes only</strong>.
+              This application is running on the <strong>Solana Mainnet</strong>. Transactions
+              involve <strong>real assets</strong>. Please review all actions carefully before
+              signing.
             </p>
             <p className="mt-2">
-              <strong>NO REAL FUNDS ARE USED.</strong> The assets on this platform have no monetary
-              value and cannot be withdrawn or exchanged for real cryptocurrency or fiat currency.
+              Smart contracts are in beta and have not been fully audited. Use at your own risk.
             </p>
           </div>
         </div>
@@ -44,32 +43,30 @@ export const TermsPage = () => {
           <section>
             <h2 className="text-white text-base font-normal mb-3">1. Acceptance of Terms</h2>
             <p>
-              By accessing or using the Axis Devnet platform ("Service"), you acknowledge that this
-              is a beta version intended solely for testing and demonstration. You agree to be bound
+              By accessing or using the Axis platform ("Service"), you acknowledge that this
+              is a beta version running on Solana Mainnet. You agree to be bound
               by these Terms of Service.
             </p>
           </section>
 
           <section>
             <h2 className="text-white text-base font-normal mb-3">
-              2. Nature of Service (Testnet/Devnet)
+              2. Nature of Service (Mainnet Beta)
             </h2>
             <p>
-              The Service operates exclusively on the Solana Devnet.
+              The Service operates on the Solana Mainnet.
               <strong> You acknowledge that:</strong>
             </p>
             <ul className="list-disc pl-5 mt-2 space-y-1 text-white/60">
               <li>
-                All tokens and assets on the Service are "testnet tokens" with{' '}
-                <strong>zero financial value</strong>.
+                All transactions involve <strong>real assets</strong> on the Solana blockchain.
               </li>
               <li>
-                Any "profits" or "losses" displayed are simulated and do not reflect real-world
-                financial outcomes.
+                The Service is in beta. Smart contracts have not been fully audited and may contain bugs.
               </li>
               <li>
-                The Service may be reset, paused, or discontinued at any time, resulting in the
-                deletion of all user data and simulated balances.
+                The Service may be paused or updated at any time. Axis is not liable for losses
+                arising from smart contract bugs or protocol changes during the beta period.
               </li>
             </ul>
           </section>
@@ -88,10 +85,9 @@ export const TermsPage = () => {
           <section>
             <h2 className="text-white text-base font-normal mb-3">4. User Responsibilities</h2>
             <p>
-              You agree not to treat this Service as a live trading platform. You are responsible
-              for ensuring that you are connected to the correct network (Solana Devnet) and
-              managing your own test wallet. Do not send real SOL or Mainnet tokens to any address
-              associated with this Service, as they may be permanently lost.
+              You are responsible for managing your own wallet and verifying all transactions
+              before signing. This is a beta product — use only funds you can afford to lose
+              during this period.
             </p>
           </section>
 
@@ -100,7 +96,7 @@ export const TermsPage = () => {
             <p>
               The Service is provided "as is" and "as available" without warranties of any kind. We
               do not guarantee that the Service will be secure, error-free, or uninterrupted. Smart
-              contracts deployed on Devnet have not been audited and may contain bugs.
+              contracts are in beta and have not been fully audited.
             </p>
           </section>
 
@@ -108,9 +104,8 @@ export const TermsPage = () => {
             <h2 className="text-white text-base font-normal mb-3">6. Limitation of Liability</h2>
             <p>
               Axis shall not be liable for any damages arising from your use of the Service,
-              including but not limited to data loss, service interruptions, or confusion regarding
-              the nature of Devnet assets. Since no real value is transacted, Axis holds no
-              financial liability towards users.
+              including but not limited to data loss, service interruptions, or losses arising
+              from smart contract bugs during the beta period.
             </p>
           </section>
 
@@ -128,15 +123,15 @@ export const TermsPage = () => {
           <section>
             <h2 className="text-white text-base font-normal mb-3">8. Changes to Terms</h2>
             <p>
-              We reserve the right to update these Terms or the functionality of the Devnet
-              prototype at any time.
+              We reserve the right to update these Terms or the functionality of the platform
+              at any time.
             </p>
           </section>
 
           <div className="pt-8 border-t border-white/10 text-white/40 text-xs">
             <p>Last updated: February 12, 2026</p>
             <p className="mt-2">
-              Environment: <strong>Solana Devnet</strong>
+              Environment: <strong>Solana Mainnet (Beta)</strong>
             </p>
           </div>
         </div>

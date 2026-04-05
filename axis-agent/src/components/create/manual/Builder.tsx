@@ -306,7 +306,7 @@ const TokenDetailModal = ({
             onClick={() => { onAdd(); onClose(); }}
             className="w-full btn-glass-gold rounded-2xl py-4 font-normal text-base"
           >
-            Add to ETF
+            Add to Basket
           </button>
         )}
       </motion.div>
@@ -915,7 +915,6 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
     portfolio,
     searchQuery,
     setSearchQuery,
-    isSearching,
     isLoading,
     totalWeight,
     selectedIds,
@@ -1178,49 +1177,19 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
           >
             <div className="w-full bg-[#121212] border border-white/10 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
               style={{ maxHeight: 'min(88vh, 680px)' }}>
-              <div className="shrink-0 bg-[#121212] border-b border-white/5 p-3 pb-2">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={18} />
-                    <input
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onPaste={(e) => {
-                        const text = e.clipboardData.getData('text');
-                        if (text.trim().length >= 32) {
-                          e.preventDefault();
-                          setSearchQuery(text.trim());
-                        }
-                      }}
-                      placeholder="Search name or address"
-                      className="w-full bg-white/5 border border-white/5 rounded-xl pl-10 pr-10 py-3 text-base text-white placeholder:text-white/30 focus:border-amber-400/40 focus:bg-white/10 outline-none transition-all"
-                      autoFocus
-                    />
-                    {searchQuery ? (
-                      <button
-                        onClick={() => setSearchQuery('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full bg-white/10 text-white/50"
-                      >
-                        <X size={14} />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handlePasteCA}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-white/5 text-white/40 active:text-white"
-                      >
-                        <ClipboardPaste size={14} />
-                      </button>
-                    )}
+              <div className="shrink-0 bg-[#121212] border-b border-white/5 p-3 pb-3">
+                <div className="flex items-center justify-between mb-1">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-amber-700/60 font-normal">Protocol Assets</p>
+                    <p className="text-xs text-white/25 mt-0.5">{sortedVisibleTokens.length} whitelisted tokens</p>
                   </div>
                   <button
                     onClick={() => setIsSelectorOpen(false)}
-                    className="p-3 rounded-full bg-white/5 text-white/70 active:bg-white/10 transition-colors"
+                    className="p-2 rounded-full bg-white/5 text-white/50 active:bg-white/10 transition-colors"
                   >
-                    <X size={20} />
+                    <X size={18} />
                   </button>
                 </div>
-                <TabSelector activeTab={activeTab} setActiveTab={setActiveTab} isWalletConnected={!!publicKey} />
-                
               </div>
 
               <div ref={mobileScrollRef} className="flex-1 overflow-y-auto bg-[#121212] custom-scrollbar" style={{ touchAction: 'pan-y' }}>
@@ -1229,7 +1198,7 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
                     <AxisSpinner size={36} />
                     <span className="text-sm text-white/30">Loading tokens...</span>
                   </div>
-                ) : isSearching ? (
+                ) : false ? (
                   <div className="flex flex-col items-center justify-center h-48 gap-4">
                     <AxisSpinner size={30} />
                     <span className="text-sm text-white/30">Searching...</span>
@@ -1259,27 +1228,20 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
                     <span className="text-sm">No tokens found</span>
                   </div>
                 ) : (
-                  <div style={{ height: `${mobileVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
-                    {mobileVirtualizer.getVirtualItems().map((virtualRow) => {
-                      const token = sortedVisibleTokens[virtualRow.index];
+                  <div className="px-2 py-3 space-y-1">
+                    {sortedVisibleTokens.map((token) => {
                       const isSelected = selectedIds.has(token.address);
                       return (
-                        <div
+                        <MobileTokenListItem
                           key={token.address}
-                          style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
-                        >
-                          <div className="px-1 py-0.5">
-                            <MobileTokenListItem
-                              token={token}
-                              isSelected={isSelected}
-                              isFav={preferences.isFavorite(token.address)}
-                              onAdd={() => handleTokenSelect(token)}
-                              onRemove={isSelected ? () => removeToken(token.address) : undefined}
-                              onDetail={() => setSelectedDetailToken(token)}
-                              onToggleFav={(e) => { e.stopPropagation(); preferences.toggleFavorite(token.address); }}
-                            />
-                          </div>
-                        </div>
+                          token={token}
+                          isSelected={isSelected}
+                          isFav={preferences.isFavorite(token.address)}
+                          onAdd={() => handleTokenSelect(token)}
+                          onRemove={isSelected ? () => removeToken(token.address) : undefined}
+                          onDetail={() => setSelectedDetailToken(token)}
+                          onToggleFav={(e) => { e.stopPropagation(); preferences.toggleFavorite(token.address); }}
+                        />
                       );
                     })}
                   </div>
@@ -1343,7 +1305,6 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
     portfolio,
     searchQuery,
     setSearchQuery,
-    isSearching,
     isLoading,
     totalWeight,
     selectedIds,
@@ -1499,64 +1460,12 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
         {/* Right Panel: Token Selector */}
         <div className="w-[45%] flex flex-col min-h-0 bg-[#0a0a0a]">
           <div className="px-4 py-4 border-b border-white/5">
-            <div className="relative mb-4">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-800/50" size={18} />
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search name, symbol, or paste address..."
-                className="w-full bg-white/[0.04] border border-white/8 rounded-xl pl-11 pr-24 py-3 text-sm focus:border-amber-400/40 focus:bg-white/[0.06] outline-none transition-all placeholder:text-white/20 text-white"
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {isSearching && <AxisSpinner size={16} />}
-                {searchQuery ? (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10"
-                  >
-                    <X size={14} className="text-white/40" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={handlePasteCA}
-                    className="btn-glass-gold flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-normal"
-                  >
-                    <ClipboardPaste size={11} /> Paste
-                  </button>
-                )}
+            {/* Whitelist header */}
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.18em] text-amber-700/60 font-normal mb-0.5">Protocol Assets</p>
+                <p className="text-xs text-white/30">{allTokens.length} whitelisted tokens</p>
               </div>
-            </div>
-
-            {!searchQuery && preferences.searchHistory.length > 0 && (
-              <div className="mb-3">
-                <div className="flex items-center justify-between mb-1.5 px-1">
-                  <span className="text-[10px] text-white/25 uppercase tracking-wider font-normal">Recent</span>
-                  <button
-                    onClick={preferences.clearSearchHistory}
-                    className="text-[10px] text-white/30 hover:text-amber-300 transition-colors"
-                  >
-                    Clear All
-                  </button>
-                </div>
-                <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-                  {preferences.searchHistory.map((item) => (
-                    <button
-                      key={item.address}
-                      onClick={() => setSearchQuery(item.symbol !== '?' ? item.symbol : item.address)}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 shrink-0 hover:bg-white/10 border border-white/5 transition-colors"
-                    >
-                      <TokenImage src={item.logoURI} className="w-3.5 h-3.5 rounded-full" />
-                      <span className="text-[10px] text-white/60 font-normal">{item.symbol}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <TabSelector activeTab={activeTab} setActiveTab={setActiveTab} isWalletConnected={!!publicKey} />
-
-            <div className="flex justify-between items-center mt-2 px-1">
-              <span className="text-xs text-amber-800/40">{allTokens.length.toLocaleString()} tokens</span>
               {hasSelection && (
                 <span className="text-xs text-amber-400 flex items-center gap-1">
                   <Check size={12} /> {portfolio.length} selected
@@ -1564,116 +1473,37 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
               )}
             </div>
 
-            <div className="flex items-center justify-between mt-2">
-              <label className="flex items-center gap-1.5 cursor-pointer shrink-0 ml-2">
-                <span className="text-[10px] text-white/30 font-normal">Verified</span>
-                <div
-                  className={`relative w-7 h-4 rounded-full transition-colors ${preferences.verifiedOnly ? 'bg-amber-400' : 'bg-white/10'}`}
-                  onClick={() => preferences.setVerifiedOnly(!preferences.verifiedOnly)}
-                >
-                  <motion.div
-                    className="absolute top-[2px] w-3 h-3 rounded-full bg-white shadow-sm"
-                    animate={{ left: preferences.verifiedOnly ? 13 : 2 }}
-                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                  />
-                </div>
-              </label>
-            </div>
-            
           </div>
 
           <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 pb-4 custom-scrollbar">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center h-40 gap-4">
                 <AxisSpinner size={32} />
-                <span className="text-sm text-white/30">Loading tokens...</span>
-              </div>
-            ) : isSearching ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-4">
-                <AxisSpinner size={26} />
-                <span className="text-sm text-white/30">Searching...</span>
-              </div>
-            ) : activeTab === 'prediction' ? (
-              <div className="flex flex-col items-center justify-center h-full min-h-[180px] gap-4 px-4">
-                <p className="text-xs text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                  {groupedPredictions.length} markets · sorted by volume
-                </p>
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setIsPredictionListOpen(true)}
-                  className="w-full py-3 rounded-xl text-sm font-normal"
-                  style={{
-                    background: 'rgba(201,168,76,0.1)',
-                    border: '1px solid rgba(201,168,76,0.2)',
-                    color: '#c9a84c',
-                  }}
-                >
-                  Browse Prediction Markets
-                </motion.button>
-              </div>
-            ) : activeTab === 'stock' ? (
-              <div className="px-2 pt-4">
-                {sortedVisibleTokens.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-40 gap-3 text-amber-800/30">
-                    <Search size={32} strokeWidth={1.5} />
-                    <span className="text-sm">No stocks found</span>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                    {sortedVisibleTokens.map((token) => (
-                      <StockTokenCard
-                        key={token.address}
-                        token={token}
-                        isSelected={selectedIds.has(token.address)}
-                        onSelect={() => handleTokenSelect(token)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : sortedVisibleTokens.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-40 gap-3 text-amber-800/30">
-                <Search size={32} strokeWidth={1.5} />
-                <span className="text-sm">No tokens found</span>
+                <span className="text-sm text-white/30">Loading assets...</span>
               </div>
             ) : (
               <>
                 <div className="flex items-center gap-2.5 px-3 py-1.5 text-[9px] text-white/20 uppercase tracking-wider">
                   <div className="w-5" />
                   <div className="w-9" />
-                  <div className="flex-1">Token</div>
+                  <div className="flex-1">Asset</div>
                   <div className="w-[50px] text-right">MC</div>
                   <div className="w-[50px] text-right">VOL</div>
                   <div className="w-7" />
                 </div>
-                <div style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
-                  {virtualizer.getVirtualItems().map((virtualRow) => {
-                    const token = sortedVisibleTokens[virtualRow.index];
-                    const isSelected = selectedIds.has(token.address);
-                    return (
-                      <div
-                        key={token.address}
-                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
-                      >
-                        <DesktopTokenListItem
-                          token={token}
-                          isSelected={isSelected}
-                          onSelect={() => handleTokenSelect(token)}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                {sortedVisibleTokens.map((token) => {
+                  const isSelected = selectedIds.has(token.address);
+                  return (
+                    <DesktopTokenListItem
+                      key={token.address}
+                      token={token}
+                      isSelected={isSelected}
+                      onSelect={() => handleTokenSelect(token)}
+                    />
+                  );
+                })}
               </>
             )}
-            <PredictionListModal
-              isOpen={isPredictionListOpen}
-              onClose={() => setIsPredictionListOpen(false)}
-              groups={groupedPredictions}
-              selectedIds={selectedIds}
-              onSelect={handleTokenSelect}
-            />
           </div>
         </div>
       </div>

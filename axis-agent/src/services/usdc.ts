@@ -8,16 +8,22 @@ import {
 import { USDC_MINT, USDC_DECIMALS } from '../config/constants';
 
 /**
- * Get the USDC balance for a wallet (returns human-readable amount, e.g. 10.5 USDC)
+ * Get the USDC balance for a wallet (returns human-readable amount, e.g. 10.5 USDC).
+ * Uses getParsedTokenAccountsByOwner so it works even when no ATA exists yet.
  */
 export async function getUsdcBalance(
   connection: Connection,
   publicKey: PublicKey
 ): Promise<number> {
   try {
-    const ata = await getAssociatedTokenAddress(USDC_MINT, publicKey);
-    const account = await connection.getTokenAccountBalance(ata);
-    return account.value.uiAmount || 0;
+    const { value: accounts } = await connection.getParsedTokenAccountsByOwner(publicKey, {
+      mint: USDC_MINT,
+    });
+    if (accounts.length === 0) return 0;
+    return accounts.reduce((sum, a) => {
+      const ui = a.account.data.parsed?.info?.tokenAmount?.uiAmount ?? 0;
+      return sum + ui;
+    }, 0);
   } catch {
     return 0;
   }

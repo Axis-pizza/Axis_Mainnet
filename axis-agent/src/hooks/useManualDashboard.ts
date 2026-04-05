@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useWallet, useConnection, useLoginModal } from './useWallet';
-import { JupiterService, WalletService, type JupiterToken } from '../services/jupiter';
-import { fetchPredictionTokens, fetchStockTokens, fetchCommodityTokens } from '../services/dflow';
+import { JupiterService, type JupiterToken } from '../services/jupiter';
 import { fetchMarketCapMap } from '../services/coingecko';
+import { WHITELISTED_ASSETS, WHITELIST_ADDRESS_SET } from '../config/whitelist';
 import { toast } from 'sonner';
 import type {
   StrategyConfig,
@@ -93,17 +93,9 @@ export const useManualDashboard = ({
   const [step, setStep] = useState<'builder' | 'identity'>('builder');
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [allTokens, setAllTokens] = useState<JupiterToken[]>([]);
-  const [userTokens, setUserTokens] = useState<JupiterToken[]>([]);
-  const [trendingIds, setTrendingIds] = useState<Set<string>>(new Set());
   const [portfolio, setPortfolio] = useState<AssetItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchResults, setSearchResults] = useState<JupiterToken[]>([]);
-  const [caFallbackToken, setCaFallbackToken] = useState<JupiterToken | null>(null);
-  const [tokenFilter, setTokenFilter] = useState<
-    'all' | 'crypto' | 'stock' | 'commodity' | 'prediction'
-  >('all');
   
   // Prediction markets are always sorted by volume
 
@@ -121,7 +113,6 @@ export const useManualDashboard = ({
   const { connection } = useConnection();
   const { setVisible } = useLoginModal();
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const caFetchRef = useRef<string | null>(null);
 
   // --- 2. Helper Handlers ---
   const triggerHaptic = useCallback(() => {
@@ -130,153 +121,20 @@ export const useManualDashboard = ({
 
   // --- 3. Computed Values ---
 
-  // A. 通常リストの表示ロジック (ハイブリッド検索の実装)
+  // A. Whitelist-only token list, optionally filtered by search query
   const sortedVisibleTokens = useMemo(() => {
-    // Predictionタブは専用ロジック(groupedPredictions)に任せるため空配列を返す
-    if (activeTab === 'prediction') return [];
-
-    if (searchQuery.trim()) {
-      const lowerQ = searchQuery.trim().toLowerCase();
-
-      // 1. Local scored search — filters by any match (score > 0) then ranks
-      const localMatches = allTokens
-        .filter((t) => {
-          if (t.source === 'dflow') return false;
-          if (t.address === searchQuery) return true; // exact CA
-          return scoreTokenMatch(t, lowerQ) > 0;
-        })
-        .map((t) => ({ token: t, score: scoreTokenMatch(t, lowerQ) }))
-        .sort((a, b) => b.score - a.score)
-        .map((r) => r.token);
-
-      // 2. API results not already in local list (e.g. obscure meme coins)
-      const uniqueApiResults = searchResults.filter(
-        (apiToken) => !localMatches.some((local) => local.address === apiToken.address)
-      );
-
-      // 3. Merge: ranked local first, then unranked API tail
-      const combined = [...localMatches, ...uniqueApiResults];
-
-      // CA fallback token at top if not already present
-      if (caFallbackToken && !combined.find((t) => t.address === caFallbackToken.address)) {
-        combined.unshift(caFallbackToken);
-      }
-
-      return combined;
-    }
-
-    // --- 以下、検索クエリがない場合のタブごとの表示ロジック ---
-    let baseList: JupiterToken[] = [];
-    if (activeTab === 'your_tokens') baseList = userTokens;
-    else if (activeTab === 'stock') baseList = allTokens.filter((t) => t.source === 'stock');
-    else if (activeTab === 'meme') {
-      baseList = allTokens.filter(
-        (t) => t.tags.includes('meme') || ['WIF', 'BONK', 'POPCAT'].includes(t.symbol.toUpperCase())
-      );
-      if (trendingIds.size > 0)
-        baseList = [...baseList].sort(
-          (a, b) => (trendingIds.has(b.address) ? 1 : 0) - (trendingIds.has(a.address) ? 1 : 0)
-        );
-    } else if (activeTab === 'trending') {
-      if (trendingIds.size > 0) {
-        const trending = allTokens.filter((t) => trendingIds.has(t.address));
-        const others = allTokens
-          .filter((t) => !trendingIds.has(t.address) && t.isVerified)
-          .slice(0, 20);
-        baseList = [...trending, ...others];
-      } else
-        baseList = allTokens.filter(
-          (t) => t.tags.includes('birdeye-trending') || (t.dailyVolume && t.dailyVolume > 1000000)
-        );
-    } else {
-      // 'all' タブ: prediction(dflow)を除外 → marketCap降順 → symbol重複排除
-      // (同じsymbolの複数バージョン: wrapped/bridged USDCなどを除去)
-      const sorted = allTokens
-        .filter((t) => t.source !== 'dflow')
-        .sort((a, b) => (b.marketCap ?? 0) - (a.marketCap ?? 0));
-      const seenSymbols = new Set<string>();
-      baseList = sorted.filter((t) => {
-        const sym = t.symbol.toUpperCase();
-        if (seenSymbols.has(sym)) return false;
-        seenSymbols.add(sym);
-        return true;
-      });
-    }
-
-    // カテゴリフィルタ (Allタブ内での絞り込み)
-    if (activeTab === 'all' && tokenFilter !== 'all') {
-      if (tokenFilter === 'crypto')
-        baseList = baseList.filter((t) => !t.source || t.source === 'jupiter');
-      else if (tokenFilter === 'stock') baseList = baseList.filter((t) => t.source === 'stock');
-      else if (tokenFilter === 'commodity')
-        baseList = baseList.filter((t) => t.source === 'commodity');
-      else if (tokenFilter === 'prediction')
-        baseList = baseList.filter((t) => t.source === 'dflow');
-    }
-
-    if (verifiedOnly)
-      baseList = baseList.filter(
-        (t) => t.isVerified || t.source === 'stock' || t.source === 'dflow'
-      );
-    return baseList;
-  }, [
-    allTokens,
-    userTokens,
-    activeTab,
-    searchQuery,
-    tokenFilter,
-    trendingIds,
-    verifiedOnly,
-    caFallbackToken,
-    searchResults,
-  ]);
+    const base = allTokens.filter((t) => WHITELIST_ADDRESS_SET.has(t.address));
+    if (!searchQuery.trim()) return base;
+    const q = searchQuery.trim().toLowerCase();
+    return base.filter(
+      (t) => t.symbol.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)
+    );
+  }, [allTokens, searchQuery]);
 
   const displayTokens = sortedVisibleTokens;
 
-  // B. Predictionのグループ化・検索・ソート
-  const groupedPredictions = useMemo(() => {
-    if (activeTab !== 'prediction') return [];
-
-    const sourceList = allTokens.filter((t) => t.source === 'dflow');
-    const groups: Record<string, any> = {};
-
-    sourceList.forEach((token) => {
-      const meta = token.predictionMeta;
-      if (!meta) return;
-
-      if (!groups[meta.marketId]) {
-        groups[meta.marketId] = {
-          marketId: meta.marketId,
-          marketQuestion: meta.marketQuestion,
-          eventTitle: meta.eventTitle,
-          image: token.logoURI || '',
-          expiry: meta.expiry,
-          totalVolume: 0,
-        };
-      }
-
-      if (token.dailyVolume) groups[meta.marketId].totalVolume += token.dailyVolume;
-      if (meta.side === 'YES') groups[meta.marketId].yesToken = token;
-      if (meta.side === 'NO') groups[meta.marketId].noToken = token;
-    });
-
-    let result = Object.values(groups);
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (g: any) =>
-          g.marketQuestion.toLowerCase().includes(q) ||
-          g.eventTitle.toLowerCase().includes(q) ||
-          (g.yesToken && g.yesToken.symbol.toLowerCase().includes(q))
-      );
-    }
-
-    // Always sort by volume (highest first)
-    result.sort((a: any, b: any) => (b.totalVolume || 0) - (a.totalVolume || 0));
-
-    return result;
-  }, [allTokens, searchQuery, activeTab]);
+  // Prediction markets not supported in MVP whitelist mode
+  const groupedPredictions: any[] = [];
 
   // C. その他の計算
   const selectedIds = useMemo(() => new Set(portfolio.map((p) => p.token.address)), [portfolio]);
@@ -284,80 +142,45 @@ export const useManualDashboard = ({
   const hasSelection = portfolio.length > 0;
   const isValidAllocation = totalWeight === 100 && portfolio.length >= 2;
 
-  const filterCounts = useMemo(
-    () => ({
-      crypto: allTokens.filter((t) => !t.source || t.source === 'jupiter').length,
-      stock: allTokens.filter((t) => t.source === 'stock').length,
-      commodity: allTokens.filter((t) => t.source === 'commodity').length,
-      prediction: allTokens.filter((t) => t.source === 'dflow').length,
-    }),
-    [allTokens]
-  );
+  const filterCounts = { crypto: allTokens.length, stock: 0, commodity: 0, prediction: 0 };
 
   // --- 4. Effects ---
 
-  // CA Search Fallback
-  useEffect(() => {
-    const q = searchQuery.trim();
-    if (q.length >= 32 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(q)) {
-      const hasMatch = allTokens.some((t) => t.address.toLowerCase() === q.toLowerCase());
-      if (!hasMatch && caFetchRef.current !== q) {
-        caFetchRef.current = q;
-        JupiterService.fetchTokenByMint(q).then((token) => {
-          if (token && caFetchRef.current === q) setCaFallbackToken(token);
-        });
-      }
-    } else {
-      setCaFallbackToken(null);
-      caFetchRef.current = null;
-    }
-  }, [searchQuery, allTokens]);
 
-  // Initial Load (重複排除の実装)
+  // Initial Load — whitelist only
   useEffect(() => {
     let isMounted = true;
     const init = async () => {
       setIsLoading(true);
       try {
-        const [list, predictionTokens, stockTokens, commodityTokens, mcMaps] = await Promise.all([
+        const [list, mcMaps] = await Promise.all([
           JupiterService.getLiteList(),
-          fetchPredictionTokens().catch(() => []),
-          fetchStockTokens().catch(() => []),
-          fetchCommodityTokens().catch(() => []),
           fetchMarketCapMap().catch(() => ({ byAddress: new Map(), bySymbol: new Map() })),
         ]);
         if (!isMounted) return;
 
-        const uniqueMap = new Map<string, JupiterToken>();
-        const seenSymbols = new Set<string>();
+        // Build a lookup from Jupiter data for price/volume enrichment
+        const jupiterByAddress = new Map(list.map((t) => [t.address, t]));
 
-        POPULAR_SYMBOLS.forEach((sym) => {
-          const t = list.find((x) => x.symbol === sym);
-          if (t) {
-            uniqueMap.set(t.address, t);
-            seenSymbols.add(t.symbol.toUpperCase());
-          }
-        });
-        [...predictionTokens, ...stockTokens, ...commodityTokens].forEach((t) => {
-          const upperSym = t.symbol.toUpperCase();
-          if (seenSymbols.has(upperSym)) {
-            console.warn(`[Duplicate] Skipping ${t.symbol} from ${t.source}, already exists`);
-            return;
-          }
-          uniqueMap.set(t.address, t);
-          seenSymbols.add(upperSym);
-        });
-        list.forEach((t) => {
-          const upperSym = t.symbol.toUpperCase();
-          if (!uniqueMap.has(t.address) && !seenSymbols.has(upperSym)) {
-            uniqueMap.set(t.address, t);
-            seenSymbols.add(upperSym);
-          }
-        });
-
-        const enriched = Array.from(uniqueMap.values()).map((t) => {
-          const mc = mcMaps.byAddress.get(t.address) ?? mcMaps.bySymbol.get(t.symbol.toUpperCase());
-          return mc ? { ...t, marketCap: mc } : t;
+        // Compose final token list from whitelist, enriching with Jupiter + CoinGecko data
+        const enriched: JupiterToken[] = WHITELISTED_ASSETS.map((asset) => {
+          const jup = jupiterByAddress.get(asset.address);
+          const mc =
+            mcMaps.byAddress.get(asset.address) ??
+            mcMaps.bySymbol.get(asset.symbol.toUpperCase());
+          return {
+            address: asset.address,
+            chainId: 101, // Solana mainnet
+            symbol: asset.symbol,
+            name: asset.name,
+            logoURI: jup?.logoURI ?? asset.logoURI,
+            decimals: jup?.decimals ?? 9,
+            tags: jup?.tags ?? [],
+            dailyVolume: jup?.dailyVolume ?? 0,
+            marketCap: mc ?? jup?.marketCap ?? 0,
+            isVerified: true,
+            source: 'jupiter' as const,
+          };
         });
 
         setAllTokens(enriched);
@@ -381,59 +204,9 @@ export const useManualDashboard = ({
       }
     };
     init();
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, []);
 
-  // Fetch User Tokens / Trending
-  useEffect(() => {
-    if (activeTab === 'your_tokens' && publicKey && connected) {
-      setIsLoading(true);
-      WalletService.getUserTokens(connection, publicKey)
-        .then(setUserTokens)
-        .finally(() => setIsLoading(false));
-    }
-  }, [activeTab, publicKey, connected, connection]);
-
-  useEffect(() => {
-    if ((activeTab === 'trending' || activeTab === 'meme') && trendingIds.size === 0) {
-      JupiterService.getTrendingTokens().then((tokens) => {
-        if (tokens.length > 0) setTrendingIds(new Set(tokens.map((t) => t.address)));
-      });
-    }
-  }, [activeTab, trendingIds.size]);
-
-  // Search Debounce (API Call)
-  useEffect(() => {
-    const q = searchQuery.trim();
-    if (!q || (q.length >= 32 && /^[1-9A-HJ-NP-Za-km-z]+$/.test(q))) {
-      setIsSearching(false);
-      if (!q) setSearchResults([]);
-      return;
-    }
-    setIsSearching(true);
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    searchTimeoutRef.current = setTimeout(async () => {
-      // API検索はPrediction以外のときに走らせる（Predictionはローカルで十分なため）
-      if (activeTab !== 'prediction') {
-        try {
-          const results = await JupiterService.searchTokens(q);
-          setSearchResults(results);
-        } catch {
-          setSearchResults([]);
-        }
-      }
-      setIsSearching(false);
-    }, 300);
-    return () => {
-      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    };
-  }, [searchQuery, activeTab]);
-
-  useEffect(() => {
-    if (activeTab !== 'all') setTokenFilter('all');
-  }, [activeTab]);
 
   // --- 5. Action Handlers ---
   const addTokenDirect = useCallback((token: JupiterToken) => {
@@ -566,7 +339,6 @@ export const useManualDashboard = ({
     portfolio,
     searchQuery,
     setSearchQuery,
-    isSearching,
     isLoading,
     config,
     setConfig,
@@ -582,8 +354,6 @@ export const useManualDashboard = ({
     isValidAllocation,
     sortedVisibleTokens,
     filterCounts,
-    tokenFilter,
-    setTokenFilter,
     connected,
     groupedPredictions,
     handleToIdentity,
