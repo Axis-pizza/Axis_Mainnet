@@ -18,7 +18,6 @@ import {
   Star,
 } from 'lucide-react';
 import { useWallet } from '../../../hooks/useWallet';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { TokenImage } from '../../common/TokenImage';
 import { WeightControl } from './WeightControl';
 import { TabSelector } from './TabSelector';
@@ -941,13 +940,6 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
   const mobileScrollRef = useRef<HTMLDivElement>(null);
   const [isPredictionListOpen, setIsPredictionListOpen] = useState(false);
 
-  const mobileVirtualizer = useVirtualizer({
-    count: sortedVisibleTokens.length,
-    getScrollElement: () => mobileScrollRef.current,
-    estimateSize: () => 68,
-    overscan: 5,
-  });
-
   const handleToIdentityMobile = useCallback(() => {
     setIsSelectorOpen(false);
     handleToIdentity();
@@ -1328,13 +1320,6 @@ export const DesktopBuilder = ({ dashboard, preferences, onBack }: BuilderProps)
   const [isPredictionListOpen, setIsPredictionListOpen] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const virtualizer = useVirtualizer({
-    count: sortedVisibleTokens.length,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 52,
-    overscan: 10,
-  });
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && searchQuery) setSearchQuery('');
