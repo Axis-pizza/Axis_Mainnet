@@ -429,9 +429,9 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
             className="font-normal leading-[0.9] tracking-tighter text-white"
             style={{ fontSize: 'clamp(4rem, 10vw, 8rem)' }}
           >
-            Your
+            Your narrative.
             <br />
-            <span className="gradient-text">Basket.</span>
+            <span className="gradient-text">Your Basket.</span>
           </motion.h1>
 
           <motion.p
