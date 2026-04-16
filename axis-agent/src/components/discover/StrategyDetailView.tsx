@@ -36,7 +36,7 @@ import {
 } from '@solana/spl-token';
 import { getUsdcBalance, getOrCreateUsdcAta, createUsdcTransferIx } from '../../services/usdc';
 import { USDC_DECIMALS } from '../../config/constants';
-import { RichChart } from '../common/RichChart';
+import { TradingChart } from '../common/TradingChart';
 import { api } from '../../services/api';
 import type { Strategy } from '../../types';
 import { useToast } from '../../context/ToastContext';
@@ -391,8 +391,6 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const headerY = useTransform(scrollY, [0, 60], [-10, 0]);
 
   const [strategy] = useState(initialData);
-  const [chartData, setChartData] = useState<any[]>([]);
-  const [timeframe] = useState('7d');
 
   const [tokensInfo, setTokensInfo] = useState<any[]>([]);
   const [isWatchlisted, setIsWatchlisted] = useState(false);
@@ -418,19 +416,8 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   }, [wallet.publicKey, connection, investStatus, isInvestOpen]);
 
   // --- Chart & Data ---
-  const latestValue = useMemo(() => {
-    const data = chartData || [];
-    if (data.length === 0) return strategy.price || 100;
-    const last = data[data.length - 1];
-    return typeof last.close === 'number' ? last.close : last.value;
-  }, [chartData, strategy.price]);
-
-  const changePct = useMemo(() => {
-    const data = chartData || [];
-    if (data.length < 2) return 0;
-    const start = typeof data[0].close === 'number' ? data[0].open : data[0].value;
-    return ((latestValue - start) / (start || 1)) * 100;
-  }, [chartData, latestValue]);
+  const latestValue = (strategy as any).price || 100;
+  const changePct   = (strategy as any).roi || 0;
 
   const isPositive = changePct >= 0;
 
@@ -462,15 +449,6 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     init();
   }, [strategy.id, wallet.publicKey, strategy.tokens]);
 
-  useEffect(() => {
-    const loadChart = async () => {
-      try {
-        const res = await api.getStrategyChart(strategy.id, timeframe, 'line');
-        if (res.success && res.data) setChartData(res.data);
-      } catch {}
-    };
-    loadChart();
-  }, [strategy.id, timeframe]);
 
   // ▼▼▼ 修正: アニメーションの復活とUI改善 ▼▼▼
   const handleToggleWatchlist = async () => {
@@ -730,9 +708,11 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             </div>
           </div>
 
-          <div className="w-full h-[280px]">
-            <RichChart data={chartData || []} isPositive={isPositive} />
-          </div>
+          <TradingChart
+            label={strategy?.ticker || strategy?.name}
+            seed={strategy?.id ? strategy.id.charCodeAt(0) + strategy.id.charCodeAt(strategy.id.length - 1) : 42}
+            height={320}
+          />
 
           {/* Stats Strip */}
           <div className="flex gap-4 overflow-x-auto no-scrollbar -mx-4 md:-mx-6 px-4 md:px-6 pb-2">

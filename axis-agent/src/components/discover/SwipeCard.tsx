@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, useMotionValue, useTransform, animate, type PanInfo } from 'framer-motion';
 import { TrendingUp, TrendingDown, Clock, Copy, ExternalLink, Wallet } from 'lucide-react';
 
@@ -11,6 +11,11 @@ interface Token {
   logoURI?: string | null;
   currentPrice?: number;
   change24h?: number;
+}
+
+export interface PerformancePoint {
+  timestamp: number; // unix seconds
+  nav: number;       // NAV value
 }
 
 export interface StrategyCardData {
@@ -28,6 +33,8 @@ export interface StrategyCardData {
   rebalanceType?: string;
   mintAddress?: string;
   vaultAddress?: string;
+  // Performance data — populated by API once ready
+  performanceData?: PerformancePoint[];
 }
 
 interface SwipeCardProps {
@@ -161,6 +168,257 @@ const typeColors: Record<string, string> = {
     'text-emerald-200 border-emerald-500/30 bg-emerald-500/10 shadow-[0_0_15px_rgba(48,164,108,0.2)]',
 };
 
+// ─────────────────────────────────────────────
+// NAV Performance Chart
+// ─────────────────────────────────────────────
+
+function generateMockData(points = 60, seed = 1): PerformancePoint[] {
+  const now = Math.floor(Date.now() / 1000);
+  const interval = 3600;
+  let nav = 100 + seed * 12;
+  const result: PerformancePoint[] = [];
+  for (let i = points - 1; i >= 0; i--) {
+    nav += (Math.random() - 0.46) * nav * 0.018;
+    result.push({ timestamp: now - i * interval, nav: Math.max(nav, 1) });
+  }
+  return result;
+}
+
+type ChartRange = '1H' | '24H' | '7D' | '30D';
+const RANGE_LABELS: ChartRange[] = ['1H', '24H', '7D', '30D'];
+
+export const PerformanceChart = ({
+  data,
+  compact = false,
+  seedOffset = 0,
+}: {
+  data?: PerformancePoint[];
+  compact?: boolean;
+  seedOffset?: number;
+}) => {
+  const [range, setRange] = useState<ChartRange>('24H');
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [animated, setAnimated] = useState(false);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // モックデータはseedとrangeが変わらない限り再生成しない
+  const mockByRange = useMemo<Record<ChartRange, PerformancePoint[]>>(() => ({
+    '1H':  generateMockData(60,  seedOffset + 1),
+    '24H': generateMockData(96,  seedOffset + 2),
+    '7D':  generateMockData(84,  seedOffset + 3),
+    '30D': generateMockData(90,  seedOffset + 4),
+  }), [seedOffset]);
+
+  const points = data ?? mockByRange[range];
+
+  // 色・変化率はデータが変わらない限り固定（ホバーで再計算しない）
+  const { minNav, maxNav, navRange, firstNav, lastNav, change, isPositive, accentColor, accentGlow } =
+    useMemo(() => {
+      const navValues = points.map((p) => p.nav);
+      const min = Math.min(...navValues);
+      const max = Math.max(...navValues);
+      const rng = max - min || 1;
+      const first = points[0]?.nav ?? 0;
+      const last  = points[points.length - 1]?.nav ?? 0;
+      const chg   = first > 0 ? ((last - first) / first) * 100 : 0;
+      const pos   = chg >= 0;
+      return {
+        minNav: min, maxNav: max, navRange: rng,
+        firstNav: first, lastNav: last, change: chg,
+        isPositive:  pos,
+        accentColor: pos ? '#34D399' : '#F87171',
+        accentGlow:  pos ? 'rgba(52,211,153,0.35)' : 'rgba(248,113,113,0.35)',
+      };
+    }, [points]);
+
+  const W = 400;
+  const H = compact ? 64 : 100;
+  const PAD_X = 0;
+  const PAD_Y = 8;
+
+  const toX = (i: number) => PAD_X + (i / (points.length - 1)) * (W - PAD_X * 2);
+  const toY = (nav: number) => PAD_Y + (1 - (nav - minNav) / navRange) * (H - PAD_Y * 2);
+
+  // パスもデータが変わらない限り再計算しない
+  const { linePath, areaPath } = useMemo(() => {
+    if (points.length < 2) return { linePath: '', areaPath: '' };
+    let d = `M ${toX(0)} ${toY(points[0].nav)}`;
+    for (let i = 1; i < points.length; i++) {
+      const x0 = toX(i - 1), y0 = toY(points[i - 1].nav);
+      const x1 = toX(i),     y1 = toY(points[i].nav);
+      const cpx = (x0 + x1) / 2;
+      d += ` C ${cpx} ${y0}, ${cpx} ${y1}, ${x1} ${y1}`;
+    }
+    const line = d;
+    const area = `${line} L ${toX(points.length - 1)} ${H} L ${toX(0)} ${H} Z`;
+    return { linePath: line, areaPath: area };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [points, minNav, navRange, W, H, PAD_X, PAD_Y]);
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const relX = ((e.clientX - rect.left) / rect.width) * W;
+    const idx = Math.round((relX / W) * (points.length - 1));
+    setHoverIdx(Math.max(0, Math.min(points.length - 1, idx)));
+  };
+
+  const hoverPoint = hoverIdx !== null ? points[hoverIdx] : null;
+  const hoverX = hoverIdx !== null ? toX(hoverIdx) : null;
+  const hoverY = hoverIdx !== null ? toY(points[hoverIdx].nav) : null;
+
+  useEffect(() => {
+    setAnimated(false);
+    const t = setTimeout(() => setAnimated(true), 30);
+    return () => clearTimeout(t);
+  }, [range, data]);
+
+  return (
+    <div className="w-full flex flex-col">
+      {/* Range selector + change badge */}
+      <div className={`flex items-center justify-between ${compact ? 'mb-1.5' : 'mb-2'}`}>
+        <div className="flex items-center gap-1">
+          {RANGE_LABELS.map((r) => (
+            <button
+              key={r}
+              onClick={() => setRange(r)}
+              className={`rounded-md font-mono transition-all duration-200 ${
+                compact ? 'text-[8px] px-1.5 py-0.5' : 'text-[9px] px-2 py-1'
+              } ${range === r ? 'bg-white/15 text-white' : 'text-white/30 hover:text-white/60'}`}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+        <div
+          className={`flex items-center gap-1 font-mono rounded-full px-2 py-0.5 border ${compact ? 'text-[8px]' : 'text-[10px]'}`}
+          style={{
+            color: accentColor,
+            borderColor: accentColor + '40',
+            background: accentColor + '12',
+            textShadow: `0 0 8px ${accentGlow}`,
+          }}
+        >
+          {isPositive ? (
+            <TrendingUp className={compact ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
+          ) : (
+            <TrendingDown className={compact ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
+          )}
+          {Math.abs(change).toFixed(2)}%
+        </div>
+      </div>
+
+      {/* SVG Chart */}
+      <div className="relative w-full" style={{ height: compact ? 68 : 108 }}>
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="none"
+          className="w-full h-full"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHoverIdx(null)}
+        >
+          <defs>
+            <linearGradient id={`area-grad-${seedOffset}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stopColor={accentColor} stopOpacity="0.18" />
+              <stop offset="100%" stopColor={accentColor} stopOpacity="0" />
+            </linearGradient>
+            <filter id={`line-glow-${seedOffset}`}>
+              <feGaussianBlur stdDeviation="2" result="blur" />
+              <feFlood floodColor={accentColor} floodOpacity="0.6" result="color" />
+              <feComposite in="color" in2="blur" operator="in" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+            <clipPath id={`clip-draw-${seedOffset}`}>
+              <motion.rect
+                x="0" y="0" height={H}
+                initial={{ width: 0 }}
+                animate={{ width: animated ? W : 0 }}
+                transition={{ duration: 0.9, ease: 'easeOut' }}
+              />
+            </clipPath>
+          </defs>
+
+          {/* Grid lines */}
+          {[0.25, 0.5, 0.75].map((t) => (
+            <line
+              key={t}
+              x1={0} y1={PAD_Y + t * (H - PAD_Y * 2)}
+              x2={W} y2={PAD_Y + t * (H - PAD_Y * 2)}
+              stroke="rgba(255,255,255,0.05)"
+              strokeWidth="1"
+              strokeDasharray="3 4"
+            />
+          ))}
+
+          {/* Area fill */}
+          <g clipPath={`url(#clip-draw-${seedOffset})`}>
+            <path d={areaPath} fill={`url(#area-grad-${seedOffset})`} />
+          </g>
+
+          {/* Line */}
+          <g clipPath={`url(#clip-draw-${seedOffset})`}>
+            <path
+              d={linePath}
+              fill="none"
+              stroke={accentColor}
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              filter={`url(#line-glow-${seedOffset})`}
+            />
+          </g>
+
+          {/* Hover crosshair */}
+          {hoverIdx !== null && hoverX !== null && hoverY !== null && (
+            <>
+              <line
+                x1={hoverX} y1={0} x2={hoverX} y2={H}
+                stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="2 3"
+              />
+              <circle cx={hoverX} cy={hoverY} r="3" fill={accentColor} stroke="#0e0e0e" strokeWidth="1.5" />
+            </>
+          )}
+        </svg>
+
+        {/* Hover tooltip */}
+        {hoverPoint && hoverX !== null && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: `${(hoverX / W) * 100}%`,
+              top: `${((hoverY ?? 0) / H) * 100}%`,
+              transform: 'translateX(-50%) translateY(-110%)',
+            }}
+          >
+            <div
+              className="rounded-md px-2 py-1 text-[9px] font-mono whitespace-nowrap border"
+              style={{
+                background: '#0e0e0e',
+                color: accentColor,
+                borderColor: accentColor + '30',
+                boxShadow: `0 0 8px ${accentGlow}`,
+              }}
+            >
+              {hoverPoint.nav.toFixed(2)}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom NAV labels */}
+      {!compact && (
+        <div className="flex justify-between mt-1">
+          <span className="text-[9px] font-mono text-white/20">{firstNav.toFixed(2)}</span>
+          <span className="text-[9px] font-mono text-white/20">{lastNav.toFixed(2)}</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── SwipeCardBody ──
 export const SwipeCardBody = ({
   strategy,
@@ -173,6 +431,8 @@ export const SwipeCardBody = ({
   const maxLogos = c ? 6 : 8;
   const sortedTokens = [...strategy.tokens].sort((a, b) => b.weight - a.weight);
   const overflow = Math.max(0, sortedTokens.length - maxLogos);
+  // Deterministic seed from strategy id for stable mock curves
+  const seedOffset = strategy.id.charCodeAt(0) + strategy.id.charCodeAt(strategy.id.length - 1);
 
   return (
     <div
@@ -248,33 +508,71 @@ export const SwipeCardBody = ({
         </div>
       </div>
 
-      {/* --- Stats --- */}
+      {/* --- Stats: 24H Change + TVL (2-column grid) --- */}
       <div className={`relative z-10 ${c ? 'px-3 py-1.5' : 'px-6 py-2'}`}>
-        {/* TVL Card — full width */}
-        <div
-          className={`rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-inner flex items-center justify-between relative overflow-hidden ${c ? 'h-[56px] px-3' : 'h-[72px] px-5'}`}
-        >
-          <div className={`absolute top-0 right-0 opacity-10 ${c ? 'p-2' : 'p-3'}`}>
-            <Wallet className={c ? 'w-8 h-8 text-white' : 'w-12 h-12 text-white'} />
-          </div>
-          <div>
-            <span className={`text-white/40 uppercase font-normal tracking-widest block mb-0.5 z-10 ${c ? 'text-[8px]' : 'text-[10px]'}`}>
-              TVL
-            </span>
-            <div className={`font-normal text-white tracking-tight z-10 drop-shadow-sm leading-none ${c ? 'text-base' : 'text-2xl'}`}>
+        <div className="grid grid-cols-2 gap-2">
+          {/* 24H Change */}
+          {(() => {
+            const roi = strategy.roi ?? 0;
+            const roiPositive = roi >= 0;
+            const roiColor = roiPositive ? '#34D399' : '#F87171';
+            const roiGlow  = roiPositive ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)';
+            return (
+              <div
+                className={`rounded-2xl border bg-[#0a0a0a] shadow-inner flex flex-col justify-center relative overflow-hidden ${c ? 'h-[48px] px-3' : 'h-[60px] px-4'}`}
+                style={{ borderColor: roiColor + '25' }}
+              >
+                <div className="absolute inset-0 opacity-5" style={{ background: roiColor }} />
+                <span className={`text-white/40 uppercase font-normal tracking-widest mb-0.5 ${c ? 'text-[8px]' : 'text-[10px]'}`}>24H Change</span>
+                <div
+                  className={`font-normal tracking-tight leading-none flex items-center gap-1 ${c ? 'text-sm' : 'text-xl'}`}
+                  style={{ color: roiColor, textShadow: `0 0 10px ${roiGlow}` }}
+                >
+                  {roiPositive
+                    ? <TrendingUp className={c ? 'w-3 h-3' : 'w-4 h-4'} />
+                    : <TrendingDown className={c ? 'w-3 h-3' : 'w-4 h-4'} />}
+                  {Math.abs(roi).toFixed(2)}%
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* TVL */}
+          <div
+            className={`rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-inner flex flex-col justify-center relative overflow-hidden ${c ? 'h-[48px] px-3' : 'h-[60px] px-4'}`}
+          >
+            <div className={`absolute top-0 right-0 opacity-10 ${c ? 'p-1.5' : 'p-2'}`}>
+              <Wallet className={c ? 'w-6 h-6 text-white' : 'w-8 h-8 text-white'} />
+            </div>
+            <span className={`text-white/40 uppercase font-normal tracking-widest mb-0.5 ${c ? 'text-[8px]' : 'text-[10px]'}`}>TVL</span>
+            <div className={`font-normal text-white tracking-tight z-10 leading-none ${c ? 'text-sm' : 'text-xl'}`}>
               {formatTvl(strategy.tvl)}
               {!c && <span className="text-[11px] text-white/30 ml-1.5">USDC</span>}
             </div>
           </div>
-          <div className="text-right z-10">
-            <span className={`text-white/40 uppercase font-normal tracking-widest block mb-0.5 ${c ? 'text-[8px]' : 'text-[10px]'}`}>
-              Assets
-            </span>
-            <div className={`font-normal text-white/80 tracking-tight leading-none ${c ? 'text-base' : 'text-2xl'}`}>
-              {strategy.tokens.length}
-            </div>
-          </div>
         </div>
+      </div>
+
+      {/* --- NAV Performance Chart --- */}
+      <div
+        className={`relative z-10 ${c ? 'px-3 py-1' : 'px-6 py-2'}`}
+        style={{
+          background: 'linear-gradient(180deg, transparent, rgba(255,255,255,0.015) 50%, transparent)',
+          borderTop: '1px solid rgba(255,255,255,0.04)',
+          borderBottom: '1px solid rgba(255,255,255,0.04)',
+        }}
+      >
+        <div className={`flex items-center gap-1.5 ${c ? 'mb-1' : 'mb-2'}`}>
+          <span className={`text-white/30 uppercase font-normal tracking-widest ${c ? 'text-[7px]' : 'text-[9px]'}`}>
+            NAV Performance
+          </span>
+          <span className="w-1.5 h-1.5 rounded-full bg-white/20 inline-block" title="Mock data" />
+        </div>
+        <PerformanceChart
+          data={strategy.performanceData}
+          compact={c}
+          seedOffset={seedOffset}
+        />
       </div>
 
       {/* --- Composition: プログレス・ピル（2カラム・グリッド） --- */}
