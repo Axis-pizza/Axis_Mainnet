@@ -19,6 +19,12 @@
 			"database_name": "axis-wlv2",
 			"database_id": "ae62cf10-e8b1-4cfb-8823-91da78d51220",
 			"migrations_dir": "./migrations"
+		},
+		{
+			// Invite / whitelist gating
+			"binding": "DB_INVITE",
+			"database_name": "axis-invites",
+			"database_id": "a01dd752-2536-4802-8cfb-1eb6c0902952"
 		}
 	],
 	// AIバインディングも必要なら追加

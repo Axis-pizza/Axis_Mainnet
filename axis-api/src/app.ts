@@ -13,6 +13,7 @@ import shareRoutes from './routes/share';
 import { runPriceSnapshot } from './services/snapshot';
 import dflowRoutes from './routes/dflow';
 import mobileRoutes from './routes/mobile';
+import inviteRoutes from './routes/invite';
 // @ts-ignore
 import { EmailMessage } from "cloudflare:email";
 import { createMimeMessage } from "mimetext";
@@ -78,6 +79,7 @@ app.route('/share', shareRoutes);
 app.route('/api/jupiter', jupiterRouter);
 app.route('/api/dflow', dflowRoutes);
 app.route('/mobile', mobileRoutes);
+app.route('/invite', inviteRoutes);
 
 app.post('/report', async (c) => {
   try {

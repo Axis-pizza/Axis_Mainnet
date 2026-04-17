@@ -7,6 +7,9 @@ export type Bindings = {
   // ★追加: VIPリスト管理用 Database
   whitelist_db: D1Database
 
+  // Invite / whitelist gating (axis-invites DB)
+  DB_INVITE: D1Database
+
   // Storage
   IMAGES: R2Bucket
   
