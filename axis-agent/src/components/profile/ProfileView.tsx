@@ -13,7 +13,9 @@ import {
   User,
   LogOut,
   Sparkles,
+  Plus,
 } from 'lucide-react';
+import { FundWalletModal } from './FundWalletModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWallet, useConnection, useLoginModal } from '../../hooks/useWallet';
 import { api } from '../../services/api';
@@ -78,6 +80,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
   const [balanceError, setBalanceError] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isFundOpen, setIsFundOpen] = useState(false);
   const [xpFlash, setXpFlash] = useState(false);
 
   // --- Data State ---
@@ -432,6 +435,16 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
                 </span>
               </div>
             )}
+
+            {/* Fund Wallet Button */}
+            <button
+              onClick={() => setIsFundOpen(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-normal mt-3 transition-all hover:scale-[1.01] active:scale-[0.99]"
+              style={{ background: 'rgba(184,134,63,0.08)', border: '1px solid rgba(184,134,63,0.2)', color: '#E8C890' }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Fund Wallet
+            </button>
           </div>
         </div>
       </div>
@@ -634,6 +647,24 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
           onUpdate={loadProfile}
         />
       )}
+
+      {/* Fund Wallet Modal */}
+      <FundWalletModal
+        isOpen={isFundOpen}
+        onClose={() => setIsFundOpen(false)}
+        onSuccess={() => {
+          setIsFundOpen(false);
+          // Re-fetch balances after successful swap
+          if (publicKey && connection) {
+            Promise.allSettled([
+              connection.getBalance(publicKey).then((l) => setSolBalance(l / 1e9)),
+              import('../../services/usdc').then(({ getUsdcBalance }) =>
+                getUsdcBalance(connection, publicKey).then(setUsdcBalance)
+              ),
+            ]).catch(() => {});
+          }
+        }}
+      />
     </div>
   );
 };

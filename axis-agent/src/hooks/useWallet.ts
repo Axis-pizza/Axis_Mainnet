@@ -64,7 +64,8 @@ function useWalletPrivy(): WalletContextState {
     }
   }, [targetAddress]);
 
-  const privyConnected = authenticated && !!publicKey && !isForceLoggedOut;
+  // authenticated だけで接続状態とみなす。publicKey が遅延取得でも UI がバグらない
+  const privyConnected = authenticated && !isForceLoggedOut;
 
   const signTransaction = useMemo(() => {
     if (!wallet) return undefined;
