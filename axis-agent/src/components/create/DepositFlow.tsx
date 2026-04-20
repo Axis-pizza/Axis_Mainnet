@@ -5,23 +5,25 @@ import {
   ArrowLeft,
   Wallet,
   TrendingUp,
-  Shield,
   Loader2,
   CheckCircle2,
   AlertCircle,
   ExternalLink,
-  ArrowRight,
   Sparkles,
   Lock,
 } from 'lucide-react';
 import { useWallet, useConnection } from '../../hooks/useWallet';
-import { PublicKey, Transaction } from '@solana/web3.js';
+import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { PizzaChart } from '../common/PizzaChart';
 import { api } from '../../services/api';
-import { Buffer } from 'buffer';
-import { getUsdcBalance, getOrCreateUsdcAta, createUsdcTransferIx } from '../../services/usdc';
+import {
+  initializeStrategyFromUI,
+  depositSol,
+  solToLamports,
+  deriveStrategyVaultPda,
+  getStrategyVault,
+} from '../../protocol/kagemusha';
 
-// ★修正: ここに mint と logoURI を追加して受け取れるようにする
 interface TokenAllocation {
   symbol: string;
   weight: number;
@@ -40,12 +42,11 @@ interface DepositFlowProps {
   initialAmount?: number;
 }
 
-type DepositStatus = 'INPUT' | 'CONFIRMING' | 'PROCESSING' | 'SAVING' | 'SUCCESS' | 'ERROR';
+type DepositStatus = 'INPUT' | 'INIT' | 'DEPOSITING' | 'SAVING' | 'SUCCESS' | 'ERROR';
 
-const QUICK_AMOUNTS = [5, 10, 50];
+const QUICK_AMOUNTS = [0.05, 0.1, 0.5];
 
 export const DepositFlow = ({
-  strategyAddress,
   strategyName,
   strategyTicker,
   strategyType,
@@ -58,160 +59,94 @@ export const DepositFlow = ({
   const { connection } = useConnection();
 
   const [amount, setAmount] = useState<string>(initialAmount ? initialAmount.toString() : '');
-  const [balance, setBalance] = useState<number>(0);
+  const [solBalance, setSolBalance] = useState<number>(0);
   const [status, setStatus] = useState<DepositStatus>('INPUT');
   const [txSignature, setTxSignature] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchBalance = async () => {
-      if (!publicKey) return;
-      try {
-        const bal = await getUsdcBalance(connection, publicKey);
-        setBalance(bal);
-      } catch {}
-    };
-    fetchBalance();
+    if (!publicKey) return;
+    connection.getBalance(publicKey).then((lamports) => {
+      setSolBalance(lamports / LAMPORTS_PER_SOL);
+    }).catch(() => {});
   }, [publicKey, connection]);
 
   const parsedAmount = parseFloat(amount) || 0;
-  const isValidAmount = parsedAmount > 0 && parsedAmount <= balance;
+  // Keep 0.01 SOL buffer for transaction fees
+  const isValidAmount = parsedAmount > 0 && parsedAmount <= solBalance - 0.01;
+
+  const wallet = { publicKey, signTransaction };
 
   const handleDeposit = async () => {
     if (!publicKey || !signTransaction || !isValidAmount) return;
-    setStatus('CONFIRMING');
     setErrorMessage(null);
 
     try {
-      // --- 1. USDC SPL Transfer ---
-      let strategyPubkey;
-      try {
-        strategyPubkey = new PublicKey(strategyAddress);
-      } catch {
-        // strategyAddress が無効な場合は publicKey (自分のウォレット) にフォールバック
-        strategyPubkey = publicKey;
+      // 1. Ensure StrategyVault is initialized on-chain
+      setStatus('INIT');
+      const [strategyPda] = deriveStrategyVaultPda(publicKey, strategyName);
+      const existingVault = await getStrategyVault(connection, strategyPda);
+
+      if (!existingVault) {
+        await initializeStrategyFromUI(connection, wallet, {
+          name: strategyName,
+          strategyTypeLabel: strategyType,
+          tokens,
+        });
       }
 
-      const transaction = new Transaction();
-
-      // Ensure destination ATA exists
-      const { ata: fromAta, instruction: createFromIx } = await getOrCreateUsdcAta(
-        connection,
-        publicKey,
-        publicKey
-      );
-      const { ata: toAta, instruction: createToIx } = await getOrCreateUsdcAta(
-        connection,
-        publicKey,
-        strategyPubkey
-      );
-      if (createFromIx) transaction.add(createFromIx);
-      if (createToIx) transaction.add(createToIx);
-
-      transaction.add(createUsdcTransferIx(fromAta, toAta, publicKey, parsedAmount));
-
-      setStatus('PROCESSING');
-      const latestBlockhash = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = latestBlockhash.blockhash;
-      // 一時的にユーザーを feePayer に設定（シリアライズに必要）
-      transaction.feePayer = publicKey;
-
-      // 運営ウォレットにガス代を委任
-      let txToSign = transaction;
-      try {
-        const serialized = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
-        const { transaction: feePayerSignedBase64 } = await api.signAsFeePayer(
-          Buffer.from(serialized).toString('base64')
-        );
-        txToSign = Transaction.from(Buffer.from(feePayerSignedBase64, 'base64'));
-      } catch {
-        // バックエンドが失敗した場合はユーザーがガス代を負担するフォールバック
-      }
-
-      const signedTx = await signTransaction(txToSign);
-      const serializedTx = signedTx.serialize();
-      const signature = await connection.sendRawTransaction(serializedTx, {
-        skipPreflight: false,
-        preflightCommitment: 'confirmed',
-        maxRetries: 3,
-      });
-
-      await connection.confirmTransaction(
-        {
-          signature,
-          blockhash: latestBlockhash.blockhash,
-          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        },
-        'confirmed'
-      );
-
+      // 2. Deposit SOL into the vault
+      setStatus('DEPOSITING');
+      const amountLamports = solToLamports(parsedAmount);
+      const { signature } = await depositSol(connection, wallet, strategyPda, amountLamports);
       setTxSignature(signature);
 
-      // --- 2. API Saving ---
+      // 3. Save strategy metadata to API
       setStatus('SAVING');
-
-      const base64Tx = Buffer.from(serializedTx).toString('base64');
-
-      const payload = {
-        name: String(strategyName).trim(),
-        ticker: strategyTicker || '',
-        description: `${strategyType} Strategy created by ${publicKey.toBase58().slice(0, 6)}...`,
-        type: strategyType,
-
-        // ★修正: ここで mint と logoURI をバックエンドへ送る
-        tokens: tokens.map((t) => ({
-          symbol: String(t.symbol),
-          weight: Math.floor(Number(t.weight)),
-          mint: t.mint || 'So11111111111111111111111111111111111111112',
-          logoURI: t.logoURI,
-        })),
-
-        // composition も同様に
-        composition: tokens.map((t) => ({
-          symbol: String(t.symbol),
-          weight: Math.floor(Number(t.weight)),
-          mint: t.mint || 'So11111111111111111111111111111111111111112',
-          logoURI: t.logoURI,
-        })),
-
-        ownerPubkey: publicKey.toBase58(),
-        creator: publicKey.toBase58(),
-        address: publicKey.toBase58(),
-        tvl: Number(parsedAmount),
-        initialInvestment: Number(parsedAmount),
-        image: '',
-        signedTransaction: base64Tx,
-      };
-
       try {
-        await api.deploy(signature, payload);
-      } catch {}
+        await api.deploy(signature, {
+          ownerPubkey: publicKey.toBase58(),
+          name: strategyName,
+          ticker: strategyTicker ?? '',
+          description: `${strategyType} Strategy created by ${publicKey.toBase58().slice(0, 6)}...`,
+          type: strategyType,
+          tokens: tokens.map((t) => ({
+            symbol: t.symbol,
+            weight: Math.floor(t.weight),
+            mint: t.mint ?? 'So11111111111111111111111111111111111111112',
+            logoURI: t.logoURI,
+          })),
+          tvl: parsedAmount,
+          address: strategyPda.toBase58(),
+        });
+      } catch {
+        // API metadata save failure is non-fatal
+      }
 
-      // ticker を確実に保存するため createStrategy も呼ぶ
       if (strategyTicker) {
         try {
           await api.createStrategy({
             owner_pubkey: publicKey.toBase58(),
-            name: String(strategyName).trim(),
+            name: strategyName,
             ticker: strategyTicker,
             description: `${strategyType} Strategy created by ${publicKey.toBase58().slice(0, 6)}...`,
             type: strategyType,
             tokens: tokens.map((t) => ({
-              symbol: String(t.symbol),
-              weight: Math.floor(Number(t.weight)),
-              mint: t.mint || '',
+              symbol: t.symbol,
+              weight: Math.floor(t.weight),
+              mint: t.mint ?? '',
               logoURI: t.logoURI,
             })),
-            address: strategyAddress || publicKey.toBase58(),
+            address: strategyPda.toBase58(),
           });
-        } catch {}
+        } catch {
+          // API save failure is non-fatal; chain tx already succeeded
+        }
       }
 
       setStatus('SUCCESS');
-    } catch (e: any) {
-      console.error('Deposit Error:', e);
-      const msg = e?.logs?.join('\n') || e?.message || 'Deposit failed';
-      setErrorMessage(msg.slice(0, 200));
+    } catch (e: unknown) {
+      setErrorMessage((e instanceof Error ? e.message : 'Deposit failed').slice(0, 200));
       setStatus('ERROR');
     }
   };
@@ -225,6 +160,8 @@ export const DepositFlow = ({
     strategyType && strategyType in strategyTypeColors
       ? strategyTypeColors[strategyType as keyof typeof strategyTypeColors].hex
       : colors.accentSolid;
+
+  const isProcessing = status === 'INIT' || status === 'DEPOSITING' || status === 'SAVING';
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -301,9 +238,9 @@ export const DepositFlow = ({
                     <Wallet className="w-3 h-3" /> Balance
                   </span>
                   <div className="flex items-center gap-2">
-                    <span className="text-[#E7E5E4] font-mono">{balance.toFixed(2)} USDC</span>
+                    <span className="text-[#E7E5E4] font-mono">{solBalance.toFixed(4)} SOL</span>
                     <button
-                      onClick={() => setAmount(balance.toFixed(2))}
+                      onClick={() => setAmount(Math.max(0, solBalance - 0.01).toFixed(4))}
                       className="text-[#B8863F] hover:text-[#D4A261] font-normal transition-colors"
                     >
                       MAX
@@ -319,10 +256,10 @@ export const DepositFlow = ({
                     onChange={(e) => setAmount(e.target.value)}
                     placeholder="0.00"
                     className="w-full bg-[#080503] border border-white/10 rounded-2xl py-6 px-4 text-4xl font-normal text-center text-white focus:outline-none focus:border-[#B8863F]/50 transition-all placeholder:text-[#292524]"
-                    disabled={status !== 'INPUT' && status !== 'ERROR'}
+                    disabled={isProcessing}
                   />
                   <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none">
-                    <span className="text-sm font-normal text-[#78716C]">USDC</span>
+                    <span className="text-sm font-normal text-[#78716C]">SOL</span>
                   </div>
                 </div>
 
@@ -333,7 +270,7 @@ export const DepositFlow = ({
                       onClick={() => setAmount(val.toString())}
                       className="py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-sm font-normal text-[#A8A29E] hover:text-[#E7E5E4] transition-all"
                     >
-                      {val} USDC
+                      {val} SOL
                     </button>
                   ))}
                 </div>
@@ -351,7 +288,7 @@ export const DepositFlow = ({
 
                 <button
                   onClick={status === 'ERROR' ? handleRetry : handleDeposit}
-                  disabled={!isValidAmount || (status !== 'INPUT' && status !== 'ERROR')}
+                  disabled={!isValidAmount || isProcessing}
                   className="w-full py-4 bg-gradient-to-r from-[#B8863F] to-[#8B5E28] rounded-xl font-normal text-[#080503] shadow-lg shadow-orange-900/20 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 transition-all flex items-center justify-center gap-2"
                 >
                   {status === 'INPUT' && (
@@ -359,11 +296,14 @@ export const DepositFlow = ({
                       <Lock className="w-4 h-4" /> Seed Liquidity
                     </>
                   )}
-                  {(status === 'CONFIRMING' || status === 'PROCESSING' || status === 'SAVING') && (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      {status === 'CONFIRMING' ? 'Sign in Wallet...' : 'Processing...'}
-                    </>
+                  {status === 'INIT' && (
+                    <><Loader2 className="w-5 h-5 animate-spin" /> Initializing Vault...</>
+                  )}
+                  {status === 'DEPOSITING' && (
+                    <><Loader2 className="w-5 h-5 animate-spin" /> Depositing SOL...</>
+                  )}
+                  {status === 'SAVING' && (
+                    <><Loader2 className="w-5 h-5 animate-spin" /> Saving...</>
                   )}
                   {status === 'ERROR' && 'Retry Transaction'}
                 </button>
@@ -423,7 +363,7 @@ const DepositSuccess = ({
         />
         <div className="flex justify-between mb-2">
           <span className="opacity-60">INITIAL DEPOSIT</span>
-          <span className="font-normal">{amount} USDC</span>
+          <span className="font-normal">{amount} SOL</span>
         </div>
         <div className="flex justify-between mb-4">
           <span className="opacity-60">STATUS</span>

@@ -5,7 +5,7 @@ import { useConnection, useWallet } from '../../hooks/useWallet';
 import { PublicKey } from '@solana/web3.js';
 import { RichChart } from './RichChart';
 import { api } from '../../services/api';
-import { KagemushaService } from '../../services/kagemusha';
+import { depositSol, solToLamports } from '../../protocol/kagemusha';
 import { useToast } from '../../context/ToastContext';
 
 interface StrategyDetailModalProps {
@@ -39,17 +39,13 @@ export const StrategyDetailModal = ({ isOpen, onClose, strategy }: StrategyDetai
 
     setLoading(true);
     try {
-      await KagemushaService.depositSol(
-        connection,
-        wallet,
-        new PublicKey(strategy.address || strategy.id),
-        parseFloat(amount)
-      );
-
+      const strategyPubkey = new PublicKey(strategy.address || strategy.id);
+      const amountLamports = solToLamports(parseFloat(amount));
+      await depositSol(connection, wallet, strategyPubkey, amountLamports);
       showToast('Deposit Successful!', 'success');
       onClose();
-    } catch {
-      showToast('Deposit Failed', 'error');
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Deposit Failed', 'error');
     } finally {
       setLoading(false);
     }
@@ -132,7 +128,7 @@ export const StrategyDetailModal = ({ isOpen, onClose, strategy }: StrategyDetai
                       <Wallet className="w-3 h-3" /> TVL
                     </div>
                     <p className="text-xl font-normal text-white">
-                      {strategy.tvl ? strategy.tvl.toLocaleString() : '0'} USDC
+                      {strategy.tvl ? strategy.tvl.toLocaleString() : '0'} SOL
                     </p>
                   </div>
                 </div>

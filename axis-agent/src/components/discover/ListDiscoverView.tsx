@@ -173,7 +173,7 @@ const TableRow = memo(({
       {/* TVL */}
       <div className="w-24 px-3 py-3.5 text-right shrink-0">
         <div className="text-[13px] font-mono text-white/80">{formatTvl(strategy.tvl)}</div>
-        <div className="text-[9px] text-white/20 uppercase tracking-wide">USDC</div>
+        <div className="text-[9px] text-white/20 uppercase tracking-wide">SOL</div>
       </div>
 
       {/* Assets */}

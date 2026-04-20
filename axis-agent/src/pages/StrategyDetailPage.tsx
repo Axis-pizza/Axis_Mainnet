@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { useConnection } from '../hooks/useWallet';
 import { StrategyDetailView } from '../components/discover/StrategyDetailView';
-import { getStrategyInfo } from '../services/kagemusha'; // On-chain fetch
+import { getStrategyVault } from '../protocol/kagemusha';
 import { api } from '../services/api'; // Fallback API
 import { Loader2 } from 'lucide-react';
 
@@ -25,26 +25,22 @@ export const StrategyDetailPage = () => {
       try {
         // 1. Try fetching from On-Chain directly (if valid Pubkey)
         let fetchedData = null;
-        let isRealChainData = false;
 
         try {
           const pubkey = new PublicKey(id);
-          // On-Chain fetch attempt
-          const info = await getStrategyInfo(connection, pubkey);
-          if (info) {
-            // Map On-Chain structure to UI structure
+          const vault = await getStrategyVault(connection, pubkey);
+          if (vault) {
             fetchedData = {
-              id: id,
-              name: info.name || 'Unknown Vault',
-              type: 'BALANCED', // Default or derive from logic
+              id,
+              name: vault.name || 'Unknown Vault',
+              type: 'BALANCED',
               description: 'A decentralized vault strategy on Solana.',
-              tokens: info.tokens || [], // Ensure mapping is correct
-              tvl: info.tvl || 0,
-              roi: 0, // Will be calculated by DetailView
-              creatorAddress: info.owner || '',
-              createdAt: Date.now() / 1000, // Mock if not available
+              tokens: [],
+              tvl: Number(vault.tvlLamports) / 1e9,
+              roi: 0,
+              creatorAddress: vault.owner,
+              createdAt: vault.lastRebalance,
             };
-            isRealChainData = true;
           }
         } catch (chainErr) {
           // Not a valid pubkey or not found on chain, ignore and try API
