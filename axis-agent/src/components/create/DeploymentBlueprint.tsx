@@ -225,14 +225,16 @@ export const DeploymentBlueprint = ({
           Modify
         </motion.button>
         <motion.button
-          whileHover={{ scale: 1.01, boxShadow: '0 0 28px rgba(201,168,76,0.3)' }}
+          whileHover={safeTokens.length === 3 ? { scale: 1.01, boxShadow: '0 0 28px rgba(201,168,76,0.3)' } : {}}
           whileTap={{ scale: 0.98 }}
           transition={{ type: 'spring', stiffness: 400, damping: 20 }}
           onClick={handleInitialDeployClickWithBalance}
-          disabled={isDeploying}
-          className="flex-1 py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#080503] font-normal rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20"
+          disabled={isDeploying || safeTokens.length !== 3}
+          title={safeTokens.length !== 3 ? 'Exactly 3 tokens required' : undefined}
+          className="flex-1 py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#080503] font-normal rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <Wallet className="w-5 h-5" /> Deposit & Mint
+          <Wallet className="w-5 h-5" />
+          {safeTokens.length === 3 ? 'Deposit & Mint' : `${safeTokens.length}/3 tokens required`}
         </motion.button>
       </div>
 

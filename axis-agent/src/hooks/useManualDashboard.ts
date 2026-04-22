@@ -140,7 +140,8 @@ export const useManualDashboard = ({
   const selectedIds = useMemo(() => new Set(portfolio.map((p) => p.token.address)), [portfolio]);
   const totalWeight = useMemo(() => portfolio.reduce((sum, i) => sum + i.weight, 0), [portfolio]);
   const hasSelection = portfolio.length > 0;
-  const isValidAllocation = totalWeight === 100 && portfolio.length >= 2;
+  const REQUIRED_TOKENS = 3;
+  const isValidAllocation = totalWeight === 100 && portfolio.length === REQUIRED_TOKENS;
 
   const filterCounts = { crypto: allTokens.length, stock: 0, commodity: 0, prediction: 0 };
 
@@ -212,6 +213,7 @@ export const useManualDashboard = ({
   const addTokenDirect = useCallback((token: JupiterToken) => {
     setPortfolio((prev) => {
       if (prev.some((p) => p.token.address === token.address)) return prev;
+      if (prev.length >= 3) return prev;
       const currentW = prev.reduce((s, i) => s + i.weight, 0);
       let nextW = 0;
       if (currentW < 100) {
@@ -226,15 +228,22 @@ export const useManualDashboard = ({
   // One-click add function for prediction market cards
   const addTokenToComposition = useCallback((token: JupiterToken, side?: 'YES' | 'NO') => {
     triggerHaptic();
-    
+
     // Check if already added
     if (portfolio.some((p) => p.token.address === token.address)) {
-      toast.info('Already in ETF', { 
-        description: `${token.symbol} is already in your composition` 
+      toast.info('Already in ETF', {
+        description: `${token.symbol} is already in your composition`
       });
       return;
     }
-    
+
+    if (portfolio.length >= 3) {
+      toast.error('3 tokens maximum', {
+        description: 'Remove a token before adding another',
+      });
+      return;
+    }
+
     // Add token directly (skip modal)
     setPortfolio((prev) => {
       const currentW = prev.reduce((s, i) => s + i.weight, 0);
