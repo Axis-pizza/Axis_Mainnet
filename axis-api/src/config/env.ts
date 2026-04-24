@@ -1,10 +1,13 @@
 import { D1Database, R2Bucket, VectorizeIndex } from '@cloudflare/workers-types';
 
 export type Bindings = {
-  // Main Database
-  axis_db: D1Database
-  
-  // ★追加: VIPリスト管理用 Database
+  // [MAINNET] Main Database (users, strategies, xp, watchlist...)
+  axis_main_db: D1Database
+
+  // [MAINNET] Price & Performance Database (token_prices, strategy_performance...)
+  axis_price_db: D1Database
+
+  // VIPリスト管理用 Database
   whitelist_db: D1Database
 
   // Invite / whitelist gating (axis-invites DB)

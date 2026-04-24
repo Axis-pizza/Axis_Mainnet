@@ -117,7 +117,7 @@ app.get('/tokens/:address/history', async (c) => {
 app.get('/strategies/id/:strategyId', async (c) => {
   try {
     const strategyId = c.req.param('strategyId');
-    const s = await c.env.axis_db.prepare(
+    const s = await c.env.axis_main_db.prepare(
       `SELECT * FROM strategies WHERE id = ? LIMIT 1`
     ).bind(strategyId).first();
 
@@ -154,7 +154,7 @@ app.get('/strategies/id/:strategyId', async (c) => {
 app.get('/strategies/:pubkey', async (c) => {
   try {
     const pubkey = c.req.param('pubkey');
-    const { results } = await c.env.axis_db.prepare(
+    const { results } = await c.env.axis_main_db.prepare(
       `SELECT * FROM strategies WHERE owner_pubkey = ? ORDER BY created_at DESC`
     ).bind(pubkey).all();
 
@@ -195,12 +195,12 @@ app.post('/strategies', async (c) => {
 
     const now = Math.floor(Date.now() / 1000);
 
-    const existing = await c.env.axis_db.prepare(
+    const existing = await c.env.axis_main_db.prepare(
       "SELECT id FROM strategies WHERE owner_pubkey = ? AND name = ?"
     ).bind(owner_pubkey, name).first();
 
     if (existing) {
-      await c.env.axis_db.prepare(
+      await c.env.axis_main_db.prepare(
         `UPDATE strategies SET ticker = ?, description = ?, composition = ?, config = ? WHERE id = ?`
       ).bind(
         ticker || '', description || '',
@@ -211,7 +211,7 @@ app.post('/strategies', async (c) => {
     }
 
     const id = crypto.randomUUID();
-    await c.env.axis_db.prepare(`
+    await c.env.axis_main_db.prepare(`
       INSERT INTO strategies (
         id, owner_pubkey, name, ticker, description, type,
         composition, config, status, created_at, tvl, total_deposited, roi
@@ -236,7 +236,7 @@ app.get('/discover', async (c) => {
     const limit = parseInt(c.req.query('limit') || '50');
     const offset = parseInt(c.req.query('offset') || '0');
 
-    const { results } = await c.env.axis_db.prepare(
+    const { results } = await c.env.axis_main_db.prepare(
       `SELECT * FROM strategies
         WHERE status = 'active'
         ORDER BY tvl DESC, total_deposited DESC, created_at DESC
@@ -328,7 +328,7 @@ app.post('/deploy', async (c) => {
     }
 
     // 3. DB保存
-    await c.env.axis_db.prepare(`
+    await c.env.axis_main_db.prepare(`
         INSERT INTO strategies (
           id, owner_pubkey, name, ticker, description, type,
           composition, config, status, created_at,
@@ -344,7 +344,7 @@ app.post('/deploy', async (c) => {
     ).run();
 
     // XP付与 (Phase 2: 50 XP per deploy)
-    await addXP(c.env.axis_db, ownerPubkey, 50, 'STRATEGY_DEPLOY', 'Deployed Strategy');
+    await addXP(c.env.axis_main_db, ownerPubkey, 50, 'STRATEGY_DEPLOY', 'Deployed Strategy');
 
     return c.json({
         success: true,
@@ -439,11 +439,11 @@ app.post('/trade', async (c) => {
           const change = mode === 'BUY' ? amount : -amount;
 
           // TVL更新前の値を取得（マイルストーン判定用）
-          const stratBefore = await c.env.axis_db.prepare(
+          const stratBefore = await c.env.axis_main_db.prepare(
             "SELECT tvl, owner_pubkey FROM strategies WHERE id = ?"
           ).bind(strategyId).first();
 
-          await c.env.axis_db.prepare(
+          await c.env.axis_main_db.prepare(
             "UPDATE strategies SET tvl = tvl + ? WHERE id = ?"
           ).bind(change, strategyId).run();
 
@@ -456,15 +456,15 @@ app.post('/trade', async (c) => {
 
             if (tvlBefore < TVL_MILESTONE && tvlAfter >= TVL_MILESTONE && ownerPubkey) {
               // 二重付与チェック: このstrategyIdで既にTVL_MILESTONEを付与済みでないか
-              const alreadyAwarded = await c.env.axis_db.prepare(
+              const alreadyAwarded = await c.env.axis_main_db.prepare(
                 "SELECT id FROM xp_ledger WHERE related_id = ? AND action_type = 'TVL_MILESTONE' LIMIT 1"
               ).bind(strategyId).first();
 
               if (!alreadyAwarded) {
-                await c.env.axis_db.prepare(
+                await c.env.axis_main_db.prepare(
                   "INSERT INTO xp_ledger (user_pubkey, amount, action_type, description, related_id) VALUES (?, ?, 'TVL_MILESTONE', ?, ?)"
                 ).bind(ownerPubkey, 500, `TVL $10k Milestone: ${strategyId}`, strategyId).run();
-                await c.env.axis_db.prepare(
+                await c.env.axis_main_db.prepare(
                   "UPDATE users SET total_xp = total_xp + 500 WHERE wallet_address = ?"
                 ).bind(ownerPubkey).run();
               }
@@ -507,39 +507,39 @@ app.get('/strategies/:id/performance', async (c) => {
   try {
     const id = c.req.param('id');
 
-    // 現在の最新スナップショット
-    const current = await c.env.axis_db.prepare(
-      `SELECT index_price, confidence, ts_bucket_utc FROM strategy_price_snapshots WHERE strategy_id = ? ORDER BY ts_bucket_utc DESC LIMIT 1;`
+    // 現在の最新パフォーマンス
+    const current = await c.env.axis_price_db.prepare(
+      `SELECT nav_sol, roi_pct, ts_bucket_utc FROM strategy_performance WHERE strategy_id = ? ORDER BY ts_bucket_utc DESC LIMIT 1`
     ).bind(id).first();
 
-    // 24時間前以前の最新スナップショット
-    const ago24h = await c.env.axis_db.prepare(
-      `SELECT index_price FROM strategy_price_snapshots WHERE strategy_id = ? AND ts_bucket_utc <= (unixepoch() - 86400) ORDER BY ts_bucket_utc DESC LIMIT 1;`
+    // 24時間前以前の最新パフォーマンス
+    const ago24h = await c.env.axis_price_db.prepare(
+      `SELECT nav_sol FROM strategy_performance WHERE strategy_id = ? AND ts_bucket_utc <= (unixepoch() - 86400) ORDER BY ts_bucket_utc DESC LIMIT 1`
     ).bind(id).first();
 
-    // 7日前以前の最新スナップショット
-    const ago7d = await c.env.axis_db.prepare(
-      `SELECT index_price FROM strategy_price_snapshots WHERE strategy_id = ? AND ts_bucket_utc <= (unixepoch() - 604800) ORDER BY ts_bucket_utc DESC LIMIT 1;`
+    // 7日前以前の最新パフォーマンス
+    const ago7d = await c.env.axis_price_db.prepare(
+      `SELECT nav_sol FROM strategy_performance WHERE strategy_id = ? AND ts_bucket_utc <= (unixepoch() - 604800) ORDER BY ts_bucket_utc DESC LIMIT 1`
     ).bind(id).first();
 
-    // ETF作成時の基準価格 (正規化の分母)
-    const baseline = await c.env.axis_db.prepare(
-      `SELECT baseline_price FROM strategy_deployment_baseline WHERE strategy_id = ?`
+    // ETF作成時の基準NAV (正規化の分母)
+    const baseline = await c.env.axis_main_db.prepare(
+      `SELECT baseline_nav FROM strategy_deployment_baseline WHERE strategy_id = ?`
     ).bind(id).first();
 
     // スナップショット未蓄積
     if (!current) {
       return c.json({ success: true, current_price: null, change_24h: null, change_7d: null, change_since_inception: null, confidence: 'NO_DATA', last_updated: null });
     }
-     // baselineなし or ゼロ → ゼロ除算回避
-    else if (!baseline || baseline.baseline_price === 0) {
+    // baselineなし or ゼロ → ゼロ除算回避
+    else if (!baseline || baseline.baseline_nav === 0) {
       return c.json({ success: true, current_price: null, change_24h: null, change_7d: null, change_since_inception: null, confidence: 'FAIL', last_updated: null });
     } else {
 
-      // normalized = (index_price / baseline_price) * 100
-      const currentNormalized = (current.index_price as number / baseline.baseline_price as number) * 100;
-      const normalized24h = ago24h ? (ago24h.index_price as number / baseline.baseline_price as number) * 100 : null;
-      const normalized7d  = ago7d  ? (ago7d.index_price  as number / baseline.baseline_price as number) * 100 : null;
+      // normalized = (nav_sol / baseline_nav) * 100
+      const currentNormalized = (current.nav_sol as number / baseline.baseline_nav as number) * 100;
+      const normalized24h = ago24h ? (ago24h.nav_sol as number / baseline.baseline_nav as number) * 100 : null;
+      const normalized7d  = ago7d  ? (ago7d.nav_sol  as number / baseline.baseline_nav as number) * 100 : null;
 
       // change% = ((current - past) / past) * 100
       const change_24h = normalized24h !== null ? ((currentNormalized - normalized24h) / normalized24h) * 100 : null;
