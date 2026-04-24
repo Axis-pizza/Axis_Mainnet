@@ -1061,12 +1061,16 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
             )}
 
             {/* Add token button */}
-            <button
-              onClick={() => setIsSelectorOpen(true)}
-              className="flex items-center gap-1.5 text-[11px] font-normal px-3 py-1.5 rounded-full btn-glass-gold transition-colors"
-            >
-              <Plus size={12} /> Add
-            </button>
+            {portfolio.length < 3 ? (
+              <button
+                onClick={() => setIsSelectorOpen(true)}
+                className="flex items-center gap-1.5 text-[11px] font-normal px-3 py-1.5 rounded-full btn-glass-gold transition-colors"
+              >
+                <Plus size={12} /> Add ({portfolio.length}/3)
+              </button>
+            ) : (
+              <span className="text-[11px] text-emerald-400 font-normal px-3 py-1.5">3/3 ✓</span>
+            )}
           </div>
         ) : (
           /* Stats Header — standalone mode */
@@ -1105,7 +1109,9 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
                   <Percent size={12} /> Equal
                 </button>
               )}
-              <div className="text-xs text-white/30 font-mono">{portfolio.length} Asset{portfolio.length !== 1 ? 's' : ''}</div>
+              <div className={`text-xs font-mono ${portfolio.length === 3 ? 'text-emerald-400' : 'text-white/30'}`}>
+                {portfolio.length}/3 Tokens
+              </div>
             </div>
           </div>
         )}
@@ -1140,15 +1146,21 @@ export const MobileBuilder = ({ dashboard, preferences, onBack, inline }: Builde
             ))}
           </AnimatePresence>
 
-          <motion.button
-            layout
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setIsSelectorOpen(true)}
-            className="w-full py-4 rounded-2xl border border-dashed border-white/[0.08] flex items-center justify-center gap-2.5 text-white/25 active:bg-white/5 active:text-white/50 transition-colors"
-          >
-            <Plus size={17} />
-            <span className="text-sm font-normal">Add token</span>
-          </motion.button>
+          {portfolio.length < 3 ? (
+            <motion.button
+              layout
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setIsSelectorOpen(true)}
+              className="w-full py-4 rounded-2xl border border-dashed border-white/[0.08] flex items-center justify-center gap-2.5 text-white/25 active:bg-white/5 active:text-white/50 transition-colors"
+            >
+              <Plus size={17} />
+              <span className="text-sm font-normal">Add token ({portfolio.length}/3)</span>
+            </motion.button>
+          ) : (
+            <div className="w-full py-3 rounded-2xl border border-emerald-500/20 bg-emerald-950/10 flex items-center justify-center gap-2 text-emerald-400 text-sm">
+              <Check size={15} /> 3 tokens selected
+            </div>
+          )}
         </div>
       </div>
 

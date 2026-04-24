@@ -547,7 +547,7 @@ export const SwipeCardBody = ({
             <span className={`text-white/40 uppercase font-normal tracking-widest mb-0.5 ${c ? 'text-[8px]' : 'text-[10px]'}`}>TVL</span>
             <div className={`font-normal text-white tracking-tight z-10 leading-none ${c ? 'text-sm' : 'text-xl'}`}>
               {formatTvl(strategy.tvl)}
-              {!c && <span className="text-[11px] text-white/30 ml-1.5">USDC</span>}
+              {!c && <span className="text-[11px] text-white/30 ml-1.5">SOL</span>}
             </div>
           </div>
         </div>

@@ -2,21 +2,26 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileText, ShieldCheck, Wallet, Loader2 } from 'lucide-react';
+import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { useConnection } from '../../hooks/useWallet';
-import { Transaction } from '@solana/web3.js';
 import { useWallet } from '../../hooks/useWallet';
 import { useToast } from '../../context/ToastContext';
 import { api, clearStrategyCache } from '../../services/api';
-import { SERVER_WALLET_PUBKEY } from '../../config/constants';
-import { getOrCreateUsdcAta, createUsdcTransferIx, getUsdcBalance } from '../../services/usdc';
-import { Buffer } from 'buffer';
+import {
+  initializeStrategyFromUI,
+  depositSol,
+  solToLamports,
+  deriveStrategyVaultPda,
+  getStrategyVault,
+} from '../../protocol/kagemusha';
+import type { StrategyTypeLabel } from '../../protocol/kagemusha';
 
 interface DeploymentBlueprintProps {
   strategyName: string;
   strategyType: string;
   tokens: { symbol: string; weight: number; logoURI?: string; address?: string; mint?: string }[];
   description: string;
-  settings?: any;
+  settings?: Record<string, unknown>;
   info?: {
     symbol: string;
     imagePreview?: string;
@@ -33,184 +38,109 @@ export const DeploymentBlueprint = ({
   strategyType = 'BALANCED',
   tokens = [],
   description = '',
-  settings = {},
   info = { symbol: 'TEMP' },
-  initialTvl = 1.0,
   onBack,
   onComplete,
   onDeploySuccess,
 }: DeploymentBlueprintProps) => {
-  // Default values handle the null case; no early return needed
-  if (!tokens) {
-    // logging or handling if needed
-  }
-
   const { connection } = useConnection();
   const wallet = useWallet();
   const { showToast } = useToast();
 
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [depositAmount, setDepositAmount] = useState('0');
-  const [depositAsset, setDepositAsset] = useState<'SOL' | 'USDC'>('USDC');
   const [isDeploying, setIsDeploying] = useState(false);
-  const [usdcBalance, setUsdcBalance] = useState<number | null>(null);
+  const [solBalance, setSolBalance] = useState<number | null>(null);
   const [deployStep, setDeployStep] = useState<string>('');
-
-  // Fetch balance when modal opens
-  const handleInitialDeployClickWithBalance = async () => {
-    setIsDepositModalOpen(true);
-    if (wallet.publicKey) {
-      const bal = await getUsdcBalance(connection, wallet.publicKey);
-      setUsdcBalance(bal);
-    }
-  };
 
   const safeSymbol = info?.symbol || 'ETF';
   const safeTokens = Array.isArray(tokens) ? tokens : [];
 
+  const handleInitialDeployClickWithBalance = async () => {
+    setIsDepositModalOpen(true);
+    if (wallet.publicKey) {
+      try {
+        const lamports = await connection.getBalance(wallet.publicKey);
+        setSolBalance(lamports / LAMPORTS_PER_SOL);
+      } catch {
+        setSolBalance(0);
+      }
+    }
+  };
 
   const handleConfirmDeploy = async () => {
-    if (!depositAmount) return;
     if (!wallet.publicKey || !wallet.signTransaction) {
       showToast('Wallet not connected', 'error');
       return;
     }
 
     setIsDeploying(true);
-    setDeployStep('Checking balance...');
 
     try {
-      const amountUsdc = parseFloat(depositAmount);
+      const amountSol = parseFloat(depositAmount) || 0;
 
-      // 1. Transfer USDC
-      let txSignature = '';
-      if (amountUsdc > 0) {
-        // Pre-check balance to surface a clear error before wallet rejects
-        const balance = await getUsdcBalance(connection, wallet.publicKey);
-        if (balance < amountUsdc) {
-          showToast(
-            `Insufficient USDC: you have ${balance.toFixed(2)} but need ${amountUsdc} USDC.`,
-            'error'
-          );
-          setIsDeploying(false);
-          setDeployStep('');
-          return;
-        }
+      // 1. Initialize StrategyVault on-chain (idempotent — skips if already exists)
+      setDeployStep('Initializing vault on-chain...');
+      const [pda] = deriveStrategyVaultPda(wallet.publicKey, strategyName);
+      const existingVault = await getStrategyVault(connection, pda);
 
-        setDeployStep('Preparing transaction...');
-
-        // Derive ATA addresses
-        const { ata: fromAta, instruction: createFromIx } = await getOrCreateUsdcAta(
-          connection, wallet.publicKey, wallet.publicKey
-        );
-        const { ata: toAta, instruction: createToIx } = await getOrCreateUsdcAta(
-          connection, wallet.publicKey, SERVER_WALLET_PUBKEY
-        );
-
-        // Check ATA existence — only add create instruction if missing
-        const [fromAtaInfo, toAtaInfo] = await Promise.all([
-          connection.getAccountInfo(fromAta),
-          connection.getAccountInfo(toAta),
-        ]);
-
-        if (!fromAtaInfo) {
-          throw new Error(
-            'USDC token account not found. Please ensure you have USDC in your wallet.\n' +
-            `(USDC mint: EPjFWdd5...)`
-          );
-        }
-
-        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-
-        const transaction = new Transaction();
-        transaction.recentBlockhash = blockhash;
-        // 一時的にユーザーを feePayer に設定（シリアライズに必要）
-        transaction.feePayer = wallet.publicKey;
-
-        // Only add ATA creation if it doesn't exist yet
-        if (!toAtaInfo) transaction.add(createToIx);
-        void createFromIx; // fromAta already exists
-
-        transaction.add(createUsdcTransferIx(fromAta, toAta, wallet.publicKey, amountUsdc));
-
-        // 運営ウォレットにガス代を委任
-        setDeployStep('Delegating gas fee to operator...');
-        let txToSign = transaction;
-        try {
-          const serialized = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
-          const { transaction: feePayerSignedBase64 } = await api.signAsFeePayer(
-            Buffer.from(serialized).toString('base64')
-          );
-          txToSign = Transaction.from(Buffer.from(feePayerSignedBase64, 'base64'));
-        } catch {
-          // バックエンドが失敗した場合はユーザーがガス代を負担するフォールバック
-        }
-
-        setDeployStep('Waiting for wallet signature...');
-        const signed = await wallet.signTransaction(txToSign);
-
-        setDeployStep('Verifying transaction...');
-        // eslint-disable-next-line @typescript-eslint/no-deprecated
-        const sim = await connection.simulateTransaction(signed);
-        if (sim.value.err) {
-          const logs = sim.value.logs?.join('\n') ?? '(no logs)';
-          console.error('[Simulation failed]', sim.value.err, '\nLogs:\n', logs);
-          throw new Error(`Preflight failed: ${JSON.stringify(sim.value.err)}\n\n${logs}`);
-        }
-        console.log('[Simulation passed]', sim.value.logs);
-
-        setDeployStep('Sending to blockchain...');
-        txSignature = await connection.sendRawTransaction(signed.serialize(), {
-          skipPreflight: true,
-          maxRetries: 5,
+      let strategyPda = pda;
+      if (!existingVault) {
+        const result = await initializeStrategyFromUI(connection, wallet, {
+          name: strategyName,
+          strategyTypeLabel: (strategyType as StrategyTypeLabel) || 'BALANCED',
+          tokens: safeTokens,
         });
-        setDeployStep('Confirming on-chain... (may take 10-30s)');
-        const confirmation = await connection.confirmTransaction(
-          { signature: txSignature, blockhash, lastValidBlockHeight },
-          'confirmed'
-        );
-        if (confirmation.value.err) {
-          console.error('[Transaction failed on-chain]', confirmation.value.err);
-          throw new Error(`Transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
-        }
+        strategyPda = result.strategyPda;
       }
 
-      // 2. API call
-      setDeployStep('Minting basket tokens...');
+      // 2. Deposit SOL into vault (if amount > 0)
+      let txSignature = '';
+      if (amountSol > 0) {
+        setDeployStep('Depositing SOL into vault...');
+        const { signature } = await depositSol(
+          connection,
+          wallet,
+          strategyPda,
+          solToLamports(amountSol)
+        );
+        txSignature = signature;
+      }
+
+      // 3. Save strategy metadata to API
+      setDeployStep('Saving strategy metadata...');
       const strategyData = {
         ownerPubkey: wallet.publicKey.toBase58(),
         name: strategyName,
         ticker: safeSymbol,
-        description: description,
-        type: 'BALANCED',
+        description,
+        type: strategyType || 'BALANCED',
         tokens: safeTokens.map((t) => ({
           symbol: t.symbol,
           weight: t.weight,
           logoURI: t.logoURI,
+          mint: t.mint,
         })),
-        tvl: amountUsdc,
+        tvl: amountSol,
+        address: strategyPda.toBase58(),
       };
 
       const result = await api.deploy(txSignature, strategyData);
-
       if (!result.success) throw new Error(result.error || 'Deployment API failed');
 
-      // キャッシュをクリアして Discover で最新データが取得されるようにする
       clearStrategyCache();
-      console.log('[Deploy] result:', JSON.stringify(result));
-
       showToast(`✅ ${safeSymbol} Deployed Successfully!`, 'success');
       setIsDepositModalOpen(false);
       setIsDeploying(false);
       setDeployStep('');
 
       if (onDeploySuccess) {
-        onDeploySuccess(result.strategyId || result.mintAddress, amountUsdc, depositAsset);
+        onDeploySuccess(result.strategyId || strategyPda.toBase58(), amountSol, 'SOL');
       } else {
         onComplete();
       }
-    } catch (e: any) {
-      showToast(`Failed: ${e.message}`, 'error');
+    } catch (e: unknown) {
+      showToast(`Failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
       setIsDeploying(false);
       setDeployStep('');
     }
@@ -295,14 +225,16 @@ export const DeploymentBlueprint = ({
           Modify
         </motion.button>
         <motion.button
-          whileHover={{ scale: 1.01, boxShadow: '0 0 28px rgba(201,168,76,0.3)' }}
+          whileHover={safeTokens.length === 3 ? { scale: 1.01, boxShadow: '0 0 28px rgba(201,168,76,0.3)' } : {}}
           whileTap={{ scale: 0.98 }}
           transition={{ type: 'spring', stiffness: 400, damping: 20 }}
           onClick={handleInitialDeployClickWithBalance}
-          disabled={isDeploying}
-          className="flex-1 py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#080503] font-normal rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20"
+          disabled={isDeploying || safeTokens.length !== 3}
+          title={safeTokens.length !== 3 ? 'Exactly 3 tokens required' : undefined}
+          className="flex-1 py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#080503] font-normal rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <Wallet className="w-5 h-5" /> Deposit & Mint
+          <Wallet className="w-5 h-5" />
+          {safeTokens.length === 3 ? 'Deposit & Mint' : `${safeTokens.length}/3 tokens required`}
         </motion.button>
       </div>
 
@@ -314,7 +246,7 @@ export const DeploymentBlueprint = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={() => setIsDepositModalOpen(false)}
+                onClick={() => !isDeploying && setIsDepositModalOpen(false)}
                 className="fixed inset-0 bg-black/80 z-[9999]"
                 style={{ willChange: 'opacity' }}
               />
@@ -326,50 +258,50 @@ export const DeploymentBlueprint = ({
                 className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-md bg-[#140E08] border border-[rgba(184,134,63,0.15)] rounded-3xl p-6 z-[10000] shadow-2xl"
                 style={{ willChange: 'transform, opacity' }}
               >
-              <h3 className="text-xl font-normal text-[#F2E0C8] mb-4">Initial Liquidity</h3>
+                <h3 className="text-xl font-normal text-[#F2E0C8] mb-4">Initial Liquidity</h3>
 
-              {/* USDC残高表示 */}
-              <div className="flex items-center justify-between mb-3 px-1">
-                <span className="text-xs text-[#B89860]">Your USDC Balance</span>
-                <span className={`text-xs font-mono font-normal ${usdcBalance === 0 ? 'text-red-400' : 'text-[#F2E0C8]'}`}>
-                  {usdcBalance === null ? '...' : `${usdcBalance.toFixed(2)} USDC`}
-                </span>
-              </div>
-
-              <div className="mb-4">
-                <label className="text-xs text-[#B89860] mb-1 block">Deposit Amount (USDC)</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                  className="w-full p-4 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-xl font-normal text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
-                />
-                <p className="text-[11px] text-white/30 mt-1.5 px-1">
-                  You can mint with 0 USDC and deposit later.
-                </p>
-              </div>
-
-              {usdcBalance === 0 && (
-                <div className="mb-4 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400">
-                  No USDC found in wallet. Mint with 0 USDC or deposit USDC first.
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <span className="text-xs text-[#B89860]">Your SOL Balance</span>
+                  <span className={`text-xs font-mono font-normal ${solBalance === 0 ? 'text-red-400' : 'text-[#F2E0C8]'}`}>
+                    {solBalance === null ? '...' : `${solBalance.toFixed(4)} SOL`}
+                  </span>
                 </div>
-              )}
 
-              {isDeploying && deployStep && (
-                <div className="mb-4 px-3 py-3 rounded-xl bg-amber-900/20 border border-amber-600/20 flex items-center gap-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 flex-shrink-0" />
-                  <span className="text-xs text-amber-300">{deployStep}</span>
+                <div className="mb-4">
+                  <label className="text-xs text-[#B89860] mb-1 block">Deposit Amount (SOL)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={depositAmount}
+                    onChange={(e) => setDepositAmount(e.target.value)}
+                    className="w-full p-4 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-xl font-normal text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
+                  />
+                  <p className="text-[11px] text-white/30 mt-1.5 px-1">
+                    You can mint with 0 SOL and deposit later.
+                  </p>
                 </div>
-              )}
 
-              <button
-                onClick={handleConfirmDeploy}
-                disabled={isDeploying}
-                className="w-full py-4 bg-gradient-to-b from-[#F2E0C8] to-[#D4A261] text-[#080503] font-normal rounded-xl flex justify-center gap-2 hover:brightness-110 transition-all disabled:opacity-50"
-              >
-                {isDeploying ? <Loader2 className="animate-spin" /> : 'Confirm & Mint'}
-              </button>
+                {solBalance !== null && solBalance < 0.01 && (
+                  <div className="mb-4 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400">
+                    Low SOL balance. Keep at least 0.01 SOL for transaction fees.
+                  </div>
+                )}
+
+                {isDeploying && deployStep && (
+                  <div className="mb-4 px-3 py-3 rounded-xl bg-amber-900/20 border border-amber-600/20 flex items-center gap-2">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 flex-shrink-0" />
+                    <span className="text-xs text-amber-300">{deployStep}</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleConfirmDeploy}
+                  disabled={isDeploying}
+                  className="w-full py-4 bg-gradient-to-b from-[#F2E0C8] to-[#D4A261] text-[#080503] font-normal rounded-xl flex justify-center gap-2 hover:brightness-110 transition-all disabled:opacity-50"
+                >
+                  {isDeploying ? <Loader2 className="animate-spin" /> : 'Confirm & Mint'}
+                </button>
               </motion.div>
             </>
           )}

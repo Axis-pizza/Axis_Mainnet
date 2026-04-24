@@ -1,3 +1,9 @@
+/**
+ * @deprecated Legacy Kagemusha service (devnet era, hand-written IDL).
+ * New code should import from `src/protocol/kagemusha` instead.
+ * This file is retained only for any callers not yet migrated.
+ * Do not add new functions here.
+ */
 import {
   Connection,
   PublicKey,

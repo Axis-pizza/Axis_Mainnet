@@ -1,16 +1,22 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ArrowDown, Loader2, AlertCircle } from 'lucide-react';
 import { useConnection, useWallet } from '../../hooks/useWallet';
 import { PublicKey } from '@solana/web3.js';
-import { withdraw } from '../../services/kagemusha';
+import {
+  withdrawSol,
+  solToLamports,
+  lamportsToSol,
+  getUserPosition,
+} from '../../protocol/kagemusha';
 
 interface RedeemModalProps {
   isOpen: boolean;
   onClose: () => void;
   strategyAddress: string;
   strategyName: string;
-  maxShares: number; // For demo, we might mock this or fetch user position
+  /** Fallback SOL balance if on-chain fetch is unavailable */
+  maxShares?: number;
   onSuccess: () => void;
 }
 
@@ -19,7 +25,7 @@ export const RedeemModal = ({
   onClose,
   strategyAddress,
   strategyName,
-  maxShares = 100, // Default mock value if not provided
+  maxShares = 0,
   onSuccess,
 }: RedeemModalProps) => {
   const { connection } = useConnection();
@@ -27,27 +33,60 @@ export const RedeemModal = ({
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [onChainShares, setOnChainShares] = useState<number | null>(null);
+  const [isFetchingPosition, setIsFetchingPosition] = useState(false);
+
+  // Fetch on-chain UserPosition when modal opens
+  useEffect(() => {
+    if (!isOpen || !wallet.publicKey) return;
+
+    let cancelled = false;
+    setIsFetchingPosition(true);
+    setOnChainShares(null);
+
+    const fetchPosition = async () => {
+      try {
+        const strategyPubkey = new PublicKey(strategyAddress);
+        const pos = await getUserPosition(connection, strategyPubkey, wallet.publicKey!);
+        if (!cancelled && pos) {
+          setOnChainShares(lamportsToSol(pos.lpShares));
+        }
+      } catch {
+        // strategyAddress is not a valid pubkey or no position on-chain
+      } finally {
+        if (!cancelled) setIsFetchingPosition(false);
+      }
+    };
+
+    fetchPosition();
+    return () => { cancelled = true; };
+  }, [isOpen, strategyAddress, wallet.publicKey, connection]);
+
+  // Displayed available balance: on-chain if found, prop fallback otherwise
+  const displayShares = onChainShares !== null ? onChainShares : maxShares;
 
   const handleRedeem = async () => {
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
+    const sol = Number(amount);
+    if (!amount || isNaN(sol) || sol <= 0) return;
 
     setIsLoading(true);
     setError(null);
 
     try {
-      await withdraw(connection, wallet, new PublicKey(strategyAddress), Number(amount));
-
+      const strategyPubkey = new PublicKey(strategyAddress);
+      const amountLamports = solToLamports(sol);
+      await withdrawSol(connection, wallet, strategyPubkey, amountLamports);
       onSuccess();
       onClose();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to redeem shares');
+      setError(e instanceof Error ? e.message : 'Failed to redeem');
     } finally {
       setIsLoading(false);
     }
   };
 
   const setPercentage = (pct: number) => {
-    setAmount((maxShares * pct).toFixed(4));
+    setAmount((displayShares * pct).toFixed(4));
   };
 
   return (
@@ -68,7 +107,7 @@ export const RedeemModal = ({
             className="fixed left-4 right-4 top-1/2 -translate-y-1/2 max-w-sm mx-auto bg-[#121212] border border-white/10 rounded-3xl p-6 z-[70] shadow-2xl"
           >
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl font-normal">Redeem Shares</h3>
+              <h3 className="text-xl font-normal">Redeem SOL</h3>
               <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10">
                 <X className="w-4 h-4" />
               </button>
@@ -80,14 +119,20 @@ export const RedeemModal = ({
                 <span className="text-sm font-normal">{strategyName}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-white/50">Available Shares</span>
-                <span className="text-sm font-mono text-emerald-400">{maxShares.toFixed(4)}</span>
+                <span className="text-xs text-white/50">Available (SOL)</span>
+                {isFetchingPosition ? (
+                  <Loader2 className="w-3 h-3 animate-spin text-white/30" />
+                ) : (
+                  <span className="text-sm font-mono text-emerald-400">
+                    {displayShares.toFixed(4)}
+                  </span>
+                )}
               </div>
             </div>
 
             <div className="space-y-4 mb-6">
               <div>
-                <label className="text-xs text-white/50 mb-1 block">Amount to Redeem</label>
+                <label className="text-xs text-white/50 mb-1 block">Amount to Redeem (SOL)</label>
                 <div className="relative">
                   <input
                     type="number"
@@ -97,7 +142,7 @@ export const RedeemModal = ({
                     className="w-full bg-black/50 border border-white/10 rounded-xl py-3 pl-4 pr-12 font-mono text-lg outline-none focus:border-orange-500/50"
                   />
                   <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-white/30">
-                    SHARES
+                    SOL
                   </div>
                 </div>
               </div>

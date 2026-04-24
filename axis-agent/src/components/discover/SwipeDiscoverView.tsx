@@ -22,18 +22,17 @@ import {
 import { SwipeCard } from './SwipeCard';
 import { api } from '../../services/api';
 import { useWallet, useConnection, useLoginModal } from '../../hooks/useWallet';
-import { PublicKey, Transaction } from '@solana/web3.js';
-import {
-  getAssociatedTokenAddress,
-  createTransferInstruction,
-  TOKEN_PROGRAM_ID,
-} from '@solana/spl-token';
-import { getUsdcBalance, getOrCreateUsdcAta, createUsdcTransferIx } from '../../services/usdc';
+import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { JupiterService } from '../../services/jupiter';
+import {
+  depositSol,
+  withdrawSol,
+  solToLamports,
+  getUserPosition,
+  lamportsToSol,
+} from '../../protocol/kagemusha';
 import { DexScreenerService } from '../../services/dexscreener';
 import { useToast } from '../../context/ToastContext';
-
-const MASTER_MINT_ADDRESS = new PublicKey('2JiisncKr8DhvA68MpszFDjGAVu2oFtqJJC837LLiKdT');
 
 type TransactionStatus = 'IDLE' | 'SIGNING' | 'CONFIRMING' | 'PROCESSING' | 'SUCCESS' | 'ERROR';
 
@@ -349,36 +348,48 @@ const SwipeToConfirm = memo(
   }
 );
 
-// --- InvestSheet (Full Screen — matches StrategyDetailView Trade modal) ---
+// --- InvestSheet (SOL-native, Full Screen) ---
 interface InvestSheetProps {
   isOpen: boolean;
   onClose: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   strategy: any;
   onConfirm: (amount: string, mode: 'BUY' | 'SELL') => Promise<void>;
   status: TransactionStatus;
-  userEtfBalance: number;
 }
 
-const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBalance }: InvestSheetProps) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status }: InvestSheetProps) => {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
   const { showToast } = useToast();
 
   const [mode, setMode] = useState<'BUY' | 'SELL'>('BUY');
   const [amount, setAmount] = useState('0');
-  const [usdcBalance, setUsdcBalance] = useState(0);
-  const MOCK_PRICE_PER_TOKEN = 1.0;
+  const [solBalance, setSolBalance] = useState(0);
+  const [vaultBalance, setVaultBalance] = useState(0);
 
   useEffect(() => {
     if (!publicKey || !isOpen) return;
-    const fetchBalance = async () => {
+    const fetchBalances = async () => {
       try {
-        const bal = await getUsdcBalance(connection, publicKey);
-        setUsdcBalance(bal);
-      } catch {}
+        const lamports = await connection.getBalance(publicKey);
+        setSolBalance(lamports / LAMPORTS_PER_SOL);
+      } catch {
+        // non-fatal
+      }
+      try {
+        const addr = strategy.address || strategy.vaultAddress;
+        if (addr) {
+          const pos = await getUserPosition(connection, new PublicKey(addr), publicKey);
+          if (pos) setVaultBalance(lamportsToSol(pos.lpShares));
+        }
+      } catch {
+        // no position
+      }
     };
-    fetchBalance();
-  }, [isOpen, publicKey, connection]);
+    fetchBalances();
+  }, [isOpen, publicKey, connection, strategy]);
 
   useEffect(() => {
     if (isOpen) {
@@ -387,14 +398,13 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
     }
   }, [isOpen]);
 
+  const currentBalance = mode === 'BUY' ? solBalance : vaultBalance;
+
   const estimatedOutput = useMemo(() => {
     const val = parseFloat(amount);
-    if (isNaN(val) || val <= 0) return '0.00';
-    return (val * MOCK_PRICE_PER_TOKEN).toFixed(4);
+    if (isNaN(val) || val <= 0) return '0.0000';
+    return val.toFixed(4);
   }, [amount]);
-
-  const currentBalance = mode === 'BUY' ? usdcBalance : userEtfBalance;
-  const ticker = strategy.ticker || 'ETF';
 
   const handleNum = (num: string) => {
     if (status !== 'IDLE' && status !== 'ERROR') return;
@@ -439,7 +449,6 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
             >
               <X className="w-5 h-5" />
             </button>
-            {/* Mode Toggle Pills */}
             <div className="flex bg-[#1C1C1E] p-1 rounded-full border border-white/5">
               <button
                 onClick={() => setMode('BUY')}
@@ -447,7 +456,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
                   mode === 'BUY' ? 'bg-[#B8863F] text-black' : 'text-[#78716C]'
                 }`}
               >
-                Buy
+                Deposit
               </button>
               <button
                 onClick={() => setMode('SELL')}
@@ -455,15 +464,14 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
                   mode === 'SELL' ? 'bg-[#B8863F] text-black' : 'text-[#78716C]'
                 }`}
               >
-                Sell
+                Withdraw
               </button>
             </div>
             <div className="w-10 h-10" />
           </div>
 
-          {/* Main Content (Center) */}
+          {/* Main Content */}
           <div className="flex-1 flex flex-col justify-center items-center relative w-full px-6">
-            {/* Amount Display */}
             <div className="flex flex-col items-center gap-2 mb-8">
               <div className="flex items-baseline justify-center gap-1">
                 <span
@@ -472,37 +480,38 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
                   {amount}
                 </span>
               </div>
-              <span className="text-[#78716C] font-normal text-lg">
-                {mode === 'BUY' ? 'USDC' : ticker}
-              </span>
+              <span className="text-[#78716C] font-normal text-lg">SOL</span>
             </div>
 
-            {/* Available Balance Pill */}
             <div className="flex items-center gap-2 bg-[#1C1C1E] py-2 px-4 rounded-full border border-white/5 mb-8">
               <Wallet className="w-3.5 h-3.5 text-[#78716C]" />
               <span className="text-[#A8A29E] text-xs font-mono">
-                Available: {currentBalance.toFixed(4)} {mode === 'BUY' ? 'USDC' : ticker}
+                Available: {currentBalance.toFixed(4)} SOL
               </span>
               <button
-                onClick={() => setAmount((currentBalance * (mode === 'BUY' ? 0.95 : 1)).toFixed(4))}
+                onClick={() => {
+                  const max = mode === 'BUY' ? Math.max(0, solBalance - 0.005) : vaultBalance;
+                  setAmount(max.toFixed(4));
+                }}
                 className="text-[#B8863F] text-xs font-normal uppercase hover:text-white transition-colors"
               >
                 Max
               </button>
             </div>
 
-            {/* Estimated Output */}
             {amount !== '0' && (
               <div className="absolute bottom-4 flex items-center gap-2 text-sm text-[#78716C]">
                 <ArrowDown className="w-4 h-4" />
                 <span>
-                  Receive approx. {estimatedOutput} {mode === 'BUY' ? ticker : 'USDC'}
+                  {mode === 'BUY'
+                    ? `Deposit ${estimatedOutput} SOL into ${strategy.name}`
+                    : `Withdraw ${estimatedOutput} SOL from vault`}
                 </span>
               </div>
             )}
           </div>
 
-          {/* Keypad & Action (Bottom) */}
+          {/* Keypad & Action */}
           <div className="shrink-0 w-full px-6 pb-[calc(env(safe-area-inset-bottom)+24px)] bg-[#0C0C0C]">
             {(status === 'IDLE' || status === 'ERROR') && (
               <div className="grid grid-cols-3 gap-y-4 gap-x-6 mb-8 max-w-[320px] mx-auto">
@@ -535,7 +544,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, userEtfBala
                   onConfirm={handleExecute}
                   isLoading={false}
                   isSuccess={status === 'SUCCESS'}
-                  label={`SLIDE TO ${mode}`}
+                  label={`SLIDE TO ${mode === 'BUY' ? 'DEPOSIT' : 'WITHDRAW'}`}
                   amount={amount}
                 />
               )}
@@ -708,25 +717,9 @@ export const SwipeDiscoverView = ({
   const [isInvestOpen, setIsInvestOpen] = useState(false);
   const [investStatus, setInvestStatus] = useState<TransactionStatus>('IDLE');
   const [investTarget, setInvestTarget] = useState<any | null>(null);
-  const [userEtfBalance, setUserEtfBalance] = useState(0);
 
   const dataFetched = useRef(false);
   const appliedFocusRef = useRef<string | null>(null);
-
-  // ETF balance fetch
-  useEffect(() => {
-    if (!wallet.publicKey) return;
-    const fetchEtfBalance = async () => {
-      try {
-        const userAta = await getAssociatedTokenAddress(MASTER_MINT_ADDRESS, wallet.publicKey!);
-        const account = await connection.getTokenAccountBalance(userAta);
-        setUserEtfBalance(account.value.uiAmount || 0);
-      } catch {
-        setUserEtfBalance(0);
-      }
-    };
-    fetchEtfBalance();
-  }, [wallet.publicKey, connection, investStatus, isInvestOpen]);
 
   useEffect(() => {
     onOverlayChange?.(matchedStrategy !== null);
@@ -1040,112 +1033,42 @@ export const SwipeDiscoverView = ({
       openWalletModal(true);
       return;
     }
+
+    const targetAddressStr =
+      investTarget.address || investTarget.vaultAddress || investTarget.ownerPubkey || null;
+    if (!targetAddressStr) {
+      showToast('Strategy address not found', 'error');
+      return;
+    }
+
     setInvestStatus('SIGNING');
     try {
       const parsedAmount = parseFloat(amountStr);
       if (isNaN(parsedAmount) || parsedAmount <= 0) throw new Error('Invalid amount');
 
-      const targetAddressStr =
-        investTarget.vaultAddress ||
-        investTarget.address ||
-        investTarget.ownerPubkey ||
-        investTarget.creatorAddress ||
-        null;
-      if (!targetAddressStr) {
-        showToast('Vault address not found', 'error');
-        setInvestStatus('ERROR');
-        setTimeout(() => setInvestStatus('IDLE'), 2000);
-        return;
-      }
-
-      const targetPubkey = new PublicKey(targetAddressStr.trim());
-      const transaction = new Transaction();
+      const strategyPubkey = new PublicKey(targetAddressStr.trim());
+      const amountLamports = solToLamports(parsedAmount);
 
       if (mode === 'BUY') {
-        // USDC SPL transfer to vault
-        const { ata: fromAta, instruction: createFromIx } = await getOrCreateUsdcAta(
-          connection,
-          wallet.publicKey,
-          wallet.publicKey
-        );
-        const { ata: toAta, instruction: createToIx } = await getOrCreateUsdcAta(
-          connection,
-          wallet.publicKey,
-          targetPubkey
-        );
-        if (createFromIx) transaction.add(createFromIx);
-        if (createToIx) transaction.add(createToIx);
-        transaction.add(createUsdcTransferIx(fromAta, toAta, wallet.publicKey, parsedAmount));
+        await depositSol(connection, wallet, strategyPubkey, amountLamports);
       } else {
-        // SELL: ETF token transfer back to vault
-        const mintAddress = investTarget.mintAddress
-          ? new PublicKey(investTarget.mintAddress)
-          : MASTER_MINT_ADDRESS;
-        const userAta = await getAssociatedTokenAddress(mintAddress, wallet.publicKey);
-        const vaultAta = await getAssociatedTokenAddress(mintAddress, targetPubkey);
-        const decimals = 9;
-        const tokenAmount = BigInt(Math.floor(parsedAmount * Math.pow(10, decimals)));
-        transaction.add(
-          createTransferInstruction(
-            userAta,
-            vaultAta,
-            wallet.publicKey,
-            tokenAmount,
-            [],
-            TOKEN_PROGRAM_ID
-          )
-        );
+        await withdrawSol(connection, wallet, strategyPubkey, amountLamports);
       }
-
-      const latestBlockhash = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = latestBlockhash.blockhash;
-      // serialize() には feePayer が必須のため、一時的にユーザーを設定
-      transaction.feePayer = wallet.publicKey;
-
-      if (!wallet.signTransaction) {
-        throw new Error('Wallet does not support signing');
-      }
-
-      // サーバーを fee payer として署名してもらい、部分署名済み tx を取得
-      // サーバーは受け取った tx の instructions を流用し、自身を fee payer に差し替えて partialSign
-      let txToSign = transaction;
-      try {
-        const serialized = transaction.serialize({ requireAllSignatures: false, verifySignatures: false });
-        const { transaction: feePayerSignedBase64 } = await api.signAsFeePayer(
-          Buffer.from(serialized).toString('base64')
-        );
-        txToSign = Transaction.from(Buffer.from(feePayerSignedBase64, 'base64'));
-      } catch {
-        // fee payer エンドポイント未実装時はユーザー自身が fee payer のままフォールバック
-      }
-
-      const signedTx = await wallet.signTransaction(txToSign);
-      setInvestStatus('CONFIRMING');
-      const signature = await connection.sendRawTransaction(signedTx.serialize(), {
-        skipPreflight: false,
-        preflightCommitment: 'confirmed',
-        maxRetries: 3,
-      });
-
-      await connection.confirmTransaction(
-        {
-          signature,
-          blockhash: latestBlockhash.blockhash,
-          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        },
-        'confirmed'
-      );
 
       setInvestStatus('PROCESSING');
 
+      void api
+        .syncUserStats(wallet.publicKey!.toBase58(), 0, parsedAmount, investTarget.id)
+        .catch(() => {});
+
       setTimeout(() => {
         setInvestStatus('SUCCESS');
-        const msg =
+        showToast(
           mode === 'BUY'
-            ? `Received ${(parsedAmount * 100).toFixed(2)} ${investTarget.ticker || 'ETF'}`
-            : `Sold ${parsedAmount} ${investTarget.ticker || 'ETF'}`;
-        showToast(`Success! ${msg}`, 'success');
-
+            ? `Deposited ${parsedAmount} SOL into vault`
+            : `Withdrew ${parsedAmount} SOL from vault`,
+          'success'
+        );
         setTimeout(() => {
           setIsInvestOpen(false);
           setMatchedStrategy(null);
@@ -1154,13 +1077,9 @@ export const SwipeDiscoverView = ({
             setInvestTarget(null);
           }, 500);
         }, 2000);
-
-        void api
-          .syncUserStats(wallet.publicKey!.toBase58(), 0, parsedAmount, investTarget.id)
-          .catch(() => {});
       }, 1500);
-    } catch (e: any) {
-      showToast(e.message || 'Transaction Failed', 'error');
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Transaction Failed', 'error');
       setInvestStatus('ERROR');
       setTimeout(() => setInvestStatus('IDLE'), 2000);
     }
@@ -1312,7 +1231,6 @@ export const SwipeDiscoverView = ({
           strategy={investTarget}
           onConfirm={handleDeposit}
           status={investStatus}
-          userEtfBalance={userEtfBalance}
         />
       )}
     </div>

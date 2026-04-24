@@ -4,6 +4,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { User, MessageSquareText, LogOut } from 'lucide-react';
 import { BugDrawer } from './BugDrawer';
 import { useWallet } from '../../hooks/useWallet';
+import { usePrivy } from '@privy-io/react-auth';
 
 export type ViewState = 'DISCOVER' | 'CREATE' | 'PROFILE';
 
@@ -122,7 +123,9 @@ export const FloatingNav = memo(({
   const [hiddenByScroll, setHiddenByScroll] = useState(false);
 
   const prefersReduced = useReducedMotion();
-  const { connected, disconnect } = useWallet();
+  const { publicKey, disconnect } = useWallet();
+  const { authenticated, ready } = usePrivy();
+  const isLoggedIn = authenticated || !!publicKey;
 
   const hideTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHoveringRef = useRef(false);
@@ -316,7 +319,9 @@ export const FloatingNav = memo(({
             </motion.button>
 
             {/* Auth button */}
-            {connected ? (
+            {!ready ? (
+              <div className="w-9 h-9 md:w-20 rounded-full bg-white/[0.06] animate-pulse" />
+            ) : isLoggedIn ? (
               <motion.button
                 onClick={() => disconnect()}
                 className="flex items-center gap-2 w-9 h-9 md:w-auto md:px-4 justify-center
@@ -340,7 +345,6 @@ export const FloatingNav = memo(({
                 whileTap={{ scale: 0.90 }}
                 transition={BUTTON_SPRING}
               >
-                {/* ここでは元通りLucideのUserアイコンを使っています */}
                 <User className="w-4 h-4 shrink-0 md:hidden" />
                 <span className="hidden md:block">Log In</span>
               </motion.button>
