@@ -111,16 +111,16 @@ export async function handleTwitterCallback(c: Context<{ Bindings: Bindings }>) 
 
     // Case 1: Wallet linking — update existing wallet user with Twitter data
     if (linkWallet) {
-      const existingUser = await UserModel.findUserByWallet(c.env.axis_db, linkWallet);
+      const existingUser = await UserModel.findUserByWallet(c.env.axis_main_db, linkWallet);
       if (existingUser) {
-        await UserModel.linkTwitterToUser(c.env.axis_db, linkWallet, twitterId, avatar);
+        await UserModel.linkTwitterToUser(c.env.axis_main_db, linkWallet, twitterId, avatar);
         user = { ...existingUser, twitter_id: twitterId, avatar_url: avatar };
       }
     }
 
     // Case 2: No wallet or wallet user not found — try find by twitter_id
     if (!user) {
-      user = await UserModel.findUserByTwitterId(c.env.axis_db, twitterId);
+      user = await UserModel.findUserByTwitterId(c.env.axis_main_db, twitterId);
     }
 
     // Case 3: Completely new Twitter user — create fresh account
@@ -133,7 +133,7 @@ export async function handleTwitterCallback(c: Context<{ Bindings: Bindings }>) 
 
       try {
         await UserModel.createTwitterUser(
-          c.env.axis_db,
+          c.env.axis_main_db,
           newId,
           twitterId,
           name,

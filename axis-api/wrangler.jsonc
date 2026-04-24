@@ -1,6 +1,6 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "axis-api",
+	"name": "axis-api-mainnet",
 	"main": "src/app.ts",
 	"compatibility_date": "2025-12-22",
 	"compatibility_flags": [
@@ -8,13 +8,21 @@
 	],
 	"d1_databases": [
 		{
-			"binding": "axis_db",
-			"database_name": "axis-db",
-			"database_id": "30e73485-4507-447b-a4a0-6f1b7a10812b",
-			"migrations_dir": "./migrations"
+			// [MAINNET] メインDB
+			"binding": "axis_main_db",
+			"database_name": "axis-main-db",
+			"database_id": "9fac1183-a477-4840-b3cb-a4a4c0ba1969",
+			"migrations_dir": "./migrations/main"
 		},
 		{
-			// ★追加: VIPリスト管理用DB
+			// [MAINNET] 時系列価格・パフォーマンスDB（axis_mainから分離）
+			"binding": "axis_price_db",
+			"database_name": "axis-price-db",
+			"database_id": "df2a5068-b099-4d2d-ab9b-885281f16fc9",
+			"migrations_dir": "./migrations/price"
+		},
+		{
+			// VIPリスト管理用DB
 			"binding": "whitelist_db",
 			"database_name": "axis-wlv2",
 			"database_id": "ae62cf10-e8b1-4cfb-8823-91da78d51220",

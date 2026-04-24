@@ -41,7 +41,7 @@ app.get('/test-snapshot', async (c) => {
   console.log('--- 🛠️ Manual Snapshot Triggered 🛠️ ---');
   try {
    
-    await runPriceSnapshot(c.env.axis_db);
+    await runPriceSnapshot(c.env.axis_main_db, c.env.axis_price_db);
     return c.json({ success: true, message: "Snapshot process finished. Check your terminal logs." });
   } catch (e: any) {
     console.error('Snapshot Error:', e);
@@ -52,7 +52,7 @@ app.get('/test-snapshot', async (c) => {
 
 app.get('/init-db', async (c) => {
   try {
-    await c.env.axis_db.prepare(`
+    await c.env.axis_main_db.prepare(`
       CREATE TABLE IF NOT EXISTS watchlist (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -184,7 +184,7 @@ async function sendBugReportEmail(
 
 async function distributeHoldingXP(env: Bindings) {
   try {
-    const db = env.axis_db;
+    const db = env.axis_main_db;
     const { results: strategies } = await db.prepare(
       "SELECT id, owner_pubkey, total_deposited FROM strategies"
     ).all();
@@ -244,7 +244,7 @@ export default {
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
     const tasks: Promise<void>[] = [];
     tasks.push(
-      runPriceSnapshot(env.axis_db).catch(e =>
+      runPriceSnapshot(env.axis_main_db, env.axis_price_db).catch(e =>
         console.error('[Cron] Price snapshot failed:', e)
       )
     );

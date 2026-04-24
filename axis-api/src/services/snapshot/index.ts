@@ -2,7 +2,9 @@
  * Strategy Price Snapshot Worker
  *
  * Runs every 5 minutes via Cloudflare Cron Trigger.
- * Calculates weighted index price for each strategy and persists to D1.
+ * Writes to two separate D1 databases:
+ *   mainDb  (axis_main_db) — strategies, strategy_deployment_baseline
+ *   priceDb (axis_price_db) — strategy_price_snapshots, strategy_performance, token_prices
  */
 
 import { fetchPrices, resolveMint, PriceResult } from './price-fetcher';
@@ -20,29 +22,37 @@ interface StrategyRow {
   id: string;
   composition: string | null;
   config: string | null;
+  tvl: number | null;
 }
 
-/**
- * Main entry point. Called by the scheduled handler.
- */
-export async function runPriceSnapshot(db: any): Promise<void> {
+interface BaselineRow {
+  strategy_id: string;
+  baseline_nav: number;
+}
+
+export async function runPriceSnapshot(mainDb: any, priceDb: any): Promise<void> {
   const startMs = Date.now();
   const tsBucket = Math.floor(startMs / 1000 / BUCKET_SECONDS) * BUCKET_SECONDS;
 
-  // 1. Fetch all strategies
-  const { results: rows } = await db.prepare(
-    'SELECT id, composition, config FROM strategies'
-  ).all();
+  // 1. Fetch all strategies from mainDb
+  const { results: rows } = await mainDb.prepare(
+    'SELECT id, composition, config, tvl FROM strategies WHERE status = ?'
+  ).bind('active').all() as { results: StrategyRow[] };
 
   if (!rows || rows.length === 0) {
-    console.log('[Snapshot] No strategies found.');
+    console.log('[Snapshot] No active strategies found.');
     return;
   }
 
-  // 2. Parse tokens and collect all unique mints
+  // 2. Fetch existing baselines from mainDb (to calculate ROI)
+  const { results: baselineRows } = await mainDb.prepare(
+    'SELECT strategy_id, baseline_nav FROM strategy_deployment_baseline'
+  ).all() as { results: BaselineRow[] };
+  const baselineMap = new Map(baselineRows.map(b => [b.strategy_id, b.baseline_nav]));
+
+  // 3. Parse tokens and collect all unique mints
   const strategyTokens = new Map<string, TokenEntry[]>();
   const allMints = new Set<string>();
-  // token_prices の token_name にsymbolを使うための逆引きマップ
   const mintToSymbol = new Map<string, string>();
 
   for (const row of rows) {
@@ -56,110 +66,107 @@ export async function runPriceSnapshot(db: any): Promise<void> {
     }
   }
 
-  // 3. Batch fetch all prices (deduplicated by mint)
+  // 4. Batch fetch all prices (deduplicated by mint)
   const priceMap = await fetchPrices([...allMints]);
-  // 価格取得時刻を YYYY/MM/DD HH:MM:SS 形式で記録
-  const _now = new Date();
-  const priceFetchedAt =
-    `${_now.getUTCFullYear()}/` +
-    `${String(_now.getUTCMonth() + 1).padStart(2, '0')}/` +
-    `${String(_now.getUTCDate()).padStart(2, '0')} ` +
-    `${String(_now.getUTCHours()).padStart(2, '0')}:` +
-    `${String(_now.getUTCMinutes()).padStart(2, '0')}:` +
-    `${String(_now.getUTCSeconds()).padStart(2, '0')}`;
 
-  // 4. Build snapshot statements
-  const snapshotStmts: any[] = [];
-  const baselineStmts: any[] = [];
+  // 5. Build statements for priceDb and mainDb
+  const priceSnapshotStmts: any[] = [];
+  const performanceStmts: any[]   = [];
+  const baselineStmts: any[]      = [];
+  const now = Math.floor(Date.now() / 1000);
 
   for (const row of rows) {
     const tokens = strategyTokens.get(row.id)!;
-    const snapshot = buildSnapshot(row.id, tsBucket, tokens, priceMap);
+    const { indexPriceUsd, pricesJson, weightsJson, sourceJson, confidence } =
+      buildPriceSnapshot(tokens, priceMap);
 
-    snapshotStmts.push(
-      db.prepare(`
+    // strategy_price_snapshots → priceDb
+    priceSnapshotStmts.push(
+      priceDb.prepare(`
         INSERT OR REPLACE INTO strategy_price_snapshots
-          (strategy_id, ts_bucket_utc, index_price, prices_json, weights_json,
-          source_json, confidence, version, metadata_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+          (strategy_id, ts_bucket_utc, prices_json, weights_json,
+           source_json, confidence, version, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?)
       `).bind(
-        snapshot.strategy_id,
-        snapshot.ts_bucket_utc,
-        snapshot.index_price,
-        snapshot.prices_json,
-        snapshot.weights_json,
-        snapshot.source_json,
-        snapshot.confidence,
-        snapshot.metadata_json,
-        snapshot.created_at
+        row.id, tsBucket,
+        pricesJson, weightsJson, sourceJson, confidence, now
       )
     );
 
-    // Baseline: INSERT OR IGNORE ensures only the first snapshot becomes baseline
-    baselineStmts.push(
-      db.prepare(`
-        INSERT OR IGNORE INTO strategy_deployment_baseline
-          (strategy_id, baseline_ts_bucket_utc, baseline_price, baseline_confidence, created_at)
-        VALUES (?, ?, ?, ?, ?)
+    // strategy_performance → priceDb
+    const baselineNav = baselineMap.get(row.id) ?? indexPriceUsd;
+    const nav     = indexPriceUsd;
+    const roiPct  = baselineNav > 0
+      ? ((nav - baselineNav) / baselineNav) * 100
+      : 0;
+
+    performanceStmts.push(
+      priceDb.prepare(`
+        INSERT OR REPLACE INTO strategy_performance
+          (strategy_id, ts_bucket_utc, nav_sol, total_tvl_sol, roi_pct, drawdown_pct, created_at)
+        VALUES (?, ?, ?, ?, ?, 0, ?)
       `).bind(
-        snapshot.strategy_id,
-        snapshot.ts_bucket_utc,
-        snapshot.index_price,
-        snapshot.confidence,
-        snapshot.created_at
+        row.id, tsBucket,
+        nav,
+        row.tvl ?? 0,
+        roiPct,
+        now
       )
+    );
+
+    // strategy_deployment_baseline → mainDb (INSERT OR IGNORE: 初回のみ記録)
+    baselineStmts.push(
+      mainDb.prepare(`
+        INSERT OR IGNORE INTO strategy_deployment_baseline
+          (strategy_id, baseline_ts_bucket_utc, baseline_nav, baseline_confidence, created_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).bind(row.id, tsBucket, indexPriceUsd, confidence, now)
     );
   }
 
-  // 5. token_prices への INSERT ステートメントを作成
+  // 6. token_prices → priceDb (recorded_at はunix秒)
   const tokenPriceStmts: any[] = [];
   for (const mint of allMints) {
-    const price = priceMap.get(mint.toLowerCase());
+    const price  = priceMap.get(mint.toLowerCase());
     const symbol = mintToSymbol.get(mint.toLowerCase());
     if (price && price.price_usd > 0 && symbol) {
       tokenPriceStmts.push(
-        db.prepare(`
+        priceDb.prepare(`
           INSERT OR REPLACE INTO token_prices (token_name, recorded_at, price_usd)
           VALUES (?, ?, ?)
-        `).bind(symbol, priceFetchedAt, price.price_usd)
+        `).bind(symbol, tsBucket, price.price_usd)
       );
     }
   }
 
-  // 6. Execute in batches (D1 batch limit)
-  await batchExecute(db, [...snapshotStmts, ...baselineStmts, ...tokenPriceStmts]);
+  // 7. Execute in batches
+  await batchExecute(priceDb, [...priceSnapshotStmts, ...performanceStmts, ...tokenPriceStmts]);
+  await batchExecute(mainDb, baselineStmts);
 
-  // 7. Purge records older than 1 week
+  // 8. Purge records older than 7 days
   const oneWeekAgo = tsBucket - 7 * 24 * 3600;
-  await db.batch([
-    db.prepare(
-      'DELETE FROM strategy_price_snapshots WHERE ts_bucket_utc < ?'
-    ).bind(oneWeekAgo),
-    db.prepare(
-      `DELETE FROM token_prices WHERE recorded_at < datetime('now', '-7 days')`
-    ),
+  await priceDb.batch([
+    priceDb.prepare('DELETE FROM strategy_price_snapshots WHERE ts_bucket_utc < ?').bind(oneWeekAgo),
+    priceDb.prepare('DELETE FROM strategy_performance WHERE ts_bucket_utc < ?').bind(oneWeekAgo),
+    priceDb.prepare('DELETE FROM token_prices WHERE recorded_at < ?').bind(oneWeekAgo),
   ]);
 
   const elapsed = Date.now() - startMs;
   console.log(
     `[Snapshot] Done: ${rows.length} strategies, ${allMints.size} mints, ` +
-    `bucket=${tsBucket}, purged before=${oneWeekAgo}, ${elapsed}ms`
+    `bucket=${tsBucket}, purged<${oneWeekAgo}, ${elapsed}ms`
   );
 }
 
-/**
- * Parse token entries from a strategy's composition or config column.
- */
+// ────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────
+
 function parseTokens(row: StrategyRow): TokenEntry[] {
-  // Try composition first (array of {symbol, weight, mint, ...})
-  // Then fall back to config
   const raw = row.composition || row.config;
   if (!raw) return [];
-
   try {
     const parsed = JSON.parse(raw);
-
-    // If parsed is an array, treat as token list
     if (Array.isArray(parsed)) {
       return parsed
         .filter((t: any) => t.symbol && typeof t.weight === 'number')
@@ -169,155 +176,83 @@ function parseTokens(row: StrategyRow): TokenEntry[] {
           mint: resolveMint(t),
         }));
     }
-
-    // If config is an object (not an array), check if composition has the array
-    if (row.config && row.config !== raw) {
-      try {
-        const configParsed = JSON.parse(row.config);
-        if (Array.isArray(configParsed)) {
-          return configParsed
-            .filter((t: any) => t.symbol && typeof t.weight === 'number')
-            .map((t: any) => ({
-              symbol: t.symbol.toUpperCase(),
-              weight: t.weight,
-              mint: resolveMint(t),
-            }));
-        }
-      } catch { /* ignore */ }
-    }
-
     return [];
   } catch {
     return [];
   }
 }
 
-interface SnapshotRecord {
-  strategy_id: string;
-  ts_bucket_utc: number;
-  index_price: number;
-  prices_json: string;
-  weights_json: string;
-  source_json: string;
-  confidence: 'OK' | 'PARTIAL' | 'FAIL';
-  metadata_json: string;
-  created_at: number;
-}
+/** @deprecated use buildPriceSnapshot */
+export const buildSnapshot = (strategyId: string, tsBucket: number, tokens: TokenEntry[], priceMap: Map<string, PriceResult>) => {
+  const result = buildPriceSnapshot(tokens, priceMap);
+  return { strategy_id: strategyId, ts_bucket_utc: tsBucket, index_price: result.indexPriceUsd, ...result };
+};
 
-/**
- * Build a snapshot record for a single strategy.
- */
-export function buildSnapshot(
-  strategyId: string,
-  tsBucket: number,
+export function buildPriceSnapshot(
   tokens: TokenEntry[],
   priceMap: Map<string, PriceResult>
-): SnapshotRecord {
-  const now = Math.floor(Date.now() / 1000);
-
-  // Handle empty token list
+): {
+  indexPriceUsd: number;
+  pricesJson: string;
+  weightsJson: string;
+  sourceJson: string;
+  confidence: 'OK' | 'PARTIAL' | 'FAIL';
+} {
   if (tokens.length === 0) {
     return {
-      strategy_id: strategyId,
-      ts_bucket_utc: tsBucket,
-      index_price: 0,
-      prices_json: '{}',
-      weights_json: '{}',
-      source_json: '{}',
+      indexPriceUsd: 0,
+      pricesJson: '{}', weightsJson: '{}', sourceJson: '{}',
       confidence: 'FAIL',
-      metadata_json: JSON.stringify({ error: 'no_tokens' }),
-      created_at: now,
     };
   }
 
-  // Normalize weights
   const totalWeight = tokens.reduce((sum, t) => sum + t.weight, 0);
-
   if (totalWeight === 0) {
     return {
-      strategy_id: strategyId,
-      ts_bucket_utc: tsBucket,
-      index_price: 0,
-      prices_json: '{}',
-      weights_json: '{}',
-      source_json: '{}',
+      indexPriceUsd: 0,
+      pricesJson: '{}', weightsJson: '{}', sourceJson: '{}',
       confidence: 'FAIL',
-      metadata_json: JSON.stringify({ error: 'zero_total_weight' }),
-      created_at: now,
     };
   }
 
-  const prices: Record<string, number> = {};
+  const prices:  Record<string, number> = {};
   const weights: Record<string, number> = {};
   const sources: Record<string, string> = {};
-  const missingMints: string[] = [];
-  let indexPrice = 0;
-  let missingCount = 0;
+  let indexPriceUsd = 0;
+  let missingCount  = 0;
 
   for (const token of tokens) {
-    const normalizedWeight = token.weight / totalWeight;
-    const key = token.mint || token.symbol;
-
-    weights[key] = normalizedWeight;
+    const normWeight = token.weight / totalWeight;
+    const key = token.mint ?? token.symbol;
+    weights[key] = normWeight;
 
     if (!token.mint) {
-      // No mint resolved — treat as missing
-      prices[key] = 0;
-      sources[key] = 'no_mint';
-      missingMints.push(token.symbol);
-      missingCount++;
-      continue;
+      prices[key] = 0; sources[key] = 'no_mint'; missingCount++; continue;
     }
 
-    const priceResult = priceMap.get(token.mint);
-    const priceUsd = priceResult?.price_usd ?? 0;
-    const source = priceResult?.source ?? 'none';
-
-    prices[token.mint] = priceUsd;
-    sources[token.mint] = source;
-
-    if (priceUsd === 0) {
-      missingMints.push(token.symbol);
-      missingCount++;
-    }
-
-    indexPrice += normalizedWeight * priceUsd;
+    const result   = priceMap.get(token.mint);
+    const priceUsd = result?.price_usd ?? 0;
+    prices[token.mint]  = priceUsd;
+    sources[token.mint] = result?.source ?? 'none';
+    if (priceUsd === 0) missingCount++;
+    indexPriceUsd += normWeight * priceUsd;
   }
 
-  // Determine confidence
-  let confidence: 'OK' | 'PARTIAL' | 'FAIL';
-  if (missingCount === 0) {
-    confidence = 'OK';
-  } else if (missingCount < tokens.length) {
-    confidence = 'PARTIAL';
-  } else {
-    confidence = 'FAIL';
-  }
-
-  const metadata: Record<string, any> = {};
-  if (missingMints.length > 0) {
-    metadata.missing_mints = missingMints;
-  }
+  const confidence: 'OK' | 'PARTIAL' | 'FAIL' =
+    missingCount === 0 ? 'OK' :
+    missingCount < tokens.length ? 'PARTIAL' : 'FAIL';
 
   return {
-    strategy_id: strategyId,
-    ts_bucket_utc: tsBucket,
-    index_price: indexPrice,
-    prices_json: JSON.stringify(prices),
-    weights_json: JSON.stringify(weights),
-    source_json: JSON.stringify(sources),
+    indexPriceUsd,
+    pricesJson:  JSON.stringify(prices),
+    weightsJson: JSON.stringify(weights),
+    sourceJson:  JSON.stringify(sources),
     confidence,
-    metadata_json: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null!,
-    created_at: now,
   };
 }
 
-/**
- * Execute D1 prepared statements in batches to respect D1 limits.
- */
 async function batchExecute(db: any, stmts: any[]): Promise<void> {
   for (let i = 0; i < stmts.length; i += D1_BATCH_LIMIT) {
-    const chunk = stmts.slice(i, i + D1_BATCH_LIMIT);
-    await db.batch(chunk);
+    await db.batch(stmts.slice(i, i + D1_BATCH_LIMIT));
   }
 }
