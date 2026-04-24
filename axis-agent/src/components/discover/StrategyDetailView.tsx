@@ -603,6 +603,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             label={strategy?.ticker || strategy?.name}
             seed={strategy?.id ? strategy.id.charCodeAt(0) + strategy.id.charCodeAt(strategy.id.length - 1) : 42}
             height={320}
+            endpoint={strategy?.id ? `${import.meta.env.VITE_API_URL || 'https://axis-api-mainnet.yusukekikuta-05.workers.dev'}/strategies/${strategy.id}/candles` : undefined}
           />
 
           {/* Stats Strip */}

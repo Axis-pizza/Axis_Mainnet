@@ -1,32 +1,19 @@
-/**
- * TradingChart — pump.fun-style embedded chart
- *
- * - Line mode  : lightweight-charts AreaSeries  (NAV / price index)
- * - Candle mode: lightweight-charts CandlestickSeries + volume histogram
- * - Mock data by default; wire up `endpoint` prop to fetch real OHLCV data
- *
- * Endpoint contract (when provided):
- *   GET  {endpoint}?interval={1h|4h|1d|1w}&limit=200
- *   Response: { success: true, data: OhlcvBar[] }
- *   OhlcvBar: { time: number, open: number, high: number, low: number, close: number, volume?: number }
- */
-
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createChart,
   ColorType,
   CrosshairMode,
+  LineStyle,
   type IChartApi,
   type ISeriesApi,
   type UTCTimestamp,
-  LineStyle,
 } from 'lightweight-charts';
-import { TrendingUp, TrendingDown, BarChart2, LineChart } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { TrendingUp, TrendingDown, BarChart3, LineChart, CandlestickChart, Loader2 } from 'lucide-react';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-export interface OhlcvBar {
-  time: number;   // unix seconds
+// ---------- Types ----------
+export interface Candle {
+  time: number;
   open: number;
   high: number;
   low: number;
@@ -34,320 +21,433 @@ export interface OhlcvBar {
   volume?: number;
 }
 
-type ChartType = 'line' | 'candle';
-type Interval  = '1h' | '4h' | '1d' | '1w';
-
-const INTERVALS: Interval[] = ['1h', '4h', '1d', '1w'];
-const INTERVAL_LABELS: Record<Interval, string> = { '1h': '1H', '4h': '4H', '1d': '1D', '1w': '1W' };
+type Timeframe  = '1D' | '5D' | '1M' | '1Y' | 'ALL';
+type ChartType  = 'line' | 'candle';
+type PriceMode  = 'PRICE' | 'MCAP';
 
 interface TradingChartProps {
-  /** Strategy / token identifier shown as title fallback */
   label?: string;
-  /** Optional real-data endpoint. If omitted, mock data is shown */
-  endpoint?: string;
-  /** Override seed for deterministic mock curves */
+  ticker?: string;
   seed?: number;
-  /** Chart height in px */
   height?: number;
-  /** Whether the chart is in a compact context (less padding) */
-  compact?: boolean;
+  endpoint?: string;
+  totalSupply?: number;
+  ath?: number;
 }
 
-// ─── Mock data generator ─────────────────────────────────────────────────────
+const TIMEFRAME_PARAMS: Record<Timeframe, { period: string; interval: string }> = {
+  '1D':  { period: '1d',   interval: '30m' },
+  '5D':  { period: '5d',   interval: '1h'  },
+  '1M':  { period: '30d',  interval: '4h'  },
+  '1Y':  { period: '365d', interval: '1d'  },
+  'ALL': { period: '730d', interval: '1d'  },
+};
 
-function generateMockBars(interval: Interval, n: number, seed: number): OhlcvBar[] {
-  const now    = Math.floor(Date.now() / 1000);
-  const stride: Record<Interval, number> = { '1h': 3600, '4h': 14400, '1d': 86400, '1w': 604800 };
-  const step   = stride[interval];
-  const bars: OhlcvBar[] = [];
-
-  let price = 80 + seed * 0.7;
-  for (let i = n - 1; i >= 0; i--) {
-    const o = price;
-    const move = (Math.random() - 0.47) * price * 0.028;
-    price = Math.max(price + move, 1);
-    const hi  = Math.max(o, price) * (1 + Math.random() * 0.012);
-    const lo  = Math.min(o, price) * (1 - Math.random() * 0.012);
-    bars.push({
-      time:   now - i * step,
-      open:   o,
-      high:   hi,
-      low:    lo,
-      close:  price,
-      volume: 10000 + Math.random() * 90000,
-    });
-  }
-  return bars;
-}
-
-// ─── Component ───────────────────────────────────────────────────────────────
-
-export const TradingChart = ({
-  label,
-  endpoint,
+// ---------- Component ----------
+export function TradingChart({
+  label = 'CHART',
+  ticker,
   seed = 42,
-  height = 320,
-  compact = false,
-}: TradingChartProps) => {
+  height = 420,
+  endpoint,
+  totalSupply,
+  ath,
+}: TradingChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef     = useRef<IChartApi | null>(null);
-  const seriesRef    = useRef<ISeriesApi<'Area'> | ISeriesApi<'Candlestick'> | null>(null);
+  const seriesRef    = useRef<ISeriesApi<'Candlestick'> | ISeriesApi<'Area'> | null>(null);
+  const volumeRef    = useRef<ISeriesApi<'Histogram'> | null>(null);
 
-  const [chartType, setChartType] = useState<ChartType>('line');
-  const [interval,  setInterval]  = useState<Interval>('1d');
-  const [bars,      setBars]      = useState<OhlcvBar[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isMock,    setIsMock]    = useState(true);
+  const [timeframe,  setTimeframe]  = useState<Timeframe>('1M');
+  const [chartType,  setChartType]  = useState<ChartType>('candle');
+  const [priceMode,  setPriceMode]  = useState<PriceMode>('PRICE');
+  const [candles,    setCandles]    = useState<Candle[]>([]);
+  const [hovered,    setHovered]    = useState<Candle | null>(null);
+  const [isLoading,  setIsLoading]  = useState(true);
 
-  // ── Fetch or generate data ───────────────────────────────────────────────
-  const loadData = useCallback(async (iv: Interval) => {
-    setIsLoading(true);
-    try {
-      if (endpoint) {
-        const url = `${endpoint}?interval=${iv}&limit=200`;
-        const res = await fetch(url);
-        if (res.ok) {
-          const json = await res.json();
-          const data: OhlcvBar[] = json?.data ?? json;
-          if (Array.isArray(data) && data.length > 0) {
-            setBars(data.sort((a, b) => a.time - b.time));
-            setIsMock(false);
-            return;
-          }
-        }
-      }
-    } catch { /* fall through to mock */ }
-
-    // Fallback: mock
-    const counts: Record<Interval, number> = { '1h': 168, '4h': 180, '1d': 180, '1w': 104 };
-    setBars(generateMockBars(iv, counts[iv], seed));
-    setIsMock(true);
-  }, [endpoint, seed]);
-
-  useEffect(() => { loadData(interval); }, [interval, loadData]);
-
-  // ── Derived stats ────────────────────────────────────────────────────────
-  const firstClose = bars[0]?.close ?? 0;
-  const lastClose  = bars[bars.length - 1]?.close ?? 0;
-  const changePct  = firstClose > 0 ? ((lastClose - firstClose) / firstClose) * 100 : 0;
-  const isUp       = changePct >= 0;
-  const accentColor = isUp ? '#34D399' : '#F87171';
-
-  // ── Build / rebuild chart ────────────────────────────────────────────────
+  // --- Data load ---
   useEffect(() => {
-    if (!containerRef.current || bars.length === 0) return;
+    let cancelled = false;
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        if (endpoint) {
+          const { period, interval } = TIMEFRAME_PARAMS[timeframe];
+          const res  = await fetch(`${endpoint}?period=${period}&interval=${interval}`);
+          const json = (await res.json()) as { success?: boolean; data?: Candle[] };
+          if (!cancelled) {
+            if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+              setCandles(json.data);
+            } else {
+              setCandles(generateSyntheticCandles(seed, timeframe));
+            }
+          }
+        } else if (!cancelled) {
+          setCandles(generateSyntheticCandles(seed, timeframe));
+        }
+      } catch {
+        if (!cancelled) setCandles(generateSyntheticCandles(seed, timeframe));
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [endpoint, timeframe, seed]);
 
-    // Destroy previous instance
-    if (chartRef.current) {
-      chartRef.current.remove();
-      chartRef.current  = null;
-      seriesRef.current = null;
-    }
+  // --- Chart init (rebuilds on chartType change) ---
+  useEffect(() => {
+    if (!containerRef.current) return;
 
-    const chart: IChartApi = createChart(containerRef.current, {
+    const chart = createChart(containerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: 'rgba(255,255,255,0.35)',
-        fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-        fontSize: 10,
+        textColor: '#78716C',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif',
+        fontSize: 11,
       },
       grid: {
-        vertLines: { color: 'rgba(255,255,255,0.04)', style: LineStyle.Dotted },
-        horzLines: { color: 'rgba(255,255,255,0.05)' },
+        vertLines: { color: 'rgba(255,255,255,0.04)', style: LineStyle.Solid },
+        horzLines: { color: 'rgba(255,255,255,0.04)', style: LineStyle.Solid },
       },
-      width:  containerRef.current.clientWidth,
-      height: height,
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { color: 'rgba(255,255,255,0.35)', width: 1, style: LineStyle.Dashed, labelBackgroundColor: '#1C1C1E' },
+        horzLine: { color: 'rgba(255,255,255,0.35)', width: 1, style: LineStyle.Dashed, labelBackgroundColor: '#1C1C1E' },
+      },
+      rightPriceScale: {
+        borderColor: 'rgba(255,255,255,0.06)',
+        textColor: '#9CA3AF',
+        scaleMargins: { top: 0.08, bottom: chartType === 'candle' ? 0.2 : 0.06 },
+      },
       timeScale: {
         borderColor: 'rgba(255,255,255,0.06)',
         timeVisible: true,
         secondsVisible: false,
-        tickMarkFormatter: (time: number) => {
-          const d = new Date(time * 1000);
-          if (interval === '1h' || interval === '4h') {
-            return d.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false });
-          }
-          return d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
-        },
+        rightOffset: 4,
       },
-      rightPriceScale: {
-        borderColor: 'rgba(255,255,255,0.06)',
-        scaleMargins: { top: 0.08, bottom: 0.06 },
-      },
-      crosshair: {
-        mode: CrosshairMode.Normal,
-        vertLine: { color: 'rgba(255,255,255,0.2)', labelBackgroundColor: '#1a1a1a' },
-        horzLine: { color: 'rgba(255,255,255,0.2)', labelBackgroundColor: '#1a1a1a' },
-      },
-      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true },
-      handleScale:  { mouseWheel: true, pinch: true },
+      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
+      width: containerRef.current.clientWidth,
+      height,
     });
 
     chartRef.current = chart;
 
-    // ── Price series ──────────────────────────────────────────────────────
-    if (chartType === 'line') {
-      const area = chart.addAreaSeries({
-        lineColor:   accentColor,
-        topColor:    accentColor + '30',
+    if (chartType === 'candle') {
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: '#26A69A', downColor: '#EF5350',
+        borderUpColor: '#26A69A', borderDownColor: '#EF5350',
+        wickUpColor: '#26A69A', wickDownColor: '#EF5350',
+        priceLineStyle: LineStyle.Dashed, priceLineWidth: 1,
+      });
+      seriesRef.current = candleSeries as any;
+
+      const volumeSeries = chart.addHistogramSeries({
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'volume',
+        color: 'rgba(255,255,255,0.15)',
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+      volumeRef.current = volumeSeries;
+
+      chart.subscribeCrosshairMove((param) => {
+        if (!param.time || !param.seriesData.size) { setHovered(null); return; }
+        const data = param.seriesData.get(candleSeries);
+        if (data && 'open' in data) {
+          setHovered({
+            time:  Number(param.time),
+            open:  (data as any).open,
+            high:  (data as any).high,
+            low:   (data as any).low,
+            close: (data as any).close,
+          });
+        }
+      });
+    } else {
+      const accentColor = '#26A69A';
+      const areaSeries = chart.addAreaSeries({
+        lineColor: accentColor,
+        topColor:  accentColor + '30',
         bottomColor: 'rgba(0,0,0,0)',
-        lineWidth:   2,
+        lineWidth: 2,
         crosshairMarkerVisible: true,
-        crosshairMarkerRadius:  4,
+        crosshairMarkerRadius: 4,
         crosshairMarkerBorderColor: accentColor,
         crosshairMarkerBackgroundColor: '#0e0e0e',
-        lastValueVisible: true,
-        priceLineVisible: false,
-      });
-      const lineData = bars.map((b) => ({ time: b.time as UTCTimestamp, value: b.close }));
-      area.setData(lineData);
-      seriesRef.current = area as any;
-    } else {
-      const candle = chart.addCandlestickSeries({
-        upColor:          '#34D399',
-        downColor:        '#F87171',
-        borderUpColor:    '#34D399',
-        borderDownColor:  '#F87171',
-        wickUpColor:      'rgba(52,211,153,0.6)',
-        wickDownColor:    'rgba(248,113,113,0.6)',
         priceLineVisible: false,
         lastValueVisible: true,
       });
-      const candleData = bars.map((b) => ({
-        time:  b.time as UTCTimestamp,
-        open:  b.open,
-        high:  b.high,
-        low:   b.low,
-        close: b.close,
-      }));
-      candle.setData(candleData);
-      seriesRef.current = candle as any;
+      seriesRef.current = areaSeries as any;
+      volumeRef.current = null;
+
+      chart.subscribeCrosshairMove((param) => {
+        if (!param.time || !param.seriesData.size) { setHovered(null); return; }
+        const data = param.seriesData.get(areaSeries);
+        if (data && 'value' in data) {
+          const v = (data as any).value as number;
+          setHovered({ time: Number(param.time), open: v, high: v, low: v, close: v });
+        }
+      });
     }
 
-    chart.timeScale().fitContent();
-
-    // ResizeObserver
+    const el = containerRef.current;
     const ro = new ResizeObserver(() => {
-      if (containerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
-      }
+      if (chartRef.current && el) chartRef.current.applyOptions({ width: el.clientWidth });
     });
-    ro.observe(containerRef.current);
+    ro.observe(el);
 
     return () => {
       ro.disconnect();
       chart.remove();
-      chartRef.current  = null;
+      chartRef.current = null;
       seriesRef.current = null;
+      volumeRef.current = null;
     };
-  }, [bars, chartType, height, compact, accentColor, interval]);
+  }, [height, chartType]);
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // --- Apply data ---
+  const multiplier = useMemo(() => {
+    if (priceMode === 'MCAP' && totalSupply) return totalSupply;
+    return 1;
+  }, [priceMode, totalSupply]);
+
+  useEffect(() => {
+    if (!seriesRef.current || candles.length === 0) return;
+
+    if (chartType === 'candle') {
+      const candleData = candles.map((c) => ({
+        time:  c.time as UTCTimestamp,
+        open:  c.open  * multiplier,
+        high:  c.high  * multiplier,
+        low:   c.low   * multiplier,
+        close: c.close * multiplier,
+      }));
+      (seriesRef.current as ISeriesApi<'Candlestick'>).setData(candleData);
+
+      if (volumeRef.current) {
+        volumeRef.current.setData(candles.map((c) => ({
+          time:  c.time as UTCTimestamp,
+          value: c.volume ?? 0,
+          color: c.close >= c.open ? 'rgba(38,166,154,0.4)' : 'rgba(239,83,80,0.4)',
+        })));
+      }
+    } else {
+      const lineData = candles.map((c) => ({
+        time:  c.time as UTCTimestamp,
+        value: c.close * multiplier,
+      }));
+      (seriesRef.current as ISeriesApi<'Area'>).setData(lineData);
+    }
+
+    chartRef.current?.timeScale().fitContent();
+  }, [candles, multiplier, chartType]);
+
+  // --- Derived stats ---
+  const latest    = candles[candles.length - 1];
+  const first     = candles[0];
+  const changePct = latest && first && first.close !== 0
+    ? ((latest.close - first.close) / first.close) * 100 : 0;
+  const isUp      = changePct >= 0;
+  const athProgress = ath && latest ? Math.min(100, (latest.close / ath) * 100) : 0;
+
+  const headerValue = useMemo(() => {
+    if (!latest) return '—';
+    const v = latest.close * multiplier;
+    if (priceMode === 'MCAP') return formatCompact(v);
+    if (v >= 1000) return formatCompact(v);
+    return v < 0.01 ? v.toFixed(6) : v < 1 ? v.toFixed(4) : v.toFixed(2);
+  }, [latest, multiplier, priceMode]);
+
+  const displayRow = hovered ?? latest ?? null;
+
   return (
-    <div className="w-full flex flex-col select-none">
-      {/* ── Toolbar ────────────────────────────────────────────────────────── */}
-      <div className={`flex items-center justify-between ${compact ? 'mb-1.5' : 'mb-3'}`}>
-        {/* Left: timeframe tabs */}
-        <div className="flex items-center gap-0.5">
-          {INTERVALS.map((iv) => (
+    <div className="bg-black border border-white/5 rounded-2xl overflow-hidden">
+      {/* Header */}
+      <div className="flex items-start justify-between px-5 pt-4 pb-3 gap-4">
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span className="text-[10px] uppercase tracking-[0.2em] text-[#57534E]">
+            {priceMode === 'PRICE' ? 'Price' : 'Market Cap'}
+          </span>
+          <span className="text-3xl sm:text-4xl font-serif tracking-tight text-white">
+            ${headerValue}
+          </span>
+          <div className={`flex items-center gap-1 text-xs ${isUp ? 'text-[#26A69A]' : 'text-[#EF5350]'}`}>
+            {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+            {isUp ? '+' : ''}{changePct.toFixed(2)}%
+            <span className="text-[#57534E] ml-1 uppercase tracking-wider text-[10px]">{timeframe}</span>
+          </div>
+        </div>
+
+        {ath && latest && (
+          <div className="flex flex-col items-end gap-1.5 pt-1 shrink-0">
+            <div className="w-24 sm:w-36 h-1 bg-white/5 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${athProgress}%` }}
+                transition={{ duration: 1, ease: 'easeOut' }}
+                className="h-full bg-gradient-to-r from-[#8A6630] via-[#B8863F] to-[#D4A261] rounded-full"
+              />
+            </div>
+            <div className="text-[10px] text-[#57534E]">
+              ATH <span className="text-white/80 font-mono">${formatCompact(ath * multiplier)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex items-center gap-3 px-5 py-2 border-y border-[rgba(184,134,63,0.06)] text-[11px]">
+        <div className="flex items-center gap-2 text-[#78716C]">
+          <span className="text-white font-normal">{timeframe}</span>
+          <BarChart3 className="w-3.5 h-3.5" />
+        </div>
+        <div className="w-px h-3 bg-[rgba(184,134,63,0.1)]" />
+
+        {/* Line / Candle toggle */}
+        <div className="flex items-center rounded-md overflow-hidden border border-white/8" style={{ background: 'rgba(255,255,255,0.03)' }}>
+          <button
+            onClick={() => setChartType('line')}
+            className={`flex items-center gap-1 px-2 py-1 text-[10px] transition-all ${chartType === 'line' ? 'bg-[rgba(184,134,63,0.2)] text-[#B8863F]' : 'text-[#57534E] hover:text-white/60'}`}
+          >
+            <LineChart className="w-3 h-3" />
+            Line
+          </button>
+          <button
+            onClick={() => setChartType('candle')}
+            className={`flex items-center gap-1 px-2 py-1 text-[10px] border-l border-white/8 transition-all ${chartType === 'candle' ? 'bg-[rgba(184,134,63,0.2)] text-[#B8863F]' : 'text-[#57534E] hover:text-white/60'}`}
+          >
+            <CandlestickChart className="w-3 h-3" />
+            Candle
+          </button>
+        </div>
+
+        {totalSupply && (
+          <>
+            <div className="w-px h-3 bg-[rgba(184,134,63,0.1)]" />
             <button
-              key={iv}
-              onClick={() => setInterval(iv)}
-              className={`rounded-md font-mono transition-all duration-150 ${
-                compact ? 'text-[9px] px-1.5 py-0.5' : 'text-[10px] px-2.5 py-1'
-              } ${
-                interval === iv
-                  ? 'bg-white/12 text-white'
-                  : 'text-white/30 hover:text-white/60 hover:bg-white/5'
+              onClick={() => setPriceMode((m) => (m === 'PRICE' ? 'MCAP' : 'PRICE'))}
+              className="uppercase tracking-wider transition-colors"
+            >
+              <span className={priceMode === 'PRICE' ? 'text-[#B8863F]' : 'text-[#78716C]'}>Price</span>
+              <span className="mx-1 text-[#57534E]">/</span>
+              <span className={priceMode === 'MCAP' ? 'text-[#B8863F]' : 'text-[#78716C]'}>MCap</span>
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Chart + OHLC overlay */}
+      <div className="relative">
+        <AnimatePresence>
+          {displayRow && !isLoading && chartType === 'candle' && (
+            <motion.div
+              key="ohlc"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="absolute top-3 left-5 z-10 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-mono pointer-events-none"
+            >
+              <span className="text-white/60 font-normal">{(ticker ?? label)?.toUpperCase()}</span>
+              <span className="text-[#57534E]">·</span>
+              <div className="flex items-center gap-1.5">
+                <OHLCLabel label="O" value={displayRow.open  * multiplier} priceMode={priceMode} />
+                <OHLCLabel label="H" value={displayRow.high  * multiplier} priceMode={priceMode} />
+                <OHLCLabel label="L" value={displayRow.low   * multiplier} priceMode={priceMode} />
+                <OHLCLabel label="C" value={displayRow.close * multiplier} priceMode={priceMode} up={displayRow.close >= displayRow.open} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div ref={containerRef} style={{ height }} className="w-full" />
+
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-[#B8863F]" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-[#78716C]">Loading chart</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer: timeframe tabs */}
+      <div className="flex items-center justify-between px-5 py-3 border-t border-[rgba(184,134,63,0.06)]">
+        <div className="flex gap-1">
+          {(['1D', '5D', '1M', '1Y', 'ALL'] as Timeframe[]).map((tf) => (
+            <button
+              key={tf}
+              onClick={() => setTimeframe(tf)}
+              className={`px-2.5 py-1 rounded-md text-[10px] uppercase tracking-wider transition-all ${
+                timeframe === tf
+                  ? 'bg-[rgba(184,134,63,0.15)] text-[#B8863F]'
+                  : 'text-[#57534E] hover:text-white/80'
               }`}
             >
-              {INTERVAL_LABELS[iv]}
+              {tf}
             </button>
           ))}
         </div>
-
-        {/* Right: chart-type toggle + change badge */}
-        <div className="flex items-center gap-2">
-          {/* Line / Candle toggle */}
-          <div
-            className="flex items-center rounded-lg overflow-hidden border border-white/8"
-            style={{ background: 'rgba(255,255,255,0.03)' }}
-          >
-            <button
-              onClick={() => setChartType('line')}
-              className={`flex items-center gap-1 px-2 py-1 transition-all ${
-                compact ? 'text-[9px]' : 'text-[10px]'
-              } ${chartType === 'line' ? 'bg-white/12 text-white' : 'text-white/30 hover:text-white/60'}`}
-            >
-              <LineChart className={compact ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
-              Line
-            </button>
-            <button
-              onClick={() => setChartType('candle')}
-              className={`flex items-center gap-1 px-2 py-1 transition-all border-l border-white/8 ${
-                compact ? 'text-[9px]' : 'text-[10px]'
-              } ${chartType === 'candle' ? 'bg-white/12 text-white' : 'text-white/30 hover:text-white/60'}`}
-            >
-              <BarChart2 className={compact ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
-              Candle
-            </button>
-          </div>
-
-          {/* Change badge */}
-          <div
-            className={`flex items-center gap-1 font-mono rounded-full px-2 py-0.5 border ${
-              compact ? 'text-[9px]' : 'text-[10px]'
-            }`}
-            style={{
-              color:       accentColor,
-              borderColor: accentColor + '35',
-              background:  accentColor + '10',
-            }}
-          >
-            {isUp
-              ? <TrendingUp  className={compact ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
-              : <TrendingDown className={compact ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
-            }
-            {Math.abs(changePct).toFixed(2)}%
-          </div>
+        <div className="flex items-center gap-3 text-[10px] text-[#57534E] font-mono">
+          <span>{new Date().toISOString().slice(11, 19)} UTC</span>
+          <span className="text-[#B8863F]">auto</span>
         </div>
       </div>
-
-      {/* ── Chart canvas ─────────────────────────────────────────────────── */}
-      <div
-        className="w-full relative rounded-xl overflow-hidden"
-        style={{ height, background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)' }}
-      >
-        {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center z-10">
-            <div className="w-5 h-5 border-2 border-t-white/50 border-white/10 rounded-full animate-spin" />
-          </div>
-        )}
-        <div ref={containerRef} className="w-full h-full" />
-      </div>
-
-      {/* ── Footer: mock indicator + price range ─────────────────────────── */}
-      {!compact && (
-        <div className="flex items-center justify-between mt-2 px-1">
-          <div className="flex items-center gap-1.5">
-            {isMock && (
-              <span className="text-[9px] font-mono text-white/20 border border-white/10 px-1.5 py-0.5 rounded">
-                MOCK DATA
-              </span>
-            )}
-            {label && (
-              <span className="text-[9px] font-mono text-white/20 truncate max-w-[120px]">{label}</span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-[9px] font-mono text-white/20">
-              L {Math.min(...bars.map((b) => b.low)).toFixed(2)}
-            </span>
-            <span className="text-[9px] font-mono text-white/20">
-              H {Math.max(...bars.map((b) => b.high)).toFixed(2)}
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   );
-};
+}
+
+// ---------- Sub-components ----------
+function OHLCLabel({ label, value, up, priceMode }: { label: string; value: number; up?: boolean; priceMode: PriceMode }) {
+  const color = up === undefined ? 'text-[#A8A29E]' : up ? 'text-[#26A69A]' : 'text-[#EF5350]';
+  const display = priceMode === 'MCAP' || value >= 1000
+    ? formatCompact(value)
+    : value < 0.01 ? value.toFixed(6) : value < 1 ? value.toFixed(4) : value.toFixed(2);
+  return (
+    <span className="flex items-baseline gap-0.5">
+      <span className="text-[#57534E]">{label}</span>
+      <span className={color}>{display}</span>
+    </span>
+  );
+}
+
+// ---------- Helpers ----------
+function formatCompact(v: number): string {
+  if (!isFinite(v)) return '—';
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000)     return `${(v / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000)         return `${(v / 1_000).toFixed(1)}K`;
+  if (abs >= 1)             return v.toFixed(2);
+  return v.toFixed(4);
+}
+
+function generateSyntheticCandles(seed: number, timeframe: Timeframe): Candle[] {
+  const config: Record<Timeframe, { points: number; interval: number }> = {
+    '1D':  { points: 96,  interval: 900   },
+    '5D':  { points: 120, interval: 3600  },
+    '1M':  { points: 90,  interval: 86400 },
+    '1Y':  { points: 365, interval: 86400 },
+    'ALL': { points: 500, interval: 86400 },
+  };
+  const { points, interval } = config[timeframe];
+  let price = 80 + (seed % 120);
+  const now = Math.floor(Date.now() / 1000);
+  const candles: Candle[] = [];
+  let random = Math.max(1, seed);
+  const rnd = () => { random = (random * 9301 + 49297) % 233280; return random / 233280; };
+  for (let i = points; i > 0; i--) {
+    const time = now - i * interval;
+    const drift = (rnd() - 0.48) * price * (0.015 + rnd() * 0.035);
+    const open  = price;
+    const close = Math.max(0.5, price + drift);
+    const high  = Math.max(open, close) + rnd() * price * 0.01;
+    const low   = Math.min(open, close) - rnd() * price * 0.01;
+    candles.push({ time, open, high, low: Math.max(0.1, low), close, volume: 500 + rnd() * 5000 });
+    price = close;
+  }
+  return candles;
+}

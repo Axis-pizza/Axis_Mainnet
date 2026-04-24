@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { Hono } from 'hono';
-import { getLineChartData, getTokenPriceChart } from '../routes/chart';
+import { getLineChartData, getCandleChartData, getTokenPriceChart } from '../routes/chart';
 import type { Bindings } from '../config/env';
 
 // mainnet: recorded_at は INTEGER unix秒
@@ -61,6 +61,7 @@ function makePriceDb(rows = tokenPriceRows) {
 const app = new Hono<{ Bindings: Bindings }>()
   .get('/strategies/:id/linechart',    getLineChartData)
   .get('/strategies/:id/chart',        getLineChartData)
+  .get('/strategies/:id/candles',      getCandleChartData)
   .get('/strategies/:id/token-prices', getTokenPriceChart);
 
 // ─────────────────────────────────────────────
@@ -161,6 +162,88 @@ describe('GET /strategies/:id/linechart', () => {
       { axis_main_db: makeMainDb(), axis_price_db: makePriceDb() } as any,
     );
     expect(res.status).toBe(400);
+  });
+});
+
+// ─────────────────────────────────────────────
+// getCandleChartData
+// T1〜T4 は 300秒間隔。interval=30m(1800s) なら全て同一バケットに集約
+// T1 index=30.5, T2=29.95, T3=29.975, T4=29.5
+// OHLC: O=30.5, H=30.5, L=29.5, C=29.5
+// ─────────────────────────────────────────────
+describe('GET /strategies/:id/candles', () => {
+  test('正常: 30m足でOHLCを集約して返す', async () => {
+    const res = await app.request(
+      `/strategies/${STRATEGY_ID}/candles?period=7d&interval=30m`,
+      {},
+      { axis_main_db: makeMainDb(), axis_price_db: makePriceDb() } as any,
+    );
+    expect(res.status).toBe(200);
+    const json = await res.json() as any;
+    expect(json.success).toBe(true);
+    expect(json.data.length).toBeGreaterThan(0);
+    const candle = json.data[0];
+    expect(candle).toHaveProperty('time');
+    expect(candle).toHaveProperty('open');
+    expect(candle).toHaveProperty('high');
+    expect(candle).toHaveProperty('low');
+    expect(candle).toHaveProperty('close');
+    expect(candle).not.toHaveProperty('datetime');
+    // T1,T2,T3 は同一30mバケット / T4は次のバケット境界
+    // 最初のキャンドル: O=T1(30.5), C=T3(29.975), H=30.5, L=29.95
+    expect(candle.open).toBeCloseTo(30.5, 1);
+    expect(candle.close).toBeCloseTo(29.975, 2);
+    expect(candle.high).toBeGreaterThanOrEqual(candle.low);
+  });
+
+  test('正常: 5m足では各タイムスタンプが別キャンドルになる', async () => {
+    const res = await app.request(
+      `/strategies/${STRATEGY_ID}/candles?period=7d&interval=5m`,
+      {},
+      { axis_main_db: makeMainDb(), axis_price_db: makePriceDb() } as any,
+    );
+    const json = await res.json() as any;
+    // 5m足(300秒)はちょうど各バケットと一致するので4本
+    expect(json.data.length).toBe(4);
+  });
+
+  test('正常: intervalのデフォルトは30m', async () => {
+    const res = await app.request(
+      `/strategies/${STRATEGY_ID}/candles?period=7d`,
+      {},
+      { axis_main_db: makeMainDb(), axis_price_db: makePriceDb() } as any,
+    );
+    const json = await res.json() as any;
+    expect(json.success).toBe(true);
+    expect(json.interval).toBe('30m');
+  });
+
+  test('異常: strategy が存在しない場合は404', async () => {
+    const res = await app.request(
+      '/strategies/nonexistent/candles?period=24h',
+      {},
+      { axis_main_db: makeMainDb(null), axis_price_db: makePriceDb() } as any,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  test('異常: 不正なintervalは400', async () => {
+    const res = await app.request(
+      `/strategies/${STRATEGY_ID}/candles?period=7d&interval=invalid`,
+      {},
+      { axis_main_db: makeMainDb(), axis_price_db: makePriceDb() } as any,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  test('異常: データがない場合は空配列', async () => {
+    const res = await app.request(
+      `/strategies/${STRATEGY_ID}/candles?period=7d`,
+      {},
+      { axis_main_db: makeMainDb(), axis_price_db: makePriceDb([]) } as any,
+    );
+    const json = await res.json() as any;
+    expect(json.data).toEqual([]);
   });
 });
 
