@@ -5,8 +5,10 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "test:price": "tsx src/services/snapshot/price-fetcher-test.ts", 
-    "test": "jest"
+    "test:price": "tsx src/services/snapshot/price-fetcher-test.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --include 'src/__tests__/**/*.integration.test.ts'"
   },
   "dependencies": {
     "@metaplex-foundation/mpl-token-metadata": "^2.13.0",
@@ -24,13 +26,23 @@
     "satori": "^0.19.1"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.5.0",
     "@types/jest": "^30.0.0",
     "drizzle-kit": "^0.31.9",
     "jest": "^30.3.0",
     "ts-jest": "^29.4.6",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
+    "vitest": "^2.0.5",
     "wrangler": "^4.60.0"
   },
-  "packageManager": "pnpm@10.10.0+sha512.d615db246fe70f25dcfea6d8d73dee782ce23e2245e3c4f6f888249fb568149318637dca73c2c5c8ef2a4ca0d5657fb9567188bfab47f566d1ee6ce987815c39"
+  "packageManager": "pnpm@10.10.0+sha512.d615db246fe70f25dcfea6d8d73dee782ce23e2245e3c4f6f888249fb568149318637dca73c2c5c8ef2a4ca0d5657fb9567188bfab47f566d1ee6ce987815c39",
+  "pnpm": {
+    "overrides": {
+      "@vitest/runner": "2.0.5",
+      "@vitest/snapshot": "2.0.5",
+      "@vitest/utils": "2.0.5",
+      "@vitest/expect": "2.0.5"
+    }
+  }
 }

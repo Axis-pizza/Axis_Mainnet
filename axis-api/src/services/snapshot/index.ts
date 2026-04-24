@@ -230,7 +230,7 @@ export function buildPriceSnapshot(
       prices[key] = 0; sources[key] = 'no_mint'; missingCount++; continue;
     }
 
-    const result   = priceMap.get(token.mint);
+    const result   = priceMap.get(token.mint.toLowerCase());
     const priceUsd = result?.price_usd ?? 0;
     prices[token.mint]  = priceUsd;
     sources[token.mint] = result?.source ?? 'none';

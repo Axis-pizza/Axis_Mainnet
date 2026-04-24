@@ -383,6 +383,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [tokensInfo, setTokensInfo] = useState<any[]>([]);
+  const [txHistory, setTxHistory] = useState<any[]>([]);
   const [isWatchlisted, setIsWatchlisted] = useState(false);
   const [isInvestOpen, setIsInvestOpen] = useState(false);
   const [isRedeemOpen, setIsRedeemOpen] = useState(false);
@@ -442,6 +443,20 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     };
     init();
   }, [strategy.id, wallet.publicKey, strategy.tokens]);
+
+  useEffect(() => {
+    const fetchTxHistory = async () => {
+      try {
+        const API_BASE = import.meta.env.VITE_API_URL || 'https://axis-api-mainnet.yusukekikuta-05.workers.dev';
+        const res = await fetch(`${API_BASE}/strategies/${strategy.id}/transactions?limit=20`);
+        const json = await res.json() as { success: boolean; data: any[] };
+        if (json.success) setTxHistory(json.data);
+      } catch {
+        // non-fatal
+      }
+    };
+    fetchTxHistory();
+  }, [strategy.id]);
 
   const handleToggleWatchlist = async () => {
     if (!wallet.publicKey) {
@@ -678,6 +693,64 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
                 ))
               ) : (
                 <div className="text-center py-8 text-[#57534E] text-sm">Loading composition...</div>
+              )}
+            </div>
+          </div>
+
+          {/* Transactions */}
+          <div>
+            <h3 className="text-sm font-normal text-[#78716C] uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Activity className="w-4 h-4" /> Transactions
+            </h3>
+            <div className="bg-[#140E08]/50 rounded-3xl border border-[rgba(184,134,63,0.08)] overflow-hidden">
+              {txHistory.length > 0 ? txHistory.map((tx, i) => {
+                const isDeposit = tx.type === 'deposit';
+                const ago = (() => {
+                  const diff = Math.floor(Date.now() / 1000) - tx.blockTime;
+                  if (diff < 60) return `${diff}s ago`;
+                  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+                  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+                  return `${Math.floor(diff / 86400)}d ago`;
+                })();
+                return (
+                  <div
+                    key={tx.signature}
+                    className={`flex items-center justify-between px-4 py-3 ${i !== txHistory.length - 1 ? 'border-b border-[rgba(184,134,63,0.06)]' : ''}`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${isDeposit ? 'bg-emerald-500/15' : 'bg-red-500/15'}`}>
+                        {isDeposit
+                          ? <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                          : <TrendingDown className="w-3.5 h-3.5 text-red-400" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-normal text-white">{isDeposit ? 'Deposit' : 'Withdraw'}</p>
+                        <p className="text-[10px] text-[#78716C] font-mono truncate">
+                          {tx.account.slice(0, 4)}...{tx.account.slice(-4)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end shrink-0 ml-2 gap-0.5">
+                      <span className={`text-xs font-normal ${isDeposit ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {isDeposit ? '+' : '-'}{tx.amountSol.toFixed(4)} SOL
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-[#57534E]">{ago}</span>
+                        <a
+                          href={`https://solscan.io/tx/${tx.signature}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-[#B8863F] hover:underline font-mono"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          Txn
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }) : (
+                <div className="text-center py-8 text-[#57534E] text-sm">No transactions yet</div>
               )}
             </div>
           </div>

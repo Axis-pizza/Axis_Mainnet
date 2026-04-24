@@ -11,6 +11,7 @@ import kagemushaRoutes from './routes/kagemusha';
 import uploadRoutes from './routes/upload';
 import shareRoutes from './routes/share';
 import { runPriceSnapshot } from './services/snapshot';
+import { getLineChartData, getTokenPriceChart } from './routes/chart';
 import dflowRoutes from './routes/dflow';
 import mobileRoutes from './routes/mobile';
 import inviteRoutes from './routes/invite';
@@ -67,6 +68,10 @@ app.get('/init-db', async (c) => {
     return c.json({ success: false, error: e.message });
   }
 });
+
+app.get('/strategies/:id/linechart', getLineChartData);
+app.get('/strategies/:id/chart', getLineChartData);
+app.get('/strategies/:id/token-prices', getTokenPriceChart);
 
 // --- Mount Routes ---
 app.route('/auth', authRoutes);

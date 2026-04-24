@@ -116,9 +116,22 @@ app.post('/', async (c) => {
 
                 // 6. 処理済みとしてDBに記録
                 await c.env.axis_main_db.prepare(
-                    `INSERT INTO processed_deposits (signature, strategy_id, user_address, amount_lamports, mint_amount) 
+                    `INSERT INTO processed_deposits (signature, strategy_id, user_address, amount_lamports, mint_amount)
                      VALUES (?, ?, ?, ?, ?)`
                 ).bind(signature, strategy.id, fromUser, amountLamports, mintAmount.toString()).run();
+
+                // 7. strategy_transactions に deposit を記録
+                await c.env.axis_price_db.prepare(
+                    `INSERT OR IGNORE INTO strategy_transactions
+                       (strategy_id, signature, type, account, amount_sol, block_time)
+                     VALUES (?, ?, 'deposit', ?, ?, ?)`
+                ).bind(
+                    strategy.id,
+                    signature,
+                    fromUser,
+                    amountLamports / 1e9,
+                    tx.timestamp ?? Math.floor(Date.now() / 1000)
+                ).run();
             }
         }
 

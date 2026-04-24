@@ -590,6 +590,91 @@ app.post('/art/generate', async (c) => {
   }
 });
 
+// GET /strategies/:id/transactions
+// DBキャッシュ優先、なければHelius RPC から取得
+app.get('/strategies/:id/transactions', async (c) => {
+  try {
+    const strategyId = c.req.param('id');
+    const limit = Math.min(parseInt(c.req.query('limit') ?? '20'), 50);
+
+    const record = await c.env.axis_main_db.prepare(
+      'SELECT vault_address FROM strategies WHERE id = ? LIMIT 1'
+    ).bind(strategyId).first() as { vault_address: string } | null;
+
+    if (!record) {
+      return c.json({ success: false, message: 'Strategy not found' }, 404);
+    }
+
+    // DBキャッシュを先に確認（ローカル開発・高速レスポンス用）
+    try {
+      const { results: cached } = await c.env.axis_price_db.prepare(
+        `SELECT signature, type, account, amount_sol, block_time
+         FROM strategy_transactions
+         WHERE strategy_id = ?
+         ORDER BY block_time DESC
+         LIMIT ?`
+      ).bind(strategyId, limit).all();
+
+      if (cached.length > 0) {
+        return c.json({
+          success: true,
+          data: (cached as any[]).map(r => ({
+            signature: r.signature,
+            type: r.type,
+            account: r.account,
+            amountSol: r.amount_sol,
+            blockTime: r.block_time,
+          })),
+        });
+      }
+    } catch {
+      // テーブルが存在しない場合はスルーしてHeliusへ
+    }
+
+    // DBにデータがなければHelius RPC から取得
+    if (!record.vault_address) return c.json({ success: true, data: [] });
+
+    const rpcUrl = c.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
+    const connection = new Connection(rpcUrl, 'confirmed');
+    const vaultPubkey = new PublicKey(record.vault_address);
+
+    const signatures = await connection.getSignaturesForAddress(vaultPubkey, { limit });
+    if (!signatures.length) return c.json({ success: true, data: [] });
+
+    const txs = await connection.getParsedTransactions(
+      signatures.map(s => s.signature),
+      { maxSupportedTransactionVersion: 0 }
+    );
+
+    const results: any[] = [];
+    for (let i = 0; i < signatures.length; i++) {
+      const sig = signatures[i];
+      const tx = txs[i];
+      if (!tx || tx.meta?.err) continue;
+
+      const instructions = tx.transaction.message.instructions as any[];
+      for (const ix of instructions) {
+        if (ix.program === 'system' && ix.parsed?.type === 'transfer' && ix.parsed?.info) {
+          const { source, destination, lamports } = ix.parsed.info;
+          const amountSol = lamports / 1e9;
+          const isDeposit = destination === record.vault_address;
+          results.push({
+            signature: sig.signature,
+            type: isDeposit ? 'deposit' : 'withdraw',
+            account: isDeposit ? source : destination,
+            amountSol,
+            blockTime: sig.blockTime ?? 0,
+          });
+        }
+      }
+    }
+
+    return c.json({ success: true, data: results });
+  } catch (e: any) {
+    return c.json({ success: false, error: e.message }, 500);
+  }
+});
+
 // Helper function for XP
 async function addXP(db: D1Database, pubkey: string, amount: number, actionType: string, description: string) {
   try {

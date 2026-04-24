@@ -53,7 +53,9 @@ export const StrategyChart = ({ strategyId, refreshTrigger }: StrategyChartProps
     }
   }, [strategyId, period, refreshTrigger]);
 
-  const percentChange = latestValue ? latestValue - 100 : 0;
+  const percentChange = (startValue && latestValue && startValue > 0)
+    ? ((latestValue - startValue) / startValue) * 100
+    : 0;
   const isPositive = percentChange >= 0;
 
   const CustomTooltip = ({ active, payload, label }: any) => {

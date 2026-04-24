@@ -184,9 +184,6 @@ function generateMockData(points = 60, seed = 1): PerformancePoint[] {
   return result;
 }
 
-type ChartRange = '1H' | '24H' | '7D' | '30D';
-const RANGE_LABELS: ChartRange[] = ['1H', '24H', '7D', '30D'];
-
 export const PerformanceChart = ({
   data,
   compact = false,
@@ -196,20 +193,13 @@ export const PerformanceChart = ({
   compact?: boolean;
   seedOffset?: number;
 }) => {
-  const [range, setRange] = useState<ChartRange>('24H');
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [animated, setAnimated] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  // モックデータはseedとrangeが変わらない限り再生成しない
-  const mockByRange = useMemo<Record<ChartRange, PerformancePoint[]>>(() => ({
-    '1H':  generateMockData(60,  seedOffset + 1),
-    '24H': generateMockData(96,  seedOffset + 2),
-    '7D':  generateMockData(84,  seedOffset + 3),
-    '30D': generateMockData(90,  seedOffset + 4),
-  }), [seedOffset]);
+  const mockData = useMemo(() => generateMockData(96, seedOffset + 2), [seedOffset]);
 
-  const points = data ?? mockByRange[range];
+  const points = data ?? mockData;
 
   // 色・変化率はデータが変わらない限り固定（ホバーで再計算しない）
   const { minNav, maxNav, navRange, firstNav, lastNav, change, isPositive, accentColor, accentGlow } =
@@ -271,25 +261,12 @@ export const PerformanceChart = ({
     setAnimated(false);
     const t = setTimeout(() => setAnimated(true), 30);
     return () => clearTimeout(t);
-  }, [range, data]);
+  }, [data]);
 
   return (
     <div className="w-full flex flex-col">
-      {/* Range selector + change badge */}
-      <div className={`flex items-center justify-between ${compact ? 'mb-1.5' : 'mb-2'}`}>
-        <div className="flex items-center gap-1">
-          {RANGE_LABELS.map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              className={`rounded-md font-mono transition-all duration-200 ${
-                compact ? 'text-[8px] px-1.5 py-0.5' : 'text-[9px] px-2 py-1'
-              } ${range === r ? 'bg-white/15 text-white' : 'text-white/30 hover:text-white/60'}`}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
+      {/* Change badge (24H fixed) */}
+      <div className={`flex items-center justify-end ${compact ? 'mb-1.5' : 'mb-2'}`}>
         <div
           className={`flex items-center gap-1 font-mono rounded-full px-2 py-0.5 border ${compact ? 'text-[8px]' : 'text-[10px]'}`}
           style={{
@@ -431,8 +408,33 @@ export const SwipeCardBody = ({
   const maxLogos = c ? 6 : 8;
   const sortedTokens = [...strategy.tokens].sort((a, b) => b.weight - a.weight);
   const overflow = Math.max(0, sortedTokens.length - maxLogos);
-  // Deterministic seed from strategy id for stable mock curves
   const seedOffset = strategy.id.charCodeAt(0) + strategy.id.charCodeAt(strategy.id.length - 1);
+
+  const [chartPoints, setChartPoints] = useState<PerformancePoint[] | undefined>(strategy.performanceData);
+  const [chartRoi, setChartRoi] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchChart = async () => {
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_API_URL || 'https://axis-api-mainnet.yusukekikuta-05.workers.dev'}/strategies/${strategy.id}/chart?period=24h`
+        );
+        if (!res.ok) return;
+        const json = await res.json() as { success: boolean; data: { time: number; value: number }[] };
+        if (!json.success || !json.data?.length || cancelled) return;
+        const points: PerformancePoint[] = json.data.map(d => ({ timestamp: d.time, nav: d.value }));
+        setChartPoints(points);
+        const first = points[0].nav;
+        const last = points[points.length - 1].nav;
+        setChartRoi(first > 0 ? ((last - first) / first) * 100 : 0);
+      } catch {
+        // フォールバック: モックのまま
+      }
+    };
+    fetchChart();
+    return () => { cancelled = true; };
+  }, [strategy.id]);
 
   return (
     <div
@@ -513,7 +515,7 @@ export const SwipeCardBody = ({
         <div className="grid grid-cols-2 gap-2">
           {/* 24H Change */}
           {(() => {
-            const roi = strategy.roi ?? 0;
+            const roi = chartRoi ?? strategy.roi ?? 0;
             const roiPositive = roi >= 0;
             const roiColor = roiPositive ? '#34D399' : '#F87171';
             const roiGlow  = roiPositive ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)';
@@ -566,10 +568,12 @@ export const SwipeCardBody = ({
           <span className={`text-white/30 uppercase font-normal tracking-widest ${c ? 'text-[7px]' : 'text-[9px]'}`}>
             NAV Performance
           </span>
-          <span className="w-1.5 h-1.5 rounded-full bg-white/20 inline-block" title="Mock data" />
+          {!chartPoints && (
+            <span className="w-1.5 h-1.5 rounded-full bg-white/20 inline-block" title="Mock data" />
+          )}
         </div>
         <PerformanceChart
-          data={strategy.performanceData}
+          data={chartPoints}
           compact={c}
           seedOffset={seedOffset}
         />
