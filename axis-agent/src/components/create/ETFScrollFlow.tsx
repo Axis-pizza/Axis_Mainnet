@@ -292,7 +292,7 @@ function InlineIdentityStep({
         <div className="relative overflow-hidden bg-gradient-to-br from-[#0a0a0a] to-amber-950/20 p-5 rounded-2xl border border-amber-900/20">
           <div className="text-xs text-amber-700/50 uppercase font-normal">Fee</div>
           <div className="text-2xl text-amber-500 mt-1" style={{ fontFamily: '"Times New Roman", serif' }}>
-            0.5%
+            0.3%
           </div>
         </div>
         <div className="relative overflow-hidden bg-gradient-to-br from-[#0a0a0a] to-amber-950/20 p-5 rounded-2xl border border-amber-900/20">
