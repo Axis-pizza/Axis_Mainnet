@@ -27,6 +27,8 @@ export {
   ixSwapRequest3,
   ixClearBatch3,
   ixClaim3,
+  ixWithdrawFees3,
+  ixSetPaused3,
 } from './ix';
 export type {
   CreateEtfArgs,
@@ -37,6 +39,8 @@ export type {
   SwapRequestArgs,
   ClearBatchArgs,
   ClaimArgs,
+  WithdrawFees3Args,
+  SetPaused3Args,
 } from './ix';
 export {
   SOL_MINT,
@@ -110,3 +114,14 @@ export type {
   WithdrawSolPlanArgs,
   WithdrawSolLegPreview,
 } from './withdrawSolPlan';
+export {
+  decodePoolState3,
+  fetchPoolState3,
+} from './pfmmState';
+export type { PoolState3Data } from './pfmmState';
+export { buildJupiterSolSeedPlan } from './pfmmSeedPlan';
+export type {
+  JupiterSolSeedArgs,
+  JupiterSolSeedLeg,
+  JupiterSolSeedPlan,
+} from './pfmmSeedPlan';
