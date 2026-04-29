@@ -3,6 +3,7 @@ import Home from './Home';
 import { TermsPage } from './components/terms/TermsPage';
 import { AnalyticsTracker } from './components/common/AnalyticsTracker';
 import { StrategyDetailPage } from './pages/StrategyDetailPage';
+import { VaultPage } from './pages/VaultPage';
 
 const RootLayout = () => (
   <>
@@ -26,6 +27,10 @@ const router = createBrowserRouter([
       {
         path: '/strategy/:id', // Strategy detail page route
         element: <StrategyDetailPage />,
+      },
+      {
+        path: '/vault',
+        element: <VaultPage />,
       },
     ],
   },

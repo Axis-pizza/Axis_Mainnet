@@ -11,10 +11,11 @@ import { KagemushaFlow } from './components/create';
 import { DiscoverView } from './components/discover/DiscoverView';
 import { ProfileView } from './components/profile/ProfileView';
 import { StrategyDetailView } from './components/discover/StrategyDetailView';
+import { AxisVaultView } from './components/axis-vault';
 import type { Strategy } from './types';
 import { getUsdcBalance } from './services/usdc';
 
-type View = 'DISCOVER' | 'CREATE' | 'PROFILE' | 'STRATEGY_DETAIL';
+type View = 'DISCOVER' | 'CREATE' | 'VAULT' | 'PROFILE' | 'STRATEGY_DETAIL';
 const TUTORIAL_KEY = 'kagemusha-onboarding-v2';
 const DISCOVER_VIEW_KEY = 'axis-discover-view-mode';
 
@@ -149,6 +150,11 @@ export default function Home() {
               }
             }}
           />
+        </div>
+      )}
+      {view === 'VAULT' && (
+        <div className="relative z-20 pb-32">
+          <AxisVaultView />
         </div>
       )}
       {view === 'PROFILE' && (

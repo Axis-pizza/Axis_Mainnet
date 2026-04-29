@@ -6,7 +6,7 @@ import { BugDrawer } from './BugDrawer';
 import { useWallet } from '../../hooks/useWallet';
 import { usePrivy } from '@privy-io/react-auth';
 
-export type ViewState = 'DISCOVER' | 'CREATE' | 'PROFILE';
+export type ViewState = 'DISCOVER' | 'CREATE' | 'VAULT' | 'PROFILE';
 
 // ── ゆったりとした緩急のイージング設定 ────────────────────────────────────
 // 動き出しはゆっくり、途中で少し加速し、最後はスッと収まるエレガントなイージング
@@ -45,6 +45,25 @@ const AnimatedPlusIcon = ({ isActive, className, strokeWidth }: { isActive: bool
 );
 
 // (c) User: 頭が少し浮き上がり、肩のラインがスゥーっと描画される
+// (d) Vault: 4-token basket — small candles arranged in a square that breathe
+//     when the tab is active. Visually distinct from the compass / plus / user.
+const AnimatedVaultIcon = ({ isActive, className, strokeWidth }: { isActive: boolean, className: string, strokeWidth: number }) => (
+  <motion.svg
+    width="22" height="22" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth={strokeWidth}
+    strokeLinecap="round" strokeLinejoin="round" className={className}
+    initial={false}
+    animate={{ scale: isActive ? [1, 1.06, 1] : 1 }}
+    style={{ originX: '12px', originY: '12px' }}
+    transition={{ duration: DURATION, ease: SLOW_EASE }}
+  >
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <rect x="14" y="14" width="7" height="7" rx="1" />
+  </motion.svg>
+);
+
 // (c) User: わずかな「深呼吸」（胸を張ってゆっくり息を吐く動き）
 const AnimatedUserIcon = ({ isActive, className, strokeWidth }: { isActive: boolean, className: string, strokeWidth: number }) => (
   <motion.svg 
@@ -85,6 +104,7 @@ const AnimatedNavIcon = memo(({ id, isActive }: { id: ViewState; isActive: boole
 
   if (id === 'DISCOVER') return <AnimatedCompassIcon isActive={isActive} className={cls} strokeWidth={strokeWidth} />;
   if (id === 'CREATE')   return <AnimatedPlusIcon    isActive={isActive} className={cls} strokeWidth={strokeWidth} />;
+  if (id === 'VAULT')    return <AnimatedVaultIcon   isActive={isActive} className={cls} strokeWidth={strokeWidth} />;
   if (id === 'PROFILE')  return <AnimatedUserIcon    isActive={isActive} className={cls} strokeWidth={strokeWidth} />;
 
   return null;
@@ -95,6 +115,7 @@ const AnimatedNavIcon = memo(({ id, isActive }: { id: ViewState; isActive: boole
 const NAV_ITEMS: { id: ViewState; label: string }[] = [
   { id: 'DISCOVER', label: 'Discover' },
   { id: 'CREATE',   label: 'Create'   },
+  { id: 'VAULT',    label: 'Vault'    },
   { id: 'PROFILE',  label: 'Profile'  },
 ];
 
