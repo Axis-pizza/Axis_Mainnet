@@ -277,8 +277,20 @@ export function CreateEtfPanel({
               <input
                 value={ticker}
                 onChange={(e) => setTicker(e.target.value.toUpperCase())}
-                className="rounded bg-slate-800 px-2 py-1 font-mono text-slate-100"
+                className={
+                  'rounded bg-slate-800 px-2 py-1 font-mono text-slate-100 ' +
+                  (ticker.length >= 2 &&
+                  ticker.length <= 16 &&
+                  /^[A-Z0-9]+$/.test(ticker)
+                    ? 'border border-transparent'
+                    : 'border border-rose-500/50')
+                }
               />
+              {!(ticker.length >= 2 && ticker.length <= 16 && /^[A-Z0-9]+$/.test(ticker)) && (
+                <span className="mt-1 text-[10px] text-rose-400">
+                  must be 2..16 ASCII upper-case letters or digits
+                </span>
+              )}
             </label>
           </div>
 

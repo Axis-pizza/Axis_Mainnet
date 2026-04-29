@@ -11,10 +11,11 @@ import { ScopeNote } from './ScopeNote';
 import { ProgramCard } from './ProgramCard';
 import { TokensPanel } from './TokensPanel';
 import { CreateEtfPanel } from './CreateEtfPanel';
+import { DepositSolPanel } from './DepositSolPanel';
 import { WithdrawSolPanel } from './WithdrawSolPanel';
 import { PfmmPanel } from './PfmmPanel';
 
-type Tab = 'overview' | 'tokens' | 'etf' | 'withdraw' | 'pfmm';
+type Tab = 'overview' | 'tokens' | 'etf' | 'deposit' | 'withdraw' | 'pfmm';
 
 /// Standalone shell that renders the axis-vault + Jupiter mainnet flows.
 /// Designed to drop into either a dedicated route or a `view === 'VAULT'`
@@ -122,6 +123,10 @@ function Shell({
           </div>
         )}
 
+        {tab === 'deposit' && (
+          <DepositSolPanel config={config} presetEtfState={lastEtfState} />
+        )}
+
         {tab === 'withdraw' && (
           <WithdrawSolPanel config={config} presetEtfState={lastEtfState} />
         )}
@@ -216,6 +221,7 @@ function Tabs({
     { id: 'overview', label: 'Overview' },
     { id: 'tokens', label: 'Tokens' },
     { id: 'etf', label: 'Create ETF' },
+    { id: 'deposit', label: 'Deposit → ETF' },
     { id: 'withdraw', label: 'Withdraw → SOL' },
     { id: 'pfmm', label: 'PFMM' },
   ];
