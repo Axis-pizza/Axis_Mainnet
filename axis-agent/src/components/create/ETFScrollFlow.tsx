@@ -16,7 +16,7 @@ import { useManualDashboard } from '../../hooks/useManualDashboard';
 import { useTokenPreferences } from '../../hooks/useTokenPreferences';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { MobileBuilder, DesktopBuilder } from './manual/Builder';
-import { DeploymentBlueprint } from './DeploymentBlueprint';
+import { PfmmDeploymentBlueprint } from './PfmmDeploymentBlueprint';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3D Background (reused from CreateLanding)
@@ -552,7 +552,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
       {/* ── Section 4: Review & Deploy ────────────────────────────────────── */}
       <div ref={reviewRef}>
         <GlassSection className="py-4" innerClassName="px-4 pt-6 pb-20">
-          <DeploymentBlueprint
+          <PfmmDeploymentBlueprint
             strategyName={dashboard.config.name || 'Untitled'}
             strategyType="BALANCED"
             tokens={reviewTokens}
