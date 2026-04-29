@@ -6,6 +6,7 @@ import {
   useSignTransaction as usePrivySignTransaction,
 } from '@privy-io/react-auth/solana';
 import { useWallet } from './useWallet';
+import { useDirectWallet } from './useDirectWallet';
 import type { AxisVaultWallet } from '../protocol/axis-vault';
 
 /// Adapter that exposes axis-agent's Privy-backed wallet as the
@@ -18,11 +19,26 @@ import type { AxisVaultWallet } from '../protocol/axis-vault';
 /// because Privy only adds the user's signature.
 export function useAxisVaultWallet(): AxisVaultWallet | null {
   const { publicKey } = useWallet();
+  const { publicKey: directPublicKey, signTransaction: directSign } = useDirectWallet();
   const { wallets: solanaWallets } = usePrivySolanaWallets();
   const { signTransaction: privySignTransaction } = usePrivySignTransaction();
 
   return useMemo(() => {
     if (!publicKey) return null;
+
+    // Prefer the direct (window.solana) path when its publicKey matches.
+    // No Privy iframe is involved, so signing keeps working when the
+    // Privy auth-iframe is blocked by CSP / origins.
+    if (directPublicKey && directPublicKey.equals(publicKey)) {
+      const signLegacy = (tx: Transaction): Promise<Transaction> => directSign(tx);
+      const signVersioned = (tx: VersionedTransaction): Promise<VersionedTransaction> => directSign(tx);
+      return {
+        publicKey,
+        signTransaction: signLegacy,
+        signVersionedTransaction: signVersioned,
+      };
+    }
+
     const targetAddress = publicKey.toBase58();
     const wallet =
       solanaWallets.find((w: { address: string }) => w.address === targetAddress) ??
@@ -55,5 +71,5 @@ export function useAxisVaultWallet(): AxisVaultWallet | null {
       signTransaction: signLegacy,
       signVersionedTransaction: signVersioned,
     };
-  }, [publicKey, solanaWallets, privySignTransaction]);
+  }, [publicKey, directPublicKey, directSign, solanaWallets, privySignTransaction]);
 }

@@ -77,7 +77,12 @@ async function useCode(
 // ─── Main gate ────────────────────────────────────────────────────────────────
 export const InviteGate = ({ onGranted }: InviteGateProps) => {
   const { publicKey } = useWallet();
-  const { setVisible: openLogin } = useLoginModal();
+  const {
+    setVisible: openLogin,
+    connectDirect,
+    isDirectAvailable,
+    isDirectConnecting,
+  } = useLoginModal();
 
   const [step,      setStep]      = useState<Step>('tos');
   const [agreed,    setAgreed]    = useState({ tos: false, geo: false, risk: false });
@@ -537,6 +542,22 @@ export const InviteGate = ({ onGranted }: InviteGateProps) => {
                         Terms of Service
                       </a>
                     </p>
+                    {isDirectAvailable && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void connectDirect().catch((e) => {
+                            console.warn('[axis] direct phantom connect failed', e);
+                          });
+                        }}
+                        disabled={isDirectConnecting}
+                        className="mt-3 w-full text-center text-[11px] text-[#7A5A30] hover:text-[#B8863F] transition-colors py-2 disabled:opacity-50"
+                      >
+                        {isDirectConnecting
+                          ? 'connecting Phantom…'
+                          : 'Privy not loading? → Connect Phantom directly'}
+                      </button>
+                    )}
                   </>
                 )}
               </motion.div>
