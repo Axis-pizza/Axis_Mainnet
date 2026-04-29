@@ -6,7 +6,7 @@ import { BugDrawer } from './BugDrawer';
 import { useWallet } from '../../hooks/useWallet';
 import { usePrivy } from '@privy-io/react-auth';
 
-export type ViewState = 'DISCOVER' | 'CREATE' | 'VAULT' | 'PROFILE';
+export type ViewState = 'DISCOVER' | 'CREATE' | 'PFMM' | 'PROFILE';
 
 // ── ゆったりとした緩急のイージング設定 ────────────────────────────────────
 // 動き出しはゆっくり、途中で少し加速し、最後はスッと収まるエレガントなイージング
@@ -45,9 +45,9 @@ const AnimatedPlusIcon = ({ isActive, className, strokeWidth }: { isActive: bool
 );
 
 // (c) User: 頭が少し浮き上がり、肩のラインがスゥーっと描画される
-// (d) Vault: 4-token basket — small candles arranged in a square that breathe
+// (d) PFMM: 4-token basket — small candles arranged in a square that breathe
 //     when the tab is active. Visually distinct from the compass / plus / user.
-const AnimatedVaultIcon = ({ isActive, className, strokeWidth }: { isActive: boolean, className: string, strokeWidth: number }) => (
+const AnimatedPfmmIcon = ({ isActive, className, strokeWidth }: { isActive: boolean, className: string, strokeWidth: number }) => (
   <motion.svg
     width="22" height="22" viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth={strokeWidth}
@@ -104,7 +104,7 @@ const AnimatedNavIcon = memo(({ id, isActive }: { id: ViewState; isActive: boole
 
   if (id === 'DISCOVER') return <AnimatedCompassIcon isActive={isActive} className={cls} strokeWidth={strokeWidth} />;
   if (id === 'CREATE')   return <AnimatedPlusIcon    isActive={isActive} className={cls} strokeWidth={strokeWidth} />;
-  if (id === 'VAULT')    return <AnimatedVaultIcon   isActive={isActive} className={cls} strokeWidth={strokeWidth} />;
+  if (id === 'PFMM')    return <AnimatedPfmmIcon    isActive={isActive} className={cls} strokeWidth={strokeWidth} />;
   if (id === 'PROFILE')  return <AnimatedUserIcon    isActive={isActive} className={cls} strokeWidth={strokeWidth} />;
 
   return null;
@@ -115,7 +115,7 @@ const AnimatedNavIcon = memo(({ id, isActive }: { id: ViewState; isActive: boole
 const NAV_ITEMS: { id: ViewState; label: string }[] = [
   { id: 'DISCOVER', label: 'Discover' },
   { id: 'CREATE',   label: 'Create'   },
-  { id: 'VAULT',    label: 'Vault'    },
+  { id: 'PFMM',     label: 'PFMM'     },
   { id: 'PROFILE',  label: 'Profile'  },
 ];
 

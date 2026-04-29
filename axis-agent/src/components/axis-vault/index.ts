@@ -1,4 +1,5 @@
 export { AxisVaultView } from './AxisVaultView';
+export { PfmmShell } from './PfmmShell';
 export { CreateEtfPanel } from './CreateEtfPanel';
 export { DepositSolPanel } from './DepositSolPanel';
 export { WithdrawSolPanel } from './WithdrawSolPanel';
