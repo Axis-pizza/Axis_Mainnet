@@ -34,10 +34,12 @@ import { api } from '../../services/api';
 import type { Strategy } from '../../types';
 import { useToast } from '../../context/ToastContext';
 import { RedeemModal } from '../profile/RedeemModal';
+import { CreatorConsole } from './CreatorConsole';
 import { getUserPosition, lamportsToSol } from '../../protocol/kagemusha';
 import {
   buildJupiterSolSeedPlan,
   buildJupiterBasketSellPlan,
+  getQuote,
   sendVersionedTx,
   SOL_MINT,
 } from '../../protocol/axis-vault';
@@ -173,6 +175,8 @@ interface InvestSheetProps {
   onConfirm: (amount: string, mode: 'BUY' | 'SELL') => Promise<void>;
   status: TransactionStatus;
   hasBasketPosition: boolean;
+  basketMints: PublicKey[] | null;
+  basketBalances: bigint[];
 }
 
 const InvestSheet = ({
@@ -182,6 +186,8 @@ const InvestSheet = ({
   onConfirm,
   status,
   hasBasketPosition,
+  basketMints,
+  basketBalances,
 }: InvestSheetProps) => {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
@@ -190,6 +196,8 @@ const InvestSheet = ({
   const [mode, setMode] = useState<'BUY' | 'SELL'>('BUY');
   const [amount, setAmount] = useState('0');
   const [solBalance, setSolBalance] = useState(0);
+  const [previewSolOut, setPreviewSolOut] = useState<number | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     if (!publicKey || !isOpen) return;
@@ -208,8 +216,69 @@ const InvestSheet = ({
     if (isOpen) {
       setAmount('0');
       setMode('BUY');
+      setPreviewSolOut(null);
     }
   }, [isOpen]);
+
+  // Debounced preview-quote for SELL: ask Jupiter how much SOL the chosen
+  // % of each basket holding would yield. ExactIn quote per leg, summed.
+  useEffect(() => {
+    if (mode !== 'SELL' || !basketMints || basketBalances.length === 0) {
+      setPreviewSolOut(null);
+      return;
+    }
+    const pct = parseFloat(amount);
+    if (!isFinite(pct) || pct <= 0 || pct > 100) {
+      setPreviewSolOut(null);
+      return;
+    }
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      const inputs = basketMints
+        .map((mint, i) => {
+          const balance = basketBalances[i] ?? 0n;
+          const sellAmount = (balance * BigInt(Math.floor(pct * 100))) / 10_000n;
+          return { mint, amount: sellAmount };
+        })
+        .filter((leg) => leg.amount > 0n);
+      if (inputs.length === 0) {
+        if (!cancelled) setPreviewSolOut(null);
+        return;
+      }
+      setPreviewLoading(true);
+      try {
+        const quotes = await Promise.all(
+          inputs.map((leg) => {
+            if (leg.mint.equals(SOL_MINT)) {
+              return Promise.resolve({ outAmount: leg.amount.toString() });
+            }
+            return getQuote({
+              inputMint: leg.mint,
+              outputMint: SOL_MINT,
+              amount: leg.amount,
+              slippageBps: 50,
+              swapMode: 'ExactIn',
+              maxAccounts: 14,
+            });
+          })
+        );
+        if (cancelled) return;
+        const totalLamports = quotes.reduce(
+          (sum, q) => sum + BigInt(q.outAmount),
+          0n
+        );
+        setPreviewSolOut(Number(totalLamports) / LAMPORTS_PER_SOL);
+      } catch {
+        if (!cancelled) setPreviewSolOut(null);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    }, 450);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [mode, amount, basketMints, basketBalances]);
 
   // BUY caps the input at wallet SOL (minus a tiny fee buffer); SELL is a
   // percent of the user's existing basket holdings (1..100).
@@ -315,13 +384,24 @@ const InvestSheet = ({
             </div>
 
             {amount !== '0' && (
-              <div className="absolute bottom-4 flex items-center gap-2 text-sm text-[#78716C]">
-                <ArrowDown className="w-4 h-4" />
-                <span>
-                  {isSell
-                    ? `Sell ${amount}% of basket → SOL via Jupiter`
-                    : `Buy ${strategy.name} basket with ${amount} SOL via Jupiter`}
-                </span>
+              <div className="absolute bottom-4 flex flex-col items-center gap-1 text-sm text-[#78716C]">
+                <div className="flex items-center gap-2">
+                  <ArrowDown className="w-4 h-4" />
+                  <span>
+                    {isSell
+                      ? `Sell ${amount}% of basket → SOL via Jupiter`
+                      : `Buy ${strategy.name} basket with ${amount} SOL via Jupiter`}
+                  </span>
+                </div>
+                {isSell && (
+                  <div className="text-xs font-mono text-[#B8863F]">
+                    {previewLoading
+                      ? 'Quoting…'
+                      : previewSolOut !== null
+                        ? `≈ ${previewSolOut.toFixed(4)} SOL out`
+                        : ''}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -393,6 +473,14 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const [investStatus, setInvestStatus] = useState<TransactionStatus>('IDLE');
   const [userSolPosition, setUserSolPosition] = useState(0);
   const [basketBalances, setBasketBalances] = useState<bigint[]>([]);
+  const [isCreatorConsoleOpen, setIsCreatorConsoleOpen] = useState(false);
+
+  const isCreator = useMemo(() => {
+    if (!wallet.publicKey) return false;
+    const owner = strategy.ownerPubkey ?? strategy.owner;
+    if (!owner) return false;
+    return owner === wallet.publicKey.toBase58();
+  }, [wallet.publicKey, strategy.ownerPubkey, strategy.owner]);
 
   const controls = useAnimation();
 
@@ -859,6 +947,15 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
           </div>
 
           <div className="flex items-center gap-2">
+            {isCreator && (
+              <button
+                onClick={() => setIsCreatorConsoleOpen(true)}
+                className="bg-amber-900/30 text-amber-200 font-normal px-3 py-3 rounded-full border border-amber-700/30 active:scale-95 transition-all flex items-center gap-1.5 text-xs"
+                title="Creator Console (authority only)"
+              >
+                <Layers className="w-4 h-4" /> Manage
+              </button>
+            )}
             {userSolPosition > 0 && (
               <button
                 onClick={() => setIsRedeemOpen(true)}
@@ -884,6 +981,14 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         onConfirm={handleTransaction}
         status={investStatus}
         hasBasketPosition={basketBalances.some((b) => b > 0n)}
+        basketMints={basketMints}
+        basketBalances={basketBalances}
+      />
+
+      <CreatorConsole
+        isOpen={isCreatorConsoleOpen}
+        onClose={() => setIsCreatorConsoleOpen(false)}
+        strategy={strategy}
       />
 
       <RedeemModal

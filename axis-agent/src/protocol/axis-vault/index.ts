@@ -132,3 +132,8 @@ export type {
   JupiterBasketSellPlan,
   SellBasketLegInput,
 } from './pfmmSellBasketPlan';
+export { buildPfmmWithdrawFeesPlan } from './pfmmWithdrawFeesPlan';
+export type {
+  WithdrawFeesPlan,
+  WithdrawFeesPlanArgs,
+} from './pfmmWithdrawFeesPlan';
