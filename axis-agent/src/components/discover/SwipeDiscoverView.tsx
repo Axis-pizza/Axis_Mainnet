@@ -24,6 +24,7 @@ import { api } from '../../services/api';
 import { useWallet, useConnection, useLoginModal } from '../../hooks/useWallet';
 import { useAxisVaultWallet } from '../../hooks/useAxisVaultWallet';
 import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { JupiterService } from '../../services/jupiter';
 import {
   depositSol,
@@ -32,7 +33,16 @@ import {
   getUserPosition,
   lamportsToSol,
 } from '../../protocol/kagemusha';
-import { buildJupiterSolSeedPlan, sendVersionedTx } from '../../protocol/axis-vault';
+import {
+  AXIS_VAULT_PROGRAM_ID,
+  buildDepositSolPlan,
+  buildJupiterSolSeedPlan,
+  buildWithdrawSolPlan,
+  fetchEtfState,
+  findEtfState,
+  sendVersionedTx,
+  type EtfStateData,
+} from '../../protocol/axis-vault';
 import { DexScreenerService } from '../../services/dexscreener';
 import { useToast } from '../../context/ToastContext';
 
@@ -720,6 +730,60 @@ export const SwipeDiscoverView = ({
   const [isInvestOpen, setIsInvestOpen] = useState(false);
   const [investStatus, setInvestStatus] = useState<TransactionStatus>('IDLE');
   const [investTarget, setInvestTarget] = useState<any | null>(null);
+  // axis-vault probe for the active investTarget. When non-null deposit/withdraw
+  // routes through axis-vault (Deposit/Withdraw) instead of the legacy Jupiter/
+  // kagemusha paths.
+  const [investEtfState, setInvestEtfState] = useState<PublicKey | null>(null);
+  const [investEtfData, setInvestEtfData] = useState<EtfStateData | null>(null);
+  const [investUserEtfBalance, setInvestUserEtfBalance] = useState<bigint>(0n);
+
+  useEffect(() => {
+    if (!investTarget) {
+      setInvestEtfState(null);
+      setInvestEtfData(null);
+      setInvestUserEtfBalance(0n);
+      return;
+    }
+    const owner = investTarget.ownerPubkey ?? investTarget.owner;
+    const name = investTarget.name;
+    if (!owner || !name) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const ownerPk = new PublicKey(owner);
+        const [pda] = findEtfState(AXIS_VAULT_PROGRAM_ID, ownerPk, name);
+        if (cancelled) return;
+        setInvestEtfState(pda);
+        try {
+          const data = await fetchEtfState(connection, pda);
+          if (cancelled) return;
+          setInvestEtfData(data);
+          if (wallet.publicKey) {
+            try {
+              const ata = getAssociatedTokenAddressSync(data.etfMint, wallet.publicKey, false);
+              const bal = await connection.getTokenAccountBalance(ata, 'confirmed');
+              if (!cancelled) setInvestUserEtfBalance(BigInt(bal.value.amount));
+            } catch {
+              if (!cancelled) setInvestUserEtfBalance(0n);
+            }
+          }
+        } catch {
+          if (!cancelled) {
+            setInvestEtfData(null);
+            setInvestUserEtfBalance(0n);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setInvestEtfState(null);
+          setInvestEtfData(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [investTarget, connection, wallet.publicKey, investStatus]);
 
   const dataFetched = useRef(false);
   const appliedFocusRef = useRef<string | null>(null);
@@ -1044,16 +1108,16 @@ export const SwipeDiscoverView = ({
       return;
     }
 
-    // PFMM (pfda-amm-3) keeps basket tokens in the user's wallet — there is no
-    // kagemusha vault PDA for a PFMM pool address. Routing such deposits through
-    // the legacy `depositSol` instruction makes Solana refuse the tx with
-    // "Attempt to debit ... no prior credit" because the kagemusha-derived
-    // vault_sol account never received a lamport. Detect PFMM here and run the
-    // same Jupiter SOL→basket flow used by StrategyDetailView. SELL needs the
-    // user's per-mint basket balances + a % UI we don't have on this sheet, so
-    // bounce the user to the strategy detail page.
+    // Routing precedence:
+    // 1. axis-vault ETF (real per-strategy mint + program-owned vaults) — preferred
+    //    once the strategy has an etfState account on-chain.
+    // 2. PFMM (legacy "ETF" deploys that are really just a PFMM pool) — Jupiter
+    //    SOL→basket on BUY; SELL bounces to detail page (the swipe sheet has no
+    //    %-of-basket UI).
+    // 3. Kagemusha legacy `depositSol`/`withdrawSol` — last resort.
+    const useAxisVault = investEtfState !== null && investEtfData !== null;
     const isPfmm = investTarget?.config?.protocol === 'pfda-amm-3';
-    if (isPfmm && mode === 'SELL') {
+    if (!useAxisVault && isPfmm && mode === 'SELL') {
       showToast('Open the strategy page to manage your PFMM position', 'info');
       return;
     }
@@ -1063,7 +1127,85 @@ export const SwipeDiscoverView = ({
       const parsedAmount = parseFloat(amountStr);
       if (isNaN(parsedAmount) || parsedAmount <= 0) throw new Error('Invalid amount');
 
-      if (isPfmm) {
+      if (useAxisVault) {
+        if (!axisWallet) throw new Error('Wallet not ready');
+        if (investEtfData!.paused) throw new Error('ETF is paused by the creator');
+        if (mode === 'BUY') {
+          const solIn = BigInt(Math.floor(parsedAmount * LAMPORTS_PER_SOL));
+          const treasuryEtfAta = getAssociatedTokenAddressSync(
+            investEtfData!.etfMint,
+            investEtfData!.treasury,
+            true,
+          );
+          const plan = await buildDepositSolPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            programId: AXIS_VAULT_PROGRAM_ID,
+            etfName: investEtfData!.name,
+            etfState: investEtfState!,
+            etfMint: investEtfData!.etfMint,
+            treasury: investEtfData!.treasury,
+            treasuryEtfAta,
+            basketMints: investEtfData!.tokenMints,
+            weights: investEtfData!.weightsBps,
+            vaults: investEtfData!.tokenVaults,
+            solIn,
+            minEtfOut: 0n,
+            existingEtfTotalSupply: investEtfData!.totalSupply,
+          });
+          setInvestStatus('CONFIRMING');
+          let sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+          if (plan.mode === 'split' && plan.depositTx) {
+            setInvestStatus('PROCESSING');
+            sig = await sendVersionedTx(connection, axisWallet, plan.depositTx);
+          }
+          fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userPubkey: wallet.publicKey.toBase58(),
+              amount: parsedAmount,
+              mode,
+              strategyId: investTarget.id,
+              txSig: sig,
+            }),
+          }).catch(() => {});
+        } else {
+          // SELL: parsedAmount is treated as a percentage 0..100 here, mirroring
+          // StrategyDetailView. The swipe sheet currently passes a raw number, so
+          // we clamp to 100 max and refuse zero.
+          const pct = Math.max(0, Math.min(100, parsedAmount));
+          if (pct === 0) throw new Error('Enter a percentage between 0 and 100');
+          if (investUserEtfBalance === 0n) throw new Error('No ETF position to withdraw');
+          const burnAmount = (investUserEtfBalance * BigInt(Math.floor(pct * 100))) / 10_000n;
+          if (burnAmount === 0n) throw new Error('Withdraw amount rounds to zero');
+          const plan = await buildWithdrawSolPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            programId: AXIS_VAULT_PROGRAM_ID,
+            etfState: investEtfState!,
+            etfStateData: investEtfData!,
+            burnAmount,
+          });
+          setInvestStatus('CONFIRMING');
+          let sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+          if (plan.mode === 'split' && plan.swapTx) {
+            setInvestStatus('PROCESSING');
+            sig = await sendVersionedTx(connection, axisWallet, plan.swapTx);
+          }
+          fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userPubkey: wallet.publicKey.toBase58(),
+              amount: Number(plan.expectedSolOut) / LAMPORTS_PER_SOL,
+              mode,
+              strategyId: investTarget.id,
+              txSig: sig,
+            }),
+          }).catch(() => {});
+        }
+      } else if (isPfmm) {
         if (!axisWallet) throw new Error('Wallet not ready');
         const tokens = (investTarget.tokens || []) as Array<{
           mint?: string;

@@ -42,6 +42,8 @@ import {
   buildDepositSolPlan,
   buildWithdrawSolPlan,
   fetchEtfState,
+  fetchVaultBalances,
+  expectedWithdrawOutputs,
   findEtfState,
   AXIS_VAULT_PROGRAM_ID,
   fetchPoolState3,
@@ -174,7 +176,9 @@ const SwipeToConfirm = ({
   );
 };
 
-// --- InvestSheet (Jupiter-direct: BUY = SOL → basket, SELL = % of basket → SOL) ---
+// --- InvestSheet ---
+// BUY: SOL → basket via Jupiter (legacy) or → ETF mint via axis-vault Deposit.
+// SELL: % of basket via Jupiter (legacy) or % of user's ETF balance via axis-vault Withdraw.
 interface InvestSheetProps {
   isOpen: boolean;
   onClose: () => void;
@@ -184,6 +188,11 @@ interface InvestSheetProps {
   hasBasketPosition: boolean;
   basketMints: PublicKey[] | null;
   basketBalances: bigint[];
+  /// When non-null the strategy has been wired to axis-vault and SELL preview
+  /// must compute proportional vault outflow (vault[i].balance * pct / totalSupply)
+  /// rather than reading the user's basket ATAs.
+  etfStateData: EtfStateData | null;
+  userEtfBalance: bigint;
 }
 
 const InvestSheet = ({
@@ -195,6 +204,8 @@ const InvestSheet = ({
   hasBasketPosition,
   basketMints,
   basketBalances,
+  etfStateData,
+  userEtfBalance,
 }: InvestSheetProps) => {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
@@ -227,10 +238,12 @@ const InvestSheet = ({
     }
   }, [isOpen]);
 
-  // Debounced preview-quote for SELL: ask Jupiter how much SOL the chosen
-  // % of each basket holding would yield. ExactIn quote per leg, summed.
+  // Debounced preview-quote for SELL.
+  // - axis-vault mode: per-leg basket out = vault[i].balance * (pct% of userEtfBalance) / totalSupply,
+  //   then Jupiter ExactIn quote each leg → SOL.
+  // - legacy: same formula but starting from the user's basket ATA balances.
   useEffect(() => {
-    if (mode !== 'SELL' || !basketMints || basketBalances.length === 0) {
+    if (mode !== 'SELL' || !basketMints) {
       setPreviewSolOut(null);
       return;
     }
@@ -241,13 +254,45 @@ const InvestSheet = ({
     }
     let cancelled = false;
     const handle = setTimeout(async () => {
-      const inputs = basketMints
-        .map((mint, i) => {
-          const balance = basketBalances[i] ?? 0n;
-          const sellAmount = (balance * BigInt(Math.floor(pct * 100))) / 10_000n;
-          return { mint, amount: sellAmount };
-        })
-        .filter((leg) => leg.amount > 0n);
+      let inputs: { mint: PublicKey; amount: bigint }[];
+      if (etfStateData) {
+        if (userEtfBalance === 0n || etfStateData.totalSupply === 0n) {
+          if (!cancelled) setPreviewSolOut(null);
+          return;
+        }
+        const burnAmount = (userEtfBalance * BigInt(Math.floor(pct * 100))) / 10_000n;
+        if (burnAmount === 0n) {
+          if (!cancelled) setPreviewSolOut(null);
+          return;
+        }
+        try {
+          const balances = await fetchVaultBalances(connection, etfStateData.tokenVaults);
+          const { perLeg } = expectedWithdrawOutputs(
+            balances,
+            burnAmount,
+            etfStateData.totalSupply,
+            etfStateData.feeBps,
+          );
+          inputs = etfStateData.tokenMints
+            .map((mint, i) => ({ mint, amount: perLeg[i] }))
+            .filter((leg) => leg.amount > 0n);
+        } catch {
+          if (!cancelled) setPreviewSolOut(null);
+          return;
+        }
+      } else {
+        if (basketBalances.length === 0) {
+          if (!cancelled) setPreviewSolOut(null);
+          return;
+        }
+        inputs = basketMints
+          .map((mint, i) => {
+            const balance = basketBalances[i] ?? 0n;
+            const sellAmount = (balance * BigInt(Math.floor(pct * 100))) / 10_000n;
+            return { mint, amount: sellAmount };
+          })
+          .filter((leg) => leg.amount > 0n);
+      }
       if (inputs.length === 0) {
         if (!cancelled) setPreviewSolOut(null);
         return;
@@ -285,7 +330,7 @@ const InvestSheet = ({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [mode, amount, basketMints, basketBalances]);
+  }, [mode, amount, basketMints, basketBalances, etfStateData, userEtfBalance, connection]);
 
   // BUY caps the input at wallet SOL (minus rent + fee reserve); SELL is a
   // percent of the user's existing basket holdings (1..100).
@@ -782,9 +827,16 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const handleTransaction = async (amountStr: string, mode: 'BUY' | 'SELL') => {
     if (!wallet.publicKey || !axisWallet) return showToast('Connect Wallet', 'error');
     if (!basketMints) return showToast('Strategy basket not loaded', 'error');
-    if (poolPaused) return showToast('Strategy is paused by the creator', 'error');
 
     const useAxisVault = etfStateData !== null && etfStatePda !== null;
+    // axis-vault deposit/withdraw is independent of the PFMM pool — only block
+    // when the relevant program's own pause flag is set.
+    if (useAxisVault && etfStateData!.paused) {
+      return showToast('ETF is paused by the creator', 'error');
+    }
+    if (!useAxisVault && poolPaused) {
+      return showToast('Strategy is paused by the creator', 'error');
+    }
     setInvestStatus('SIGNING');
     try {
       if (mode === 'BUY') {
@@ -1232,9 +1284,13 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         strategy={strategy}
         onConfirm={handleTransaction}
         status={investStatus}
-        hasBasketPosition={basketBalances.some((b) => b > 0n)}
+        hasBasketPosition={
+          etfStateData ? userEtfBalance > 0n : basketBalances.some((b) => b > 0n)
+        }
         basketMints={basketMints}
         basketBalances={basketBalances}
+        etfStateData={etfStateData}
+        userEtfBalance={userEtfBalance}
       />
 
       <CreatorConsole
