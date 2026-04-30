@@ -429,7 +429,10 @@ export interface WithdrawFees3Args {
 /// WithdrawFees (disc=5) — only the pool authority may transfer
 /// `amounts[i]` from `vaults[i]` to `treasuryTokens[i]`. On-chain
 /// asserts each vault matches `pool.vaults[i]`, decrements
-/// `pool.reserves[i]` to keep clearing-price math consistent.
+/// `pool.reserves[i]` to keep clearing-price math consistent, and
+/// CPIs into spl-token to do the actual transfers — so the Token
+/// Program must be in the keys list (matching ixAddLiquidity3 et al.),
+/// otherwise the simulator fails with InstructionError MissingAccount.
 export function ixWithdrawFees3(args: WithdrawFees3Args): TransactionInstruction {
   const data = Buffer.concat([
     Buffer.from([5]),
@@ -448,6 +451,7 @@ export function ixWithdrawFees3(args: WithdrawFees3Args): TransactionInstruction
       { pubkey: args.treasuryTokens[0], isSigner: false, isWritable: true },
       { pubkey: args.treasuryTokens[1], isSigner: false, isWritable: true },
       { pubkey: args.treasuryTokens[2], isSigner: false, isWritable: true },
+      { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     ],
     data,
   });
