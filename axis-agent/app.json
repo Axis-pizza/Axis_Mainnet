@@ -1,8 +1,0 @@
-{
-  "android": {
-    "package": "com.yusukekikuta.axisagent"
-  },
-  "ios": {
-    "bundleIdentifier": "com.yusukekikuta.axisagent"
-  }
-}
