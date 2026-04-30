@@ -125,3 +125,10 @@ export type {
   JupiterSolSeedLeg,
   JupiterSolSeedPlan,
 } from './pfmmSeedPlan';
+export { buildJupiterBasketSellPlan } from './pfmmSellBasketPlan';
+export type {
+  JupiterBasketSellArgs,
+  JupiterBasketSellLeg,
+  JupiterBasketSellPlan,
+  SellBasketLegInput,
+} from './pfmmSellBasketPlan';

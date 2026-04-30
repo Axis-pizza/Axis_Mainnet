@@ -26,19 +26,21 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useConnection, useWallet } from '../../hooks/useWallet';
+import { useAxisVaultWallet } from '../../hooks/useAxisVaultWallet';
 import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { TradingChart } from '../common/TradingChart';
 import { api } from '../../services/api';
 import type { Strategy } from '../../types';
 import { useToast } from '../../context/ToastContext';
 import { RedeemModal } from '../profile/RedeemModal';
+import { getUserPosition, lamportsToSol } from '../../protocol/kagemusha';
 import {
-  getUserPosition,
-  lamportsToSol,
-  depositSol,
-  withdrawSol,
-  solToLamports,
-} from '../../protocol/kagemusha';
+  buildJupiterSolSeedPlan,
+  buildJupiterBasketSellPlan,
+  sendVersionedTx,
+  SOL_MINT,
+} from '../../protocol/axis-vault';
 
 // --- Types ---
 interface StrategyDetailViewProps {
@@ -163,14 +165,14 @@ const SwipeToConfirm = ({
   );
 };
 
-// --- InvestSheet (SOL-native) ---
+// --- InvestSheet (Jupiter-direct: BUY = SOL → basket, SELL = % of basket → SOL) ---
 interface InvestSheetProps {
   isOpen: boolean;
   onClose: () => void;
   strategy: Strategy;
   onConfirm: (amount: string, mode: 'BUY' | 'SELL') => Promise<void>;
   status: TransactionStatus;
-  userVaultBalance: number; // SOL in vault (for SELL)
+  hasBasketPosition: boolean;
 }
 
 const InvestSheet = ({
@@ -179,7 +181,7 @@ const InvestSheet = ({
   strategy,
   onConfirm,
   status,
-  userVaultBalance,
+  hasBasketPosition,
 }: InvestSheetProps) => {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
@@ -209,13 +211,16 @@ const InvestSheet = ({
     }
   }, [isOpen]);
 
-  const currentBalance = mode === 'BUY' ? solBalance : userVaultBalance;
-
-  const estimatedOutput = useMemo(() => {
-    const val = parseFloat(amount);
-    if (isNaN(val) || val <= 0) return '0.0000';
-    return val.toFixed(4);
-  }, [amount]);
+  // BUY caps the input at wallet SOL (minus a tiny fee buffer); SELL is a
+  // percent of the user's existing basket holdings (1..100).
+  const isSell = mode === 'SELL';
+  const maxValue = isSell ? 100 : Math.max(0, solBalance - 0.005);
+  const unit = isSell ? '%' : 'SOL';
+  const balanceLabel = isSell
+    ? hasBasketPosition
+      ? '100% sellable'
+      : 'No basket position'
+    : `Available: ${solBalance.toFixed(4)} SOL`;
 
   const handleNum = (num: string) => {
     if (status !== 'IDLE' && status !== 'ERROR') return;
@@ -232,11 +237,15 @@ const InvestSheet = ({
   const handleExecute = () => {
     const val = parseFloat(amount);
     if (isNaN(val) || val <= 0) {
-      showToast('Enter valid amount', 'error');
+      showToast(`Enter valid ${isSell ? 'percentage' : 'amount'}`, 'error');
       return;
     }
-    if (val > currentBalance) {
-      showToast('Insufficient balance', 'error');
+    if (val > maxValue) {
+      showToast(isSell ? 'Max 100%' : 'Insufficient balance', 'error');
+      return;
+    }
+    if (isSell && !hasBasketPosition) {
+      showToast('You have no basket position to sell', 'error');
       return;
     }
     onConfirm(amount, mode);
@@ -291,21 +300,14 @@ const InvestSheet = ({
                   {amount}
                 </span>
               </div>
-              <span className="text-[#78716C] font-normal text-lg">SOL</span>
+              <span className="text-[#78716C] font-normal text-lg">{unit}</span>
             </div>
 
             <div className="flex items-center gap-2 bg-[#1C1C1E] py-2 px-4 rounded-full border border-white/5 mb-8">
               <Wallet className="w-3.5 h-3.5 text-[#78716C]" />
-              <span className="text-[#A8A29E] text-xs font-mono">
-                Available: {currentBalance.toFixed(4)} SOL
-              </span>
+              <span className="text-[#A8A29E] text-xs font-mono">{balanceLabel}</span>
               <button
-                onClick={() => {
-                  const max = mode === 'BUY'
-                    ? Math.max(0, solBalance - 0.005) // keep 0.005 SOL for fees
-                    : userVaultBalance;
-                  setAmount(max.toFixed(4));
-                }}
+                onClick={() => setAmount(isSell ? '100' : maxValue.toFixed(4))}
                 className="text-[#B8863F] text-xs font-normal uppercase hover:text-white transition-colors"
               >
                 Max
@@ -316,9 +318,9 @@ const InvestSheet = ({
               <div className="absolute bottom-4 flex items-center gap-2 text-sm text-[#78716C]">
                 <ArrowDown className="w-4 h-4" />
                 <span>
-                  {mode === 'BUY'
-                    ? `Deposit ${estimatedOutput} SOL into ${strategy.name}`
-                    : `Withdraw ${estimatedOutput} SOL from vault`}
+                  {isSell
+                    ? `Sell ${amount}% of basket → SOL via Jupiter`
+                    : `Buy ${strategy.name} basket with ${amount} SOL via Jupiter`}
                 </span>
               </div>
             )}
@@ -372,6 +374,7 @@ const InvestSheet = ({
 export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewProps) => {
   const { connection } = useConnection();
   const wallet = useWallet();
+  const axisWallet = useAxisVaultWallet();
   const { showToast } = useToast();
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -389,8 +392,53 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const [isRedeemOpen, setIsRedeemOpen] = useState(false);
   const [investStatus, setInvestStatus] = useState<TransactionStatus>('IDLE');
   const [userSolPosition, setUserSolPosition] = useState(0);
+  const [basketBalances, setBasketBalances] = useState<bigint[]>([]);
 
   const controls = useAnimation();
+
+  const basketMints = useMemo<PublicKey[] | null>(() => {
+    const tokens = strategy.tokens ?? [];
+    if (tokens.length === 0) return null;
+    try {
+      return tokens.map((t) => new PublicKey((t.mint || t.address) as string));
+    } catch {
+      return null;
+    }
+  }, [strategy.tokens]);
+
+  const basketWeightsBps = useMemo<number[]>(() => {
+    const tokens = strategy.tokens ?? [];
+    if (tokens.length === 0) return [];
+    const raw = tokens.map((t) => Math.max(0, Math.round((t.weight ?? 0) * 100)));
+    const sum = raw.reduce((a, b) => a + b, 0);
+    if (sum === 0) return raw.map(() => Math.floor(10_000 / Math.max(1, raw.length)));
+    if (sum !== 10_000) raw[raw.length - 1] += 10_000 - sum;
+    return raw;
+  }, [strategy.tokens]);
+
+  // Basket holdings (per-mint ATA balances) drive SELL preview + insufficient-balance guard.
+  useEffect(() => {
+    if (!wallet.publicKey || !basketMints) return;
+    let cancelled = false;
+    const fetchBalances = async () => {
+      const out = await Promise.all(
+        basketMints.map(async (mint) => {
+          try {
+            const ata = getAssociatedTokenAddressSync(mint, wallet.publicKey!, false);
+            const bal = await connection.getTokenAccountBalance(ata, 'confirmed');
+            return BigInt(bal.value.amount);
+          } catch {
+            return 0n;
+          }
+        })
+      );
+      if (!cancelled) setBasketBalances(out);
+    };
+    fetchBalances();
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet.publicKey, connection, basketMints, investStatus]);
 
   // --- On-chain SOL Position ---
   const strategyAddress = strategy.address;
@@ -488,27 +536,37 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     );
   };
 
-  // --- SOL-native Transaction Logic ---
+  // Why: PFMM program has no per-user LP accounting and no LP→SOL ix, so
+  // user "deposits" can't go into the pool — basket tokens stay in the
+  // user's wallet and we transact via Jupiter directly. Sells just hit
+  // those same wallet ATAs. Pool interactions remain a creator-only flow.
   const handleTransaction = async (amountStr: string, mode: 'BUY' | 'SELL') => {
-    if (!wallet.publicKey) return showToast('Connect Wallet', 'error');
-    if (!strategy.address) return showToast('Strategy address not found', 'error');
+    if (!wallet.publicKey || !axisWallet) return showToast('Connect Wallet', 'error');
+    if (!basketMints) return showToast('Strategy basket not loaded', 'error');
 
     setInvestStatus('SIGNING');
     try {
-      const amountSol = parseFloat(amountStr);
-      const amountLamports = solToLamports(amountSol);
-      const strategyPubkey = new PublicKey(strategy.address);
-
       if (mode === 'BUY') {
-        await depositSol(connection, wallet, strategyPubkey, amountLamports);
-      } else {
-        await withdrawSol(connection, wallet, strategyPubkey, amountLamports);
-      }
-
-      setInvestStatus('PROCESSING');
-
-      try {
-        await fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
+        const amountSol = parseFloat(amountStr);
+        if (!isFinite(amountSol) || amountSol <= 0) {
+          throw new Error('Enter a SOL amount greater than zero');
+        }
+        const solIn = BigInt(Math.floor(amountSol * LAMPORTS_PER_SOL));
+        const plan = await buildJupiterSolSeedPlan({
+          conn: connection,
+          user: wallet.publicKey,
+          outputMints: basketMints,
+          weights: basketWeightsBps,
+          solIn,
+          slippageBps: 50,
+          maxAccounts: 14,
+          closeWsolAtEnd: true,
+        });
+        setInvestStatus('CONFIRMING');
+        const sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+        setInvestStatus('PROCESSING');
+        // Backend record (non-fatal).
+        fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -516,28 +574,60 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             amount: amountSol,
             mode,
             strategyId: strategy.id,
+            txSig: sig,
           }),
+        }).catch(() => {});
+        setInvestStatus('SUCCESS');
+        showToast(`Bought basket for ${amountSol} SOL`, 'success');
+      } else {
+        const pct = parseFloat(amountStr);
+        if (!isFinite(pct) || pct <= 0 || pct > 100) {
+          throw new Error('Enter a percentage between 0 and 100');
+        }
+        const inputs = basketMints
+          .map((mint, i) => {
+            const balance = basketBalances[i] ?? 0n;
+            const amount = (balance * BigInt(Math.floor(pct * 100))) / 10_000n;
+            return { mint, amount };
+          })
+          .filter((leg) => leg.amount > 0n);
+        if (inputs.length === 0) {
+          throw new Error('No basket tokens to sell — buy first or check balances');
+        }
+        const plan = await buildJupiterBasketSellPlan({
+          conn: connection,
+          user: wallet.publicKey,
+          inputs,
+          slippageBps: 50,
+          maxAccounts: 14,
+          closeWsolAtEnd: true,
         });
-      } catch {
-        // API record failure is non-fatal
+        setInvestStatus('CONFIRMING');
+        const sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+        setInvestStatus('PROCESSING');
+        const expectedSol = Number(plan.totalExpectedSolOut) / LAMPORTS_PER_SOL;
+        fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userPubkey: wallet.publicKey.toBase58(),
+            amount: expectedSol,
+            mode,
+            strategyId: strategy.id,
+            txSig: sig,
+          }),
+        }).catch(() => {});
+        setInvestStatus('SUCCESS');
+        showToast(`Sold ${pct.toFixed(0)}% — ~${expectedSol.toFixed(4)} SOL out`, 'success');
       }
 
       setTimeout(() => {
-        setInvestStatus('SUCCESS');
-        showToast(
-          mode === 'BUY'
-            ? `Deposited ${amountStr} SOL into vault`
-            : `Withdrew ${amountStr} SOL from vault`,
-          'success'
-        );
-        setTimeout(() => {
-          setIsInvestOpen(false);
-          setInvestStatus('IDLE');
-        }, 2000);
+        setIsInvestOpen(false);
+        setInvestStatus('IDLE');
       }, 1500);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Transaction Failed';
-      showToast(msg.slice(0, 120), 'error');
+      showToast(msg.slice(0, 160), 'error');
       setInvestStatus('ERROR');
       setTimeout(() => setInvestStatus('IDLE'), 2000);
     }
@@ -793,7 +883,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         strategy={strategy}
         onConfirm={handleTransaction}
         status={investStatus}
-        userVaultBalance={userSolPosition}
+        hasBasketPosition={basketBalances.some((b) => b > 0n)}
       />
 
       <RedeemModal
