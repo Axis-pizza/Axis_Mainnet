@@ -37,13 +37,18 @@ export const CreatorConsole = ({ isOpen, onClose, strategy }: CreatorConsoleProp
   const [step, setStep] = useState<string>('');
 
   const poolPubkey = useMemo(() => {
-    if (!strategy.address) return null;
+    // Defensive: backend response uses `vaultAddress` (camelCased from
+    // `vault_address`); some upstream paths haven't normalised that to
+    // `address` yet, so accept all three spellings.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = strategy.address ?? (strategy as any).vaultAddress ?? (strategy as any).vault_address;
+    if (!raw) return null;
     try {
-      return new PublicKey(strategy.address);
+      return new PublicKey(raw);
     } catch {
       return null;
     }
-  }, [strategy.address]);
+  }, [strategy]);
 
   useEffect(() => {
     if (!isOpen || !poolPubkey) return;
@@ -193,10 +198,29 @@ export const CreatorConsole = ({ isOpen, onClose, strategy }: CreatorConsoleProp
             {poolPubkey ? `Pool: ${truncatePubkey(poolPubkey.toBase58())}` : ''}
           </p>
 
-          {stage === 'loading' && (
+          {!poolPubkey && (
+            <div className="rounded-xl bg-red-900/20 border border-red-700/30 px-3 py-3 text-[11px] text-red-200 space-y-1">
+              <p className="font-normal">Pool address missing on this strategy.</p>
+              <p className="text-red-200/70">
+                The backend record has no <code className="font-mono">vault_address</code>. Reload
+                the page after the next API deploy, or recreate the strategy via Create.
+              </p>
+            </div>
+          )}
+
+          {poolPubkey && stage === 'loading' && (
             <div className="flex items-center gap-2 py-8 justify-center text-[#A8A29E] text-sm">
               <Loader2 className="w-4 h-4 animate-spin" />
               Loading pool state…
+            </div>
+          )}
+
+          {poolPubkey && stage === 'err' && !pool && (
+            <div className="rounded-xl bg-red-900/20 border border-red-700/30 px-3 py-3 text-[11px] text-red-200">
+              Failed to fetch pool state from RPC. The pool address resolved to{' '}
+              <code className="font-mono">{truncatePubkey(poolPubkey.toBase58())}</code> but the
+              account did not decode as a PFMM pool. Confirm the strategy was deployed via
+              pfda-amm-3.
             </div>
           )}
 

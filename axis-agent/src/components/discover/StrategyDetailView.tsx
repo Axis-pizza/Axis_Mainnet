@@ -489,7 +489,15 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const headerOpacity = useTransform(scrollY, [0, 60], [0, 1]);
   const headerY = useTransform(scrollY, [0, 60], [-10, 0]);
 
-  const [strategy] = useState(initialData);
+  // Callers feed us strategies from two paths: (a) StrategyDetailPage
+  // (URL route) which already normalises, and (b) Home → Discover lists which
+  // pass the raw API shape with `vaultAddress` only. Normalise here too so
+  // CreatorConsole + position lookups always have `strategy.address`.
+  const [strategy] = useState(() => ({
+    ...initialData,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    address: initialData.address ?? (initialData as any).vaultAddress ?? (initialData as any).vault_address ?? undefined,
+  }));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [tokensInfo, setTokensInfo] = useState<any[]>([]);
