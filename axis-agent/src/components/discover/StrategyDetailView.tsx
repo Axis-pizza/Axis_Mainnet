@@ -39,10 +39,16 @@ import { getUserPosition, lamportsToSol } from '../../protocol/kagemusha';
 import {
   buildJupiterSolSeedPlan,
   buildJupiterBasketSellPlan,
+  buildDepositSolPlan,
+  buildWithdrawSolPlan,
+  fetchEtfState,
+  findEtfState,
+  AXIS_VAULT_PROGRAM_ID,
   fetchPoolState3,
   getQuote,
   sendVersionedTx,
   SOL_MINT,
+  type EtfStateData,
 } from '../../protocol/axis-vault';
 
 // --- Types ---
@@ -512,9 +518,14 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const [isCreatorConsoleOpen, setIsCreatorConsoleOpen] = useState(false);
   // PFMM pool runtime state — `paused` here is what the creator toggled via
   // ixSetPaused3. We block Trade when paused so the swap UI matches the
-  // strategy's intent, even though our Jupiter routing technically bypasses
-  // the pool itself (basket tokens live in the user wallet).
+  // strategy's intent.
   const [poolPaused, setPoolPaused] = useState(false);
+  // axis-vault ETF state. Present = strategy was created via axis-vault and
+  // user deposit/withdraw mints/burns ETF tokens. Absent = legacy strategy,
+  // fall back to Jupiter-only basket buy/sell (basket tokens stay in user wallet).
+  const [etfStatePda, setEtfStatePda] = useState<PublicKey | null>(null);
+  const [etfStateData, setEtfStateData] = useState<EtfStateData | null>(null);
+  const [userEtfBalance, setUserEtfBalance] = useState<bigint>(0n);
 
   const isCreator = useMemo(() => {
     if (!wallet.publicKey) return false;
@@ -544,6 +555,63 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     if (sum !== 10_000) raw[raw.length - 1] += 10_000 - sum;
     return raw;
   }, [strategy.tokens]);
+
+  // Try to resolve the strategy's axis-vault EtfState PDA + on-chain data.
+  // If found, deposit/withdraw will mint/burn ETF tokens; otherwise we fall
+  // back to the Jupiter-only legacy path (basket tokens in user wallet).
+  useEffect(() => {
+    const owner = strategy.ownerPubkey ?? strategy.owner;
+    if (!owner || !strategy.name) {
+      setEtfStatePda(null);
+      setEtfStateData(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const ownerPk = new PublicKey(owner);
+        const [pda] = findEtfState(AXIS_VAULT_PROGRAM_ID, ownerPk, strategy.name);
+        if (cancelled) return;
+        setEtfStatePda(pda);
+        try {
+          const data = await fetchEtfState(connection, pda);
+          if (!cancelled) setEtfStateData(data);
+        } catch {
+          if (!cancelled) setEtfStateData(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setEtfStatePda(null);
+          setEtfStateData(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [strategy.ownerPubkey, strategy.owner, strategy.name, connection]);
+
+  // User's ETF token balance (from their ATA on the ETF mint). Only meaningful
+  // when etfStateData is resolved (axis-vault path).
+  useEffect(() => {
+    if (!wallet.publicKey || !etfStateData) {
+      setUserEtfBalance(0n);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const ata = getAssociatedTokenAddressSync(etfStateData.etfMint, wallet.publicKey!, false);
+        const bal = await connection.getTokenAccountBalance(ata, 'confirmed');
+        if (!cancelled) setUserEtfBalance(BigInt(bal.value.amount));
+      } catch {
+        if (!cancelled) setUserEtfBalance(0n);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet.publicKey, connection, etfStateData, investStatus]);
 
   // Basket holdings (per-mint ATA balances) drive SELL preview + insufficient-balance guard.
   useEffect(() => {
@@ -706,15 +774,17 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     );
   };
 
-  // Why: PFMM program has no per-user LP accounting and no LP→SOL ix, so
-  // user "deposits" can't go into the pool — basket tokens stay in the
-  // user's wallet and we transact via Jupiter directly. Sells just hit
-  // those same wallet ATAs. Pool interactions remain a creator-only flow.
+  // BUY/SELL paths:
+  // - axis-vault (etfStateData present): mint/burn ETF tokens via the on-chain
+  //   ETF program; basket tokens custodied in program-owned vaults.
+  // - legacy (etfStateData null): Jupiter-only basket buy/sell, basket tokens
+  //   stay in user wallet ATAs. Used for pre-axis-vault strategies.
   const handleTransaction = async (amountStr: string, mode: 'BUY' | 'SELL') => {
     if (!wallet.publicKey || !axisWallet) return showToast('Connect Wallet', 'error');
     if (!basketMints) return showToast('Strategy basket not loaded', 'error');
     if (poolPaused) return showToast('Strategy is paused by the creator', 'error');
 
+    const useAxisVault = etfStateData !== null && etfStatePda !== null;
     setInvestStatus('SIGNING');
     try {
       if (mode === 'BUY') {
@@ -723,20 +793,51 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
           throw new Error('Enter a SOL amount greater than zero');
         }
         const solIn = BigInt(Math.floor(amountSol * LAMPORTS_PER_SOL));
-        const plan = await buildJupiterSolSeedPlan({
-          conn: connection,
-          user: wallet.publicKey,
-          outputMints: basketMints,
-          weights: basketWeightsBps,
-          solIn,
-          slippageBps: 50,
-          maxAccounts: 14,
-          closeWsolAtEnd: true,
-        });
-        setInvestStatus('CONFIRMING');
-        const sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+
+        let sig: string;
+        if (useAxisVault) {
+          const treasuryEtfAta = getAssociatedTokenAddressSync(
+            etfStateData!.etfMint,
+            etfStateData!.treasury,
+            true,
+          );
+          const plan = await buildDepositSolPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            programId: AXIS_VAULT_PROGRAM_ID,
+            etfName: etfStateData!.name,
+            etfState: etfStatePda!,
+            etfMint: etfStateData!.etfMint,
+            treasury: etfStateData!.treasury,
+            treasuryEtfAta,
+            basketMints: etfStateData!.tokenMints,
+            weights: etfStateData!.weightsBps,
+            vaults: etfStateData!.tokenVaults,
+            solIn,
+            minEtfOut: 0n,
+            existingEtfTotalSupply: etfStateData!.totalSupply,
+          });
+          setInvestStatus('CONFIRMING');
+          sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+          if (plan.mode === 'split' && plan.depositTx) {
+            setInvestStatus('PROCESSING');
+            sig = await sendVersionedTx(connection, axisWallet, plan.depositTx);
+          }
+        } else {
+          const plan = await buildJupiterSolSeedPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            outputMints: basketMints,
+            weights: basketWeightsBps,
+            solIn,
+            slippageBps: 50,
+            maxAccounts: 14,
+            closeWsolAtEnd: true,
+          });
+          setInvestStatus('CONFIRMING');
+          sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+        }
         setInvestStatus('PROCESSING');
-        // Backend record (non-fatal).
         fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -749,34 +850,66 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
           }),
         }).catch(() => {});
         setInvestStatus('SUCCESS');
-        showToast(`Bought basket for ${amountSol} SOL`, 'success');
+        showToast(
+          useAxisVault
+            ? `Minted ETF for ${amountSol} SOL`
+            : `Bought basket for ${amountSol} SOL`,
+          'success',
+        );
       } else {
         const pct = parseFloat(amountStr);
         if (!isFinite(pct) || pct <= 0 || pct > 100) {
           throw new Error('Enter a percentage between 0 and 100');
         }
-        const inputs = basketMints
-          .map((mint, i) => {
-            const balance = basketBalances[i] ?? 0n;
-            const amount = (balance * BigInt(Math.floor(pct * 100))) / 10_000n;
-            return { mint, amount };
-          })
-          .filter((leg) => leg.amount > 0n);
-        if (inputs.length === 0) {
-          throw new Error('No basket tokens to sell — buy first or check balances');
+
+        let sig: string;
+        let expectedSol: number;
+
+        if (useAxisVault) {
+          if (userEtfBalance === 0n) {
+            throw new Error('No ETF position to withdraw');
+          }
+          const burnAmount = (userEtfBalance * BigInt(Math.floor(pct * 100))) / 10_000n;
+          if (burnAmount === 0n) throw new Error('Withdraw amount rounds to zero');
+          const plan = await buildWithdrawSolPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            programId: AXIS_VAULT_PROGRAM_ID,
+            etfState: etfStatePda!,
+            etfStateData: etfStateData!,
+            burnAmount,
+          });
+          setInvestStatus('CONFIRMING');
+          sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+          if (plan.mode === 'split' && plan.swapTx) {
+            setInvestStatus('PROCESSING');
+            sig = await sendVersionedTx(connection, axisWallet, plan.swapTx);
+          }
+          expectedSol = Number(plan.expectedSolOut) / LAMPORTS_PER_SOL;
+        } else {
+          const inputs = basketMints
+            .map((mint, i) => {
+              const balance = basketBalances[i] ?? 0n;
+              const amount = (balance * BigInt(Math.floor(pct * 100))) / 10_000n;
+              return { mint, amount };
+            })
+            .filter((leg) => leg.amount > 0n);
+          if (inputs.length === 0) {
+            throw new Error('No basket tokens to sell — buy first or check balances');
+          }
+          const plan = await buildJupiterBasketSellPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            inputs,
+            slippageBps: 50,
+            maxAccounts: 14,
+            closeWsolAtEnd: true,
+          });
+          setInvestStatus('CONFIRMING');
+          sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+          expectedSol = Number(plan.totalExpectedSolOut) / LAMPORTS_PER_SOL;
         }
-        const plan = await buildJupiterBasketSellPlan({
-          conn: connection,
-          user: wallet.publicKey,
-          inputs,
-          slippageBps: 50,
-          maxAccounts: 14,
-          closeWsolAtEnd: true,
-        });
-        setInvestStatus('CONFIRMING');
-        const sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
         setInvestStatus('PROCESSING');
-        const expectedSol = Number(plan.totalExpectedSolOut) / LAMPORTS_PER_SOL;
         fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

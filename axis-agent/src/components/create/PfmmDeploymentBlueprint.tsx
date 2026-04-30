@@ -20,11 +20,15 @@ import { useAxisVaultWallet } from '../../hooks/useAxisVaultWallet';
 import { useToast } from '../../context/ToastContext';
 import { api, clearStrategyCache } from '../../services/api';
 import {
+  AXIS_VAULT_PROGRAM_ID,
+  buildBareMintAccountIxs,
   buildBareTokenAccountIxs,
   buildJupiterSolSeedPlan,
   explorerAddr,
   explorerTx,
+  fetchEtfState,
   fetchPoolState3,
+  findEtfState,
   findHistory3,
   findPool3,
   findQueue3,
@@ -33,8 +37,10 @@ import {
   ixAddLiquidity3,
   ixClaim3,
   ixClearBatch3,
+  ixCreateEtf,
   ixInitPool3,
   ixSwapRequest3,
+  MAINNET_PROTOCOL_TREASURY,
   sendTx,
   sendVersionedTx,
   truncatePubkey,
@@ -79,6 +85,8 @@ function percentToBpsWeights(percentWeights: number[]): number[] {
 
 type Stage =
   | 'idle'
+  | 'createEtf'
+  | 'firstDeposit'
   | 'init'
   | 'seed'
   | 'addLiq'
@@ -276,6 +284,71 @@ export const PfmmDeploymentBlueprint = ({
 
     try {
       const m = mintStrings.map((s) => new PublicKey(s)) as [PublicKey, PublicKey, PublicKey];
+
+      // ── 0. axis-vault CreateEtf — open etfState PDA + ETF mint + N vaults ─
+      // The ETF wraps the strategy basket as a single SPL token. PDA is
+      // derived from (program, owner, name); a second deploy with the same
+      // (owner, name) pair will collide, so we reuse if already present.
+      const [etfStatePda] = findEtfState(
+        AXIS_VAULT_PROGRAM_ID,
+        wallet.publicKey,
+        strategyName,
+      );
+      try {
+        await fetchEtfState(connection, etfStatePda);
+        pushLog(`ETF already exists at ${truncatePubkey(etfStatePda.toBase58())} — skipping CreateEtf`);
+      } catch {
+        setStage('createEtf');
+        setDeployStep('Creating ETF on axis-vault…');
+        const basketMints = safeTokens
+          .map((t) => t.mint || t.address || '')
+          .filter(Boolean)
+          .map((s) => new PublicKey(s));
+        const basketWeightsBps = (() => {
+          const raw = safeTokens.map((t) => Math.max(0, Math.round((t.weight ?? 0) * 100)));
+          const sum = raw.reduce((a, b) => a + b, 0);
+          if (sum === 0) return raw.map(() => Math.floor(10_000 / Math.max(1, raw.length)));
+          if (sum !== 10_000) raw[raw.length - 1] += 10_000 - sum;
+          return raw;
+        })();
+        const etfMintBundle = await buildBareMintAccountIxs(connection, wallet.publicKey);
+        const vaultBundle = await buildBareTokenAccountIxs(
+          connection,
+          wallet.publicKey,
+          basketMints.length,
+        );
+        const createIx = ixCreateEtf({
+          programId: AXIS_VAULT_PROGRAM_ID,
+          payer: wallet.publicKey,
+          etfState: etfStatePda,
+          etfMint: etfMintBundle.pubkey,
+          treasury: MAINNET_PROTOCOL_TREASURY,
+          basketMints,
+          vaults: vaultBundle.pubkeys,
+          weightsBps: basketWeightsBps,
+          ticker: safeSymbol,
+          name: strategyName,
+        });
+        const createSig = await sendTx(
+          connection,
+          axisWallet,
+          [...etfMintBundle.ixs, ...vaultBundle.ixs, createIx],
+          [etfMintBundle.signer, ...vaultBundle.signers],
+        );
+        lastSig = createSig;
+        pushLog(
+          `✓ create_etf "${strategyName}" (${basketMints.length} legs): ${createSig.slice(0, 12)}…  → ${explorerTx(createSig, config.explorerCluster)}`,
+        );
+        pushLog(`  ETF state: ${etfStatePda.toBase58()}`);
+        pushLog(`  ETF mint:  ${etfMintBundle.pubkey.toBase58()}`);
+      }
+
+      // First ETF deposit is left to the creator via StrategyDetailView's
+      // Deposit button after this flow finishes — keeps the create-time SOL
+      // budget on the PFMM seed and avoids splitting Jupiter calls between
+      // ETF vaults and PFMM vaults inside one tx burst.
+
+
 
       // Why: per-leg pre-flight inside buildJupiterSolSeedPlan reads
       // getBalance('confirmed') which lags between legs, so a multi-leg
