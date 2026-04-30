@@ -368,10 +368,15 @@ interface InvestSheetProps {
   strategy: any;
   onConfirm: (amount: string, mode: 'BUY' | 'SELL') => Promise<void>;
   status: TransactionStatus;
+  /// When true the strategy resolves to an axis-vault ETF and SELL is treated
+  /// as a percentage (0..100) of the user's ETF balance. When false the legacy
+  /// kagemusha vaultBalance lamports path is used.
+  useAxisVault: boolean;
+  userEtfBalance: bigint;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status }: InvestSheetProps) => {
+const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, useAxisVault, userEtfBalance }: InvestSheetProps) => {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
   const { showToast } = useToast();
@@ -410,7 +415,16 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status }: InvestShe
     }
   }, [isOpen]);
 
-  const currentBalance = mode === 'BUY' ? solBalance : vaultBalance;
+  // axis-vault SELL is a percentage of the user's ETF balance (0..100); legacy
+  // SELL is a SOL amount drawn from the user's kagemusha vault position.
+  const isSellAxis = mode === 'SELL' && useAxisVault;
+  const sellMaxPercent = isSellAxis && userEtfBalance > 0n ? 100 : 0;
+  const currentBalance = mode === 'BUY'
+    ? solBalance
+    : isSellAxis
+      ? sellMaxPercent
+      : vaultBalance;
+  const unitLabel = isSellAxis ? '%' : 'SOL';
 
   const estimatedOutput = useMemo(() => {
     const val = parseFloat(amount);
@@ -433,10 +447,19 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status }: InvestShe
   const handleExecute = () => {
     const val = parseFloat(amount);
     if (isNaN(val) || val <= 0) {
-      showToast('Enter valid amount', 'error');
+      showToast(isSellAxis ? 'Enter a percentage between 0 and 100' : 'Enter valid amount', 'error');
       return;
     }
-    if (val > currentBalance) {
+    if (isSellAxis) {
+      if (userEtfBalance === 0n) {
+        showToast('No ETF position to withdraw', 'error');
+        return;
+      }
+      if (val > 100) {
+        showToast('Max 100%', 'error');
+        return;
+      }
+    } else if (val > currentBalance) {
       showToast('Insufficient balance', 'error');
       return;
     }
@@ -492,16 +515,24 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status }: InvestShe
                   {amount}
                 </span>
               </div>
-              <span className="text-[#78716C] font-normal text-lg">SOL</span>
+              <span className="text-[#78716C] font-normal text-lg">{unitLabel}</span>
             </div>
 
             <div className="flex items-center gap-2 bg-[#1C1C1E] py-2 px-4 rounded-full border border-white/5 mb-8">
               <Wallet className="w-3.5 h-3.5 text-[#78716C]" />
               <span className="text-[#A8A29E] text-xs font-mono">
-                Available: {currentBalance.toFixed(4)} SOL
+                {isSellAxis
+                  ? userEtfBalance > 0n
+                    ? '100% sellable'
+                    : 'No ETF position'
+                  : `Available: ${currentBalance.toFixed(4)} ${unitLabel}`}
               </span>
               <button
                 onClick={() => {
+                  if (isSellAxis) {
+                    setAmount(userEtfBalance > 0n ? '100' : '0');
+                    return;
+                  }
                   const max = mode === 'BUY' ? Math.max(0, solBalance - 0.005) : vaultBalance;
                   setAmount(max.toFixed(4));
                 }}
@@ -517,7 +548,9 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status }: InvestShe
                 <span>
                   {mode === 'BUY'
                     ? `Deposit ${estimatedOutput} SOL into ${strategy.name}`
-                    : `Withdraw ${estimatedOutput} SOL from vault`}
+                    : isSellAxis
+                      ? `Burn ${estimatedOutput}% of your ETF position`
+                      : `Withdraw ${estimatedOutput} SOL from vault`}
                 </span>
               </div>
             )}
@@ -1437,6 +1470,8 @@ export const SwipeDiscoverView = ({
           strategy={investTarget}
           onConfirm={handleDeposit}
           status={investStatus}
+          useAxisVault={investEtfState !== null && investEtfData !== null}
+          userEtfBalance={investUserEtfBalance}
         />
       )}
     </div>
