@@ -331,20 +331,18 @@ export async function buildWithdrawSolPlan(args: WithdrawSolPlanArgs): Promise<W
     };
   }
 
+  // Withdraw tx must include every basket ATA create (wSOL included): when a
+  // basket leg is wSOL, axis_vault::Withdraw transfers from the vault into the
+  // user's wSOL ATA, which has to exist before the withdraw ix runs. The swap
+  // tx (which fires after the withdraw lands) only needs Jupiter setup, no ATA
+  // creates — the ATAs are already there from the withdraw half.
   const withdrawTxIxs = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }),
     ComputeBudgetProgram.setComputeUnitPrice({ microLamports: cuPrice }),
-    ...ataIxs.filter(
-      (ix) => !ix.keys.some((k) => k.pubkey.equals(userWsolAta) && k.isWritable && !k.isSigner)
-    ),
+    ...ataIxs,
     withdrawIx,
   ];
-  const swapTxIxs = [
-    ...cbIxs,
-    createAssociatedTokenAccountIdempotentInstruction(args.user, userWsolAta, args.user, SOL_MINT),
-    ...swapIxs,
-    ...closeWsolIxs,
-  ];
+  const swapTxIxs = [...cbIxs, ...swapIxs, ...closeWsolIxs];
 
   const withdrawAttempt = tryCompileV0(args.user, blockhash, withdrawTxIxs, []);
   if (!withdrawAttempt.ok) {
