@@ -114,14 +114,25 @@ export async function runPriceSnapshot(mainDb: any, priceDb: any): Promise<void>
       )
     );
 
-    // strategy_deployment_baseline → mainDb (INSERT OR IGNORE: 初回のみ記録)
-    baselineStmts.push(
-      mainDb.prepare(`
-        INSERT OR IGNORE INTO strategy_deployment_baseline
-          (strategy_id, baseline_ts_bucket_utc, baseline_nav, baseline_confidence, created_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).bind(row.id, tsBucket, indexPriceUsd, confidence, now)
-    );
+    // strategy_deployment_baseline → mainDb
+    // confidence='OK'（全銘柄の価格が揃った）スナップショットだけを baseline として採用する。
+    // PARTIAL/FAIL を baseline にすると、後続 NAV / 部分合算 → change_since_inception が爆発する。
+    // ON CONFLICT: 既存 baseline が OK なら何もしない。OK でなければ上書きして自動修復。
+    if (confidence === 'OK') {
+      baselineStmts.push(
+        mainDb.prepare(`
+          INSERT INTO strategy_deployment_baseline
+            (strategy_id, baseline_ts_bucket_utc, baseline_nav, baseline_confidence, created_at)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(strategy_id) DO UPDATE SET
+            baseline_ts_bucket_utc = excluded.baseline_ts_bucket_utc,
+            baseline_nav           = excluded.baseline_nav,
+            baseline_confidence    = excluded.baseline_confidence,
+            created_at             = excluded.created_at
+          WHERE strategy_deployment_baseline.baseline_confidence != 'OK'
+        `).bind(row.id, tsBucket, indexPriceUsd, confidence, now)
+      );
+    }
   }
 
   // 6. token_prices → priceDb (recorded_at はunix秒)

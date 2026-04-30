@@ -172,18 +172,6 @@ const typeColors: Record<string, string> = {
 // NAV Performance Chart
 // ─────────────────────────────────────────────
 
-function generateMockData(points = 60, seed = 1): PerformancePoint[] {
-  const now = Math.floor(Date.now() / 1000);
-  const interval = 3600;
-  let nav = 100 + seed * 12;
-  const result: PerformancePoint[] = [];
-  for (let i = points - 1; i >= 0; i--) {
-    nav += (Math.random() - 0.46) * nav * 0.018;
-    result.push({ timestamp: now - i * interval, nav: Math.max(nav, 1) });
-  }
-  return result;
-}
-
 export const PerformanceChart = ({
   data,
   compact = false,
@@ -197,9 +185,9 @@ export const PerformanceChart = ({
   const [animated, setAnimated] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const mockData = useMemo(() => generateMockData(96, seedOffset + 2), [seedOffset]);
-
-  const points = data ?? mockData;
+  // データ未着 / 点数不足は描画しない（モックでフェイクの右肩上がりを出さない）
+  const hasData = !!data && data.length >= 2;
+  const points: PerformancePoint[] = hasData ? data! : [];
 
   // 色・変化率はデータが変わらない限り固定（ホバーで再計算しない）
   const { minNav, maxNav, navRange, firstNav, lastNav, change, isPositive, accentColor, accentGlow } =
@@ -262,6 +250,21 @@ export const PerformanceChart = ({
     const t = setTimeout(() => setAnimated(true), 30);
     return () => clearTimeout(t);
   }, [data]);
+
+  if (!hasData) {
+    return (
+      <div className="w-full flex flex-col">
+        <div
+          className="w-full flex items-center justify-center rounded-lg border border-white/5 bg-white/[0.02]"
+          style={{ height: compact ? 68 : 108 }}
+        >
+          <span className={`text-white/30 font-normal tracking-wide ${compact ? 'text-[10px]' : 'text-[11px]'}`}>
+            Building price history…
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full flex flex-col">
@@ -411,53 +414,57 @@ export const SwipeCardBody = ({
   const seedOffset = strategy.id.charCodeAt(0) + strategy.id.charCodeAt(strategy.id.length - 1);
 
   const [chartPoints, setChartPoints] = useState<PerformancePoint[] | undefined>(strategy.performanceData);
-  const [chartRoi, setChartRoi] = useState<number | null>(null);
+  const [perf, setPerf] = useState<{
+    change_24h: number | null;
+    change_since_inception: number | null;
+    confidence: 'OK' | 'PARTIAL' | 'FAIL' | 'NO_DATA';
+  } | null>(null);
 
-  // 24h未満のETFは比較対象が無いので "NEW" 扱い（部分合算データで爆発する 192876% を防ぐ）
-  const isNewStrategy = (Math.floor(Date.now() / 1000) - (strategy.createdAt ?? 0)) < 86400;
+  // 24h未満のETFは "Since Launch +X%" モードで表示（24h比較対象が無いため）
+  const ageSeconds = Math.floor(Date.now() / 1000) - (strategy.createdAt ?? 0);
+  const isNewStrategy = ageSeconds < 86400;
 
   useEffect(() => {
-    if (isNewStrategy) {
-      setChartRoi(null);
-      return;
-    }
-    // 5分粒度を想定し、最低 1 時間ぶん(=12点)のサンプルを要求
-    const MIN_POINTS = 12;
-    // 24h で物理的にあり得ない範囲の % は計算前提が壊れているので捨てる
-    const MAX_PLAUSIBLE_PCT = 500;
-
     let cancelled = false;
-    const fetchChart = async () => {
-      try {
-        const res = await fetch(
-          `${import.meta.env.VITE_API_URL || 'https://axis-api-mainnet.yusukekikuta-05.workers.dev'}/strategies/${strategy.id}/chart?period=24h`
-        );
-        if (!res.ok) return;
-        const json = await res.json() as { success: boolean; data: { time: number; value: number }[] };
-        if (!json.success || !json.data?.length || cancelled) return;
-        const points: PerformancePoint[] = json.data.map(d => ({ timestamp: d.time, nav: d.value }));
-        setChartPoints(points);
+    const apiBase = import.meta.env.VITE_API_URL || 'https://axis-api-mainnet.yusukekikuta-05.workers.dev';
 
-        if (points.length < MIN_POINTS) { setChartRoi(null); return; }
-        const first = points[0].nav;
-        const last = points[points.length - 1].nav;
-        if (!Number.isFinite(first) || !Number.isFinite(last) || first <= 0) {
-          setChartRoi(null);
-          return;
-        }
-        const change = ((last - first) / first) * 100;
-        if (!Number.isFinite(change) || Math.abs(change) > MAX_PLAUSIBLE_PCT) {
-          setChartRoi(null);
-          return;
-        }
-        setChartRoi(change);
-      } catch {
-        // フォールバック: モックのまま
+    const loadAll = async () => {
+      const [chartRes, perfRes] = await Promise.allSettled([
+        fetch(`${apiBase}/strategies/${strategy.id}/chart?period=24h`),
+        fetch(`${apiBase}/strategies/${strategy.id}/performance`),
+      ]);
+      if (cancelled) return;
+
+      if (chartRes.status === 'fulfilled' && chartRes.value.ok) {
+        try {
+          const json = await chartRes.value.json() as { success: boolean; data: { time: number; value: number }[] };
+          if (json.success && json.data?.length && !cancelled) {
+            setChartPoints(json.data.map(d => ({ timestamp: d.time, nav: d.value })));
+          }
+        } catch { /* swallow */ }
+      }
+
+      if (perfRes.status === 'fulfilled' && perfRes.value.ok) {
+        try {
+          const json = await perfRes.value.json() as {
+            success: boolean;
+            change_24h?: number | null;
+            change_since_inception?: number | null;
+            confidence?: string;
+          };
+          if (json.success && !cancelled) {
+            setPerf({
+              change_24h: typeof json.change_24h === 'number' ? json.change_24h : null,
+              change_since_inception: typeof json.change_since_inception === 'number' ? json.change_since_inception : null,
+              confidence: (json.confidence as any) || 'NO_DATA',
+            });
+          }
+        } catch { /* swallow */ }
       }
     };
-    fetchChart();
+    loadAll();
     return () => { cancelled = true; };
-  }, [strategy.id, isNewStrategy]);
+  }, [strategy.id]);
 
   return (
     <div
@@ -536,52 +543,54 @@ export const SwipeCardBody = ({
       {/* --- Stats: 24H Change + TVL (2-column grid) --- */}
       <div className={`relative z-10 ${c ? 'px-3 py-1.5' : 'px-6 py-2'}`}>
         <div className="grid grid-cols-2 gap-2">
-          {/* 24H Change */}
+          {/* Performance metric: < 24h なら "Since Launch", それ以外は "24H Change" */}
           {(() => {
-            // isNew: ETF が 24h 未満 → 比較対象なし
-            // unavailable: 24h は経っているが集計データが信頼できない（fetch 失敗 / 点数不足 / 爆発値）
-            const fallbackRoi = strategy.roi;
-            const hasValidFallback = typeof fallbackRoi === 'number' && Number.isFinite(fallbackRoi) && fallbackRoi !== 0;
-            const unavailable = !isNewStrategy && chartRoi === null && !hasValidFallback;
+            const MAX_PLAUSIBLE_PCT = 500;
+            const isPlausible = (n: number | null | undefined): n is number =>
+              typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= MAX_PLAUSIBLE_PCT;
 
-            if (isNewStrategy || unavailable) {
-              const label = isNewStrategy ? 'NEW' : '—';
+            const label = isNewStrategy ? 'Since Launch' : '24H Change';
+            const rawValue = isNewStrategy ? perf?.change_since_inception : perf?.change_24h;
+            const value = isPlausible(rawValue) ? rawValue : null;
+            const confidenceOk = perf?.confidence === 'OK' || perf?.confidence === 'PARTIAL';
+
+            if (value === null || !confidenceOk) {
               const neutral = '#A1A1AA';
+              const placeholder = isNewStrategy ? 'Just launched' : '—';
               return (
                 <div
                   className={`rounded-2xl border bg-[#0a0a0a] shadow-inner flex flex-col justify-center relative overflow-hidden ${c ? 'h-[48px] px-3' : 'h-[60px] px-4'}`}
                   style={{ borderColor: neutral + '25' }}
                 >
-                  <span className={`text-white/40 uppercase font-normal tracking-widest mb-0.5 ${c ? 'text-[8px]' : 'text-[10px]'}`}>24H Change</span>
+                  <span className={`text-white/40 uppercase font-normal tracking-widest mb-0.5 ${c ? 'text-[8px]' : 'text-[10px]'}`}>{label}</span>
                   <div
                     className={`font-normal tracking-tight leading-none ${c ? 'text-sm' : 'text-xl'}`}
                     style={{ color: neutral }}
                   >
-                    {label}
+                    {placeholder}
                   </div>
                 </div>
               );
             }
 
-            const roi = chartRoi ?? fallbackRoi ?? 0;
-            const roiPositive = roi >= 0;
-            const roiColor = roiPositive ? '#34D399' : '#F87171';
-            const roiGlow  = roiPositive ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)';
+            const positive = value >= 0;
+            const color = positive ? '#34D399' : '#F87171';
+            const glow  = positive ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)';
             return (
               <div
                 className={`rounded-2xl border bg-[#0a0a0a] shadow-inner flex flex-col justify-center relative overflow-hidden ${c ? 'h-[48px] px-3' : 'h-[60px] px-4'}`}
-                style={{ borderColor: roiColor + '25' }}
+                style={{ borderColor: color + '25' }}
               >
-                <div className="absolute inset-0 opacity-5" style={{ background: roiColor }} />
-                <span className={`text-white/40 uppercase font-normal tracking-widest mb-0.5 ${c ? 'text-[8px]' : 'text-[10px]'}`}>24H Change</span>
+                <div className="absolute inset-0 opacity-5" style={{ background: color }} />
+                <span className={`text-white/40 uppercase font-normal tracking-widest mb-0.5 ${c ? 'text-[8px]' : 'text-[10px]'}`}>{label}</span>
                 <div
                   className={`font-normal tracking-tight leading-none flex items-center gap-1 ${c ? 'text-sm' : 'text-xl'}`}
-                  style={{ color: roiColor, textShadow: `0 0 10px ${roiGlow}` }}
+                  style={{ color, textShadow: `0 0 10px ${glow}` }}
                 >
-                  {roiPositive
+                  {positive
                     ? <TrendingUp className={c ? 'w-3 h-3' : 'w-4 h-4'} />
                     : <TrendingDown className={c ? 'w-3 h-3' : 'w-4 h-4'} />}
-                  {Math.abs(roi).toFixed(2)}%
+                  {positive ? '+' : ''}{value.toFixed(2)}%
                 </div>
               </div>
             );
