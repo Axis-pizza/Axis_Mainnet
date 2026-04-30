@@ -153,6 +153,20 @@ export const PfmmDeploymentBlueprint = ({
     stage === 'claim' ||
     stage === 'metadata';
 
+  const estimatedMinSol = useMemo(() => {
+    const seedNum = Math.max(0, parseFloat(seedSol) || 0);
+    const TOKEN_ACCOUNT_RENT_SOL = 0.00203928;
+    const FEE_BUFFER_SOL = 0.01;
+    const vaultRent = pool ? 0 : TOKEN_ACCOUNT_RENT_SOL * 3;
+    const seedRents =
+      config.jupiterEnabled && seedNum > 0
+        ? TOKEN_ACCOUNT_RENT_SOL * (1 + safeTokens.length)
+        : 0;
+    return seedNum + vaultRent + seedRents + FEE_BUFFER_SOL;
+  }, [seedSol, pool, config.jupiterEnabled, safeTokens.length]);
+  const insufficientFunds =
+    solBalance !== null && solBalance > 0 && solBalance < estimatedMinSol;
+
   function pushLog(s: string) {
     setLog((l) => [...l, s]);
   }
@@ -262,6 +276,34 @@ export const PfmmDeploymentBlueprint = ({
 
     try {
       const m = mintStrings.map((s) => new PublicKey(s)) as [PublicKey, PublicKey, PublicKey];
+
+      // Why: per-leg pre-flight inside buildJupiterSolSeedPlan reads
+      // getBalance('confirmed') which lags between legs, so a multi-leg
+      // fallback can pass per-leg checks but still run the wallet dry on a
+      // later leg. Compute the whole-deploy budget upfront and refuse early.
+      const TOKEN_ACCOUNT_RENT = 2_039_280n;
+      const TX_FEE_RESERVE = 10_000_000n;
+      const vaultRentTotal = livePool ? 0n : TOKEN_ACCOUNT_RENT * 3n;
+      const wsolRent = config.jupiterEnabled && seedLamports > 0n ? TOKEN_ACCOUNT_RENT : 0n;
+      const outputAtaRentTotal =
+        config.jupiterEnabled && seedLamports > 0n
+          ? TOKEN_ACCOUNT_RENT * BigInt(safeTokens.length)
+          : 0n;
+      const totalNeeded =
+        seedLamports + vaultRentTotal + wsolRent + outputAtaRentTotal + TX_FEE_RESERVE;
+      const balanceLamports = BigInt(
+        await connection.getBalance(wallet.publicKey, 'confirmed')
+      );
+      if (balanceLamports < totalNeeded) {
+        const fmt = (n: bigint) => (Number(n) / 1e9).toFixed(4);
+        throw new Error(
+          `Insufficient SOL: need ~${fmt(totalNeeded)} SOL ` +
+            `(seed ${fmt(seedLamports)} + vault rent ${fmt(vaultRentTotal)} + ` +
+            `wSOL rent ${fmt(wsolRent)} + ATA rent ${fmt(outputAtaRentTotal)} + ` +
+            `fee buffer ${fmt(TX_FEE_RESERVE)}), have ${fmt(balanceLamports)} SOL. ` +
+            `Top up the wallet and retry.`
+        );
+      }
 
       // ── 1. InitPool (idempotent — skips if already exists) ───────────────
       if (!livePool) {
@@ -752,14 +794,26 @@ export const PfmmDeploymentBlueprint = ({
                   </div>
                 )}
 
-                <div className="flex items-center justify-between mb-3 px-1">
+                <div className="flex items-center justify-between mb-1 px-1">
                   <span className="text-xs text-[#B89860]">Your SOL Balance</span>
                   <span
                     className={`text-xs font-mono font-normal ${
-                      solBalance === 0 ? 'text-red-400' : 'text-[#F2E0C8]'
+                      solBalance === 0 || insufficientFunds ? 'text-red-400' : 'text-[#F2E0C8]'
                     }`}
                   >
                     {solBalance === null ? '...' : `${solBalance.toFixed(4)} SOL`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <span className="text-[11px] text-[#B89860]/70">
+                    Est. minimum needed (seed + rents + fees)
+                  </span>
+                  <span
+                    className={`text-[11px] font-mono ${
+                      insufficientFunds ? 'text-red-400' : 'text-[#B89860]/70'
+                    }`}
+                  >
+                    ~{estimatedMinSol.toFixed(4)} SOL
                   </span>
                 </div>
 
