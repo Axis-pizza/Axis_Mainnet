@@ -26,19 +26,32 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { useConnection, useWallet } from '../../hooks/useWallet';
+import { useAxisVaultWallet } from '../../hooks/useAxisVaultWallet';
 import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { TradingChart } from '../common/TradingChart';
 import { api } from '../../services/api';
 import type { Strategy } from '../../types';
 import { useToast } from '../../context/ToastContext';
 import { RedeemModal } from '../profile/RedeemModal';
+import { CreatorConsole } from './CreatorConsole';
+import { getUserPosition, lamportsToSol } from '../../protocol/kagemusha';
 import {
-  getUserPosition,
-  lamportsToSol,
-  depositSol,
-  withdrawSol,
-  solToLamports,
-} from '../../protocol/kagemusha';
+  buildJupiterSolSeedPlan,
+  buildJupiterBasketSellPlan,
+  buildDepositSolPlan,
+  buildWithdrawSolPlan,
+  fetchEtfState,
+  fetchVaultBalances,
+  expectedWithdrawOutputs,
+  findEtfState,
+  AXIS_VAULT_PROGRAM_ID,
+  fetchPoolState3,
+  getQuote,
+  sendVersionedTx,
+  SOL_MINT,
+  type EtfStateData,
+} from '../../protocol/axis-vault';
 
 // --- Types ---
 interface StrategyDetailViewProps {
@@ -163,14 +176,23 @@ const SwipeToConfirm = ({
   );
 };
 
-// --- InvestSheet (SOL-native) ---
+// --- InvestSheet ---
+// BUY: SOL → basket via Jupiter (legacy) or → ETF mint via axis-vault Deposit.
+// SELL: % of basket via Jupiter (legacy) or % of user's ETF balance via axis-vault Withdraw.
 interface InvestSheetProps {
   isOpen: boolean;
   onClose: () => void;
   strategy: Strategy;
   onConfirm: (amount: string, mode: 'BUY' | 'SELL') => Promise<void>;
   status: TransactionStatus;
-  userVaultBalance: number; // SOL in vault (for SELL)
+  hasBasketPosition: boolean;
+  basketMints: PublicKey[] | null;
+  basketBalances: bigint[];
+  /// When non-null the strategy has been wired to axis-vault and SELL preview
+  /// must compute proportional vault outflow (vault[i].balance * pct / totalSupply)
+  /// rather than reading the user's basket ATAs.
+  etfStateData: EtfStateData | null;
+  userEtfBalance: bigint;
 }
 
 const InvestSheet = ({
@@ -179,7 +201,11 @@ const InvestSheet = ({
   strategy,
   onConfirm,
   status,
-  userVaultBalance,
+  hasBasketPosition,
+  basketMints,
+  basketBalances,
+  etfStateData,
+  userEtfBalance,
 }: InvestSheetProps) => {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
@@ -188,6 +214,8 @@ const InvestSheet = ({
   const [mode, setMode] = useState<'BUY' | 'SELL'>('BUY');
   const [amount, setAmount] = useState('0');
   const [solBalance, setSolBalance] = useState(0);
+  const [previewSolOut, setPreviewSolOut] = useState<number | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   useEffect(() => {
     if (!publicKey || !isOpen) return;
@@ -206,16 +234,124 @@ const InvestSheet = ({
     if (isOpen) {
       setAmount('0');
       setMode('BUY');
+      setPreviewSolOut(null);
     }
   }, [isOpen]);
 
-  const currentBalance = mode === 'BUY' ? solBalance : userVaultBalance;
+  // Debounced preview-quote for SELL.
+  // - axis-vault mode: per-leg basket out = vault[i].balance * (pct% of userEtfBalance) / totalSupply,
+  //   then Jupiter ExactIn quote each leg → SOL.
+  // - legacy: same formula but starting from the user's basket ATA balances.
+  useEffect(() => {
+    if (mode !== 'SELL' || !basketMints) {
+      setPreviewSolOut(null);
+      return;
+    }
+    const pct = parseFloat(amount);
+    if (!isFinite(pct) || pct <= 0 || pct > 100) {
+      setPreviewSolOut(null);
+      return;
+    }
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      let inputs: { mint: PublicKey; amount: bigint }[];
+      if (etfStateData) {
+        if (userEtfBalance === 0n || etfStateData.totalSupply === 0n) {
+          if (!cancelled) setPreviewSolOut(null);
+          return;
+        }
+        const burnAmount = (userEtfBalance * BigInt(Math.floor(pct * 100))) / 10_000n;
+        if (burnAmount === 0n) {
+          if (!cancelled) setPreviewSolOut(null);
+          return;
+        }
+        try {
+          const balances = await fetchVaultBalances(connection, etfStateData.tokenVaults);
+          const { perLeg } = expectedWithdrawOutputs(
+            balances,
+            burnAmount,
+            etfStateData.totalSupply,
+            etfStateData.feeBps,
+          );
+          inputs = etfStateData.tokenMints
+            .map((mint, i) => ({ mint, amount: perLeg[i] }))
+            .filter((leg) => leg.amount > 0n);
+        } catch {
+          if (!cancelled) setPreviewSolOut(null);
+          return;
+        }
+      } else {
+        if (basketBalances.length === 0) {
+          if (!cancelled) setPreviewSolOut(null);
+          return;
+        }
+        inputs = basketMints
+          .map((mint, i) => {
+            const balance = basketBalances[i] ?? 0n;
+            const sellAmount = (balance * BigInt(Math.floor(pct * 100))) / 10_000n;
+            return { mint, amount: sellAmount };
+          })
+          .filter((leg) => leg.amount > 0n);
+      }
+      if (inputs.length === 0) {
+        if (!cancelled) setPreviewSolOut(null);
+        return;
+      }
+      setPreviewLoading(true);
+      try {
+        const quotes = await Promise.all(
+          inputs.map((leg) => {
+            if (leg.mint.equals(SOL_MINT)) {
+              return Promise.resolve({ outAmount: leg.amount.toString() });
+            }
+            return getQuote({
+              inputMint: leg.mint,
+              outputMint: SOL_MINT,
+              amount: leg.amount,
+              slippageBps: 50,
+              swapMode: 'ExactIn',
+              maxAccounts: 14,
+            });
+          })
+        );
+        if (cancelled) return;
+        const totalLamports = quotes.reduce(
+          (sum, q) => sum + BigInt(q.outAmount),
+          0n
+        );
+        setPreviewSolOut(Number(totalLamports) / LAMPORTS_PER_SOL);
+      } catch {
+        if (!cancelled) setPreviewSolOut(null);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    }, 450);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [mode, amount, basketMints, basketBalances, etfStateData, userEtfBalance, connection]);
 
-  const estimatedOutput = useMemo(() => {
-    const val = parseFloat(amount);
-    if (isNaN(val) || val <= 0) return '0.0000';
-    return val.toFixed(4);
-  }, [amount]);
+  // BUY caps the input at wallet SOL (minus rent + fee reserve); SELL is a
+  // percent of the user's existing basket holdings (1..100).
+  // Why: Jupiter SOL→basket creates a wSOL ATA (closed at end, rent recovered)
+  // plus N persistent output ATAs. If we only reserve a fee buffer, simulation
+  // fails with "Attempt to debit ... no prior credit" once the ATA-rent debits
+  // run the wallet dry. Reserve the rents up front and enforce a min deposit
+  // big enough that per-leg dust still routes through Jupiter.
+  const isSell = mode === 'SELL';
+  const TOKEN_ACCOUNT_RENT_SOL = 0.00203928;
+  const FEE_BUFFER_SOL = 0.005;
+  const basketSize = basketMints?.length ?? 0;
+  const buyReservedSol = FEE_BUFFER_SOL + basketSize * TOKEN_ACCOUNT_RENT_SOL;
+  const minBuySol = 0.001;
+  const maxValue = isSell ? 100 : Math.max(0, solBalance - buyReservedSol);
+  const unit = isSell ? '%' : 'SOL';
+  const balanceLabel = isSell
+    ? hasBasketPosition
+      ? '100% sellable'
+      : 'No basket position'
+    : `Available: ${solBalance.toFixed(4)} SOL`;
 
   const handleNum = (num: string) => {
     if (status !== 'IDLE' && status !== 'ERROR') return;
@@ -232,11 +368,32 @@ const InvestSheet = ({
   const handleExecute = () => {
     const val = parseFloat(amount);
     if (isNaN(val) || val <= 0) {
-      showToast('Enter valid amount', 'error');
+      showToast(`Enter valid ${isSell ? 'percentage' : 'amount'}`, 'error');
       return;
     }
-    if (val > currentBalance) {
-      showToast('Insufficient balance', 'error');
+    if (!isSell) {
+      if (solBalance <= 0) {
+        showToast('Wallet has no SOL — fund the wallet to deposit', 'error');
+        return;
+      }
+      if (val < minBuySol) {
+        showToast(`Minimum deposit is ${minBuySol} SOL`, 'error');
+        return;
+      }
+      if (solBalance < val + buyReservedSol) {
+        showToast(
+          `Need ~${(val + buyReservedSol).toFixed(4)} SOL (deposit + ${buyReservedSol.toFixed(4)} for ATA rent + fees)`,
+          'error'
+        );
+        return;
+      }
+    }
+    if (val > maxValue) {
+      showToast(isSell ? 'Max 100%' : 'Insufficient balance', 'error');
+      return;
+    }
+    if (isSell && !hasBasketPosition) {
+      showToast('You have no basket position to sell', 'error');
       return;
     }
     onConfirm(amount, mode);
@@ -291,21 +448,14 @@ const InvestSheet = ({
                   {amount}
                 </span>
               </div>
-              <span className="text-[#78716C] font-normal text-lg">SOL</span>
+              <span className="text-[#78716C] font-normal text-lg">{unit}</span>
             </div>
 
             <div className="flex items-center gap-2 bg-[#1C1C1E] py-2 px-4 rounded-full border border-white/5 mb-8">
               <Wallet className="w-3.5 h-3.5 text-[#78716C]" />
-              <span className="text-[#A8A29E] text-xs font-mono">
-                Available: {currentBalance.toFixed(4)} SOL
-              </span>
+              <span className="text-[#A8A29E] text-xs font-mono">{balanceLabel}</span>
               <button
-                onClick={() => {
-                  const max = mode === 'BUY'
-                    ? Math.max(0, solBalance - 0.005) // keep 0.005 SOL for fees
-                    : userVaultBalance;
-                  setAmount(max.toFixed(4));
-                }}
+                onClick={() => setAmount(isSell ? '100' : maxValue.toFixed(4))}
                 className="text-[#B8863F] text-xs font-normal uppercase hover:text-white transition-colors"
               >
                 Max
@@ -313,13 +463,24 @@ const InvestSheet = ({
             </div>
 
             {amount !== '0' && (
-              <div className="absolute bottom-4 flex items-center gap-2 text-sm text-[#78716C]">
-                <ArrowDown className="w-4 h-4" />
-                <span>
-                  {mode === 'BUY'
-                    ? `Deposit ${estimatedOutput} SOL into ${strategy.name}`
-                    : `Withdraw ${estimatedOutput} SOL from vault`}
-                </span>
+              <div className="absolute bottom-4 flex flex-col items-center gap-1 text-sm text-[#78716C]">
+                <div className="flex items-center gap-2">
+                  <ArrowDown className="w-4 h-4" />
+                  <span>
+                    {isSell
+                      ? `Sell ${amount}% of basket → SOL via Jupiter`
+                      : `Buy ${strategy.name} basket with ${amount} SOL via Jupiter`}
+                  </span>
+                </div>
+                {isSell && (
+                  <div className="text-xs font-mono text-[#B8863F]">
+                    {previewLoading
+                      ? 'Quoting…'
+                      : previewSolOut !== null
+                        ? `≈ ${previewSolOut.toFixed(4)} SOL out`
+                        : ''}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -372,6 +533,7 @@ const InvestSheet = ({
 export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewProps) => {
   const { connection } = useConnection();
   const wallet = useWallet();
+  const axisWallet = useAxisVaultWallet();
   const { showToast } = useToast();
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -379,7 +541,15 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const headerOpacity = useTransform(scrollY, [0, 60], [0, 1]);
   const headerY = useTransform(scrollY, [0, 60], [-10, 0]);
 
-  const [strategy] = useState(initialData);
+  // Callers feed us strategies from two paths: (a) StrategyDetailPage
+  // (URL route) which already normalises, and (b) Home → Discover lists which
+  // pass the raw API shape with `vaultAddress` only. Normalise here too so
+  // CreatorConsole + position lookups always have `strategy.address`.
+  const [strategy] = useState(() => ({
+    ...initialData,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    address: initialData.address ?? (initialData as any).vaultAddress ?? (initialData as any).vault_address ?? undefined,
+  }));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [tokensInfo, setTokensInfo] = useState<any[]>([]);
@@ -389,8 +559,128 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const [isRedeemOpen, setIsRedeemOpen] = useState(false);
   const [investStatus, setInvestStatus] = useState<TransactionStatus>('IDLE');
   const [userSolPosition, setUserSolPosition] = useState(0);
+  const [basketBalances, setBasketBalances] = useState<bigint[]>([]);
+  const [isCreatorConsoleOpen, setIsCreatorConsoleOpen] = useState(false);
+  // PFMM pool runtime state — `paused` here is what the creator toggled via
+  // ixSetPaused3. We block Trade when paused so the swap UI matches the
+  // strategy's intent.
+  const [poolPaused, setPoolPaused] = useState(false);
+  // axis-vault ETF state. Present = strategy was created via axis-vault and
+  // user deposit/withdraw mints/burns ETF tokens. Absent = legacy strategy,
+  // fall back to Jupiter-only basket buy/sell (basket tokens stay in user wallet).
+  const [etfStatePda, setEtfStatePda] = useState<PublicKey | null>(null);
+  const [etfStateData, setEtfStateData] = useState<EtfStateData | null>(null);
+  const [userEtfBalance, setUserEtfBalance] = useState<bigint>(0n);
+
+  const isCreator = useMemo(() => {
+    if (!wallet.publicKey) return false;
+    const owner = strategy.ownerPubkey ?? strategy.owner;
+    if (!owner) return false;
+    return owner === wallet.publicKey.toBase58();
+  }, [wallet.publicKey, strategy.ownerPubkey, strategy.owner]);
 
   const controls = useAnimation();
+
+  const basketMints = useMemo<PublicKey[] | null>(() => {
+    const tokens = strategy.tokens ?? [];
+    if (tokens.length === 0) return null;
+    try {
+      return tokens.map((t) => new PublicKey((t.mint || t.address) as string));
+    } catch {
+      return null;
+    }
+  }, [strategy.tokens]);
+
+  const basketWeightsBps = useMemo<number[]>(() => {
+    const tokens = strategy.tokens ?? [];
+    if (tokens.length === 0) return [];
+    const raw = tokens.map((t) => Math.max(0, Math.round((t.weight ?? 0) * 100)));
+    const sum = raw.reduce((a, b) => a + b, 0);
+    if (sum === 0) return raw.map(() => Math.floor(10_000 / Math.max(1, raw.length)));
+    if (sum !== 10_000) raw[raw.length - 1] += 10_000 - sum;
+    return raw;
+  }, [strategy.tokens]);
+
+  // Try to resolve the strategy's axis-vault EtfState PDA + on-chain data.
+  // If found, deposit/withdraw will mint/burn ETF tokens; otherwise we fall
+  // back to the Jupiter-only legacy path (basket tokens in user wallet).
+  useEffect(() => {
+    const owner = strategy.ownerPubkey ?? strategy.owner;
+    if (!owner || !strategy.name) {
+      setEtfStatePda(null);
+      setEtfStateData(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const ownerPk = new PublicKey(owner);
+        const [pda] = findEtfState(AXIS_VAULT_PROGRAM_ID, ownerPk, strategy.name);
+        if (cancelled) return;
+        setEtfStatePda(pda);
+        try {
+          const data = await fetchEtfState(connection, pda);
+          if (!cancelled) setEtfStateData(data);
+        } catch {
+          if (!cancelled) setEtfStateData(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setEtfStatePda(null);
+          setEtfStateData(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [strategy.ownerPubkey, strategy.owner, strategy.name, connection]);
+
+  // User's ETF token balance (from their ATA on the ETF mint). Only meaningful
+  // when etfStateData is resolved (axis-vault path).
+  useEffect(() => {
+    if (!wallet.publicKey || !etfStateData) {
+      setUserEtfBalance(0n);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const ata = getAssociatedTokenAddressSync(etfStateData.etfMint, wallet.publicKey!, false);
+        const bal = await connection.getTokenAccountBalance(ata, 'confirmed');
+        if (!cancelled) setUserEtfBalance(BigInt(bal.value.amount));
+      } catch {
+        if (!cancelled) setUserEtfBalance(0n);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet.publicKey, connection, etfStateData, investStatus]);
+
+  // Basket holdings (per-mint ATA balances) drive SELL preview + insufficient-balance guard.
+  useEffect(() => {
+    if (!wallet.publicKey || !basketMints) return;
+    let cancelled = false;
+    const fetchBalances = async () => {
+      const out = await Promise.all(
+        basketMints.map(async (mint) => {
+          try {
+            const ata = getAssociatedTokenAddressSync(mint, wallet.publicKey!, false);
+            const bal = await connection.getTokenAccountBalance(ata, 'confirmed');
+            return BigInt(bal.value.amount);
+          } catch {
+            return 0n;
+          }
+        })
+      );
+      if (!cancelled) setBasketBalances(out);
+    };
+    fetchBalances();
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet.publicKey, connection, basketMints, investStatus]);
 
   // --- On-chain SOL Position ---
   const strategyAddress = strategy.address;
@@ -408,11 +698,52 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     fetchSolPosition();
   }, [wallet.publicKey, connection, strategyAddress, investStatus, isRedeemOpen]);
 
+  // --- PFMM pool runtime state (paused flag) ---
+  // Re-read whenever the Creator Console closes so toggling pause inside the
+  // modal flips the badge + Trade button state without requiring a refresh.
+  useEffect(() => {
+    if (!strategyAddress) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const pubkey = new PublicKey(strategyAddress);
+        const data = await fetchPoolState3(connection, pubkey);
+        if (!cancelled) setPoolPaused(Boolean(data?.paused));
+      } catch {
+        if (!cancelled) setPoolPaused(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [connection, strategyAddress, isCreatorConsoleOpen]);
+
+  // Don't fall back to a fake "$100 / 0.00%" — that misled users into thinking
+  // the strategy had a real history when it was just deployed. Render a `—`
+  // when no price/ROI exists yet; the chart and TVL strip carry the real data.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const latestValue = (strategy as any).price || 100;
+  const rawPrice = typeof (strategy as any).price === 'number' ? (strategy as any).price : null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const changePct = (strategy as any).roi || 0;
+  const rawRoi = typeof (strategy as any).roi === 'number' ? (strategy as any).roi : null;
+  const hasPrice = rawPrice !== null;
+  const hasRoi = rawRoi !== null;
+  const changePct = rawRoi ?? 0;
   const isPositive = changePct >= 0;
+  const tvlSol = typeof strategy?.tvl === 'number' ? strategy.tvl : 0;
+  const tvlDisplay =
+    tvlSol >= 1000
+      ? `${(tvlSol / 1000).toFixed(1)}k`
+      : tvlSol >= 1
+        ? tvlSol.toFixed(2)
+        : tvlSol > 0
+          ? tvlSol.toFixed(4)
+          : '0';
+  // PFMM keeps basket tokens in the user's wallet (no per-user vault account),
+  // so getUserPosition always reports 0 — surface basket-token presence instead
+  // so the bottom bar isn't permanently "0.0000 SOL" for active PFMM users.
+  const isPfmm = strategy?.config?.protocol === 'pfda-amm-3';
+  const heldTokenCount = basketBalances.filter((b) => b > 0n).length;
+  const basketSize = basketMints?.length ?? 0;
 
   useEffect(() => {
     const init = async () => {
@@ -488,27 +819,81 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     );
   };
 
-  // --- SOL-native Transaction Logic ---
+  // BUY/SELL paths:
+  // - axis-vault (etfStateData present): mint/burn ETF tokens via the on-chain
+  //   ETF program; basket tokens custodied in program-owned vaults.
+  // - legacy (etfStateData null): Jupiter-only basket buy/sell, basket tokens
+  //   stay in user wallet ATAs. Used for pre-axis-vault strategies.
   const handleTransaction = async (amountStr: string, mode: 'BUY' | 'SELL') => {
-    if (!wallet.publicKey) return showToast('Connect Wallet', 'error');
-    if (!strategy.address) return showToast('Strategy address not found', 'error');
+    if (!wallet.publicKey || !axisWallet) return showToast('Connect Wallet', 'error');
+    if (!basketMints) return showToast('Strategy basket not loaded', 'error');
 
+    const useAxisVault = etfStateData !== null && etfStatePda !== null;
+    // axis-vault deposit/withdraw is independent of the PFMM pool — only block
+    // when the relevant program's own pause flag is set.
+    if (useAxisVault && etfStateData!.paused) {
+      return showToast('ETF is paused by the creator', 'error');
+    }
+    if (!useAxisVault && poolPaused) {
+      return showToast('Strategy is paused by the creator', 'error');
+    }
     setInvestStatus('SIGNING');
     try {
-      const amountSol = parseFloat(amountStr);
-      const amountLamports = solToLamports(amountSol);
-      const strategyPubkey = new PublicKey(strategy.address);
-
       if (mode === 'BUY') {
-        await depositSol(connection, wallet, strategyPubkey, amountLamports);
-      } else {
-        await withdrawSol(connection, wallet, strategyPubkey, amountLamports);
-      }
+        const amountSol = parseFloat(amountStr);
+        if (!isFinite(amountSol) || amountSol <= 0) {
+          throw new Error('Enter a SOL amount greater than zero');
+        }
+        const solIn = BigInt(Math.floor(amountSol * LAMPORTS_PER_SOL));
 
-      setInvestStatus('PROCESSING');
-
-      try {
-        await fetch('https://axis-api.yusukekikuta-05.workers.dev/trade', {
+        let sig: string;
+        if (useAxisVault) {
+          const treasuryEtfAta = getAssociatedTokenAddressSync(
+            etfStateData!.etfMint,
+            etfStateData!.treasury,
+            true,
+          );
+          const plan = await buildDepositSolPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            programId: AXIS_VAULT_PROGRAM_ID,
+            etfName: etfStateData!.name,
+            etfState: etfStatePda!,
+            etfMint: etfStateData!.etfMint,
+            treasury: etfStateData!.treasury,
+            treasuryEtfAta,
+            basketMints: etfStateData!.tokenMints,
+            weights: etfStateData!.weightsBps,
+            vaults: etfStateData!.tokenVaults,
+            solIn,
+            minEtfOut: 0n,
+            existingEtfTotalSupply: etfStateData!.totalSupply,
+            // Tighter than the default 16 so Jupiter picks compact routes that
+            // fit under the 1232-byte tx cap once bundled with axis-vault Deposit.
+            maxAccounts: 14,
+          });
+          setInvestStatus('CONFIRMING');
+          sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+          if (plan.mode === 'split' && plan.depositTx) {
+            setInvestStatus('PROCESSING');
+            sig = await sendVersionedTx(connection, axisWallet, plan.depositTx);
+          }
+        } else {
+          const plan = await buildJupiterSolSeedPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            outputMints: basketMints,
+            weights: basketWeightsBps,
+            solIn,
+            slippageBps: 50,
+            maxAccounts: 14,
+            closeWsolAtEnd: true,
+          });
+          setInvestStatus('CONFIRMING');
+          sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+        }
+        setInvestStatus('PROCESSING');
+        fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -516,28 +901,93 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             amount: amountSol,
             mode,
             strategyId: strategy.id,
+            txSig: sig,
           }),
-        });
-      } catch {
-        // API record failure is non-fatal
+        }).catch(() => {});
+        setInvestStatus('SUCCESS');
+        showToast(
+          useAxisVault
+            ? `Minted ETF for ${amountSol} SOL`
+            : `Bought basket for ${amountSol} SOL`,
+          'success',
+        );
+      } else {
+        const pct = parseFloat(amountStr);
+        if (!isFinite(pct) || pct <= 0 || pct > 100) {
+          throw new Error('Enter a percentage between 0 and 100');
+        }
+
+        let sig: string;
+        let expectedSol: number;
+
+        if (useAxisVault) {
+          if (userEtfBalance === 0n) {
+            throw new Error('No ETF position to withdraw');
+          }
+          const burnAmount = (userEtfBalance * BigInt(Math.floor(pct * 100))) / 10_000n;
+          if (burnAmount === 0n) throw new Error('Withdraw amount rounds to zero');
+          const plan = await buildWithdrawSolPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            programId: AXIS_VAULT_PROGRAM_ID,
+            etfState: etfStatePda!,
+            etfStateData: etfStateData!,
+            burnAmount,
+            maxAccounts: 14,
+          });
+          setInvestStatus('CONFIRMING');
+          sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+          if (plan.mode === 'split' && plan.swapTx) {
+            setInvestStatus('PROCESSING');
+            sig = await sendVersionedTx(connection, axisWallet, plan.swapTx);
+          }
+          expectedSol = Number(plan.expectedSolOut) / LAMPORTS_PER_SOL;
+        } else {
+          const inputs = basketMints
+            .map((mint, i) => {
+              const balance = basketBalances[i] ?? 0n;
+              const amount = (balance * BigInt(Math.floor(pct * 100))) / 10_000n;
+              return { mint, amount };
+            })
+            .filter((leg) => leg.amount > 0n);
+          if (inputs.length === 0) {
+            throw new Error('No basket tokens to sell — buy first or check balances');
+          }
+          const plan = await buildJupiterBasketSellPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            inputs,
+            slippageBps: 50,
+            maxAccounts: 14,
+            closeWsolAtEnd: true,
+          });
+          setInvestStatus('CONFIRMING');
+          sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+          expectedSol = Number(plan.totalExpectedSolOut) / LAMPORTS_PER_SOL;
+        }
+        setInvestStatus('PROCESSING');
+        fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userPubkey: wallet.publicKey.toBase58(),
+            amount: expectedSol,
+            mode,
+            strategyId: strategy.id,
+            txSig: sig,
+          }),
+        }).catch(() => {});
+        setInvestStatus('SUCCESS');
+        showToast(`Sold ${pct.toFixed(0)}% — ~${expectedSol.toFixed(4)} SOL out`, 'success');
       }
 
       setTimeout(() => {
-        setInvestStatus('SUCCESS');
-        showToast(
-          mode === 'BUY'
-            ? `Deposited ${amountStr} SOL into vault`
-            : `Withdrew ${amountStr} SOL from vault`,
-          'success'
-        );
-        setTimeout(() => {
-          setIsInvestOpen(false);
-          setInvestStatus('IDLE');
-        }, 2000);
+        setIsInvestOpen(false);
+        setInvestStatus('IDLE');
       }, 1500);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Transaction Failed';
-      showToast(msg.slice(0, 120), 'error');
+      showToast(msg.slice(0, 160), 'error');
       setInvestStatus('ERROR');
       setTimeout(() => setInvestStatus('IDLE'), 2000);
     }
@@ -586,17 +1036,33 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         <div className="px-4 md:px-24 pt-24 space-y-6">
           {/* Hero */}
           <div className="flex flex-col items-start">
-            <h1 className="text-xl font-normal text-[#78716C] mb-1">{strategy?.name}</h1>
+            <div className="flex items-center gap-2 mb-1">
+              <h1 className="text-xl font-normal text-[#78716C]">{strategy?.name}</h1>
+              {poolPaused && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider bg-red-500/15 text-red-300 border border-red-500/30">
+                  Paused
+                </span>
+              )}
+            </div>
             <div className="flex items-baseline gap-3">
               <span className="text-5xl font-serif font-normal tracking-tighter text-white">
-                ${latestValue?.toFixed(2)}
+                {hasPrice ? `$${rawPrice!.toFixed(2)}` : `${tvlDisplay} SOL`}
               </span>
+              {!hasPrice && (
+                <span className="text-xs uppercase tracking-wider text-[#57534E]">TVL</span>
+              )}
             </div>
-            <div className={`flex items-center gap-1 mt-2 text-sm font-normal ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-              {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-              {Math.abs(changePct).toFixed(2)}%{' '}
-              <span className="text-[#57534E] font-normal ml-1">Today</span>
-            </div>
+            {hasRoi ? (
+              <div className={`flex items-center gap-1 mt-2 text-sm font-normal ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                {Math.abs(changePct).toFixed(2)}%{' '}
+                <span className="text-[#57534E] font-normal ml-1">Today</span>
+              </div>
+            ) : (
+              <div className="mt-2 text-xs text-[#57534E]">
+                Building history — performance shown after the first NAV snapshot.
+              </div>
+            )}
           </div>
 
           <TradingChart
@@ -614,11 +1080,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
                 <span className="text-[10px] uppercase font-normal tracking-wider">TVL</span>
               </div>
               <p className="text-lg font-normal text-white">
-                {typeof strategy?.tvl === 'number'
-                  ? strategy.tvl >= 1000
-                    ? `${(strategy.tvl / 1000).toFixed(1)}k`
-                    : strategy.tvl.toFixed(0)
-                  : '0'}{' '}
+                {tvlDisplay}{' '}
                 <span className="text-xs font-normal text-[#57534E]">SOL</span>
               </p>
             </div>
@@ -762,14 +1224,39 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
       <div className="absolute bottom-0 inset-x-0 bg-[#080503]/95 backdrop-blur-md border-t border-[rgba(184,134,63,0.15)] z-40 pt-3 px-6 pb-[calc(env(safe-area-inset-bottom,8px)+8px)]">
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col">
-            <span className="text-[10px] text-[#78716C] uppercase tracking-wider">In Vault</span>
+            <span className="text-[10px] text-[#78716C] uppercase tracking-wider">
+              {isPfmm ? 'Basket' : 'In Vault'}
+            </span>
             <span className="text-lg font-serif font-normal text-white">
-              {userSolPosition.toFixed(4)} <span className="text-xs text-[#78716C]">SOL</span>
+              {isPfmm ? (
+                heldTokenCount > 0 ? (
+                  <>
+                    {heldTokenCount}/{basketSize}{' '}
+                    <span className="text-xs text-[#78716C]">held</span>
+                  </>
+                ) : (
+                  <span className="text-[#78716C]">—</span>
+                )
+              ) : (
+                <>
+                  {userSolPosition.toFixed(4)}{' '}
+                  <span className="text-xs text-[#78716C]">SOL</span>
+                </>
+              )}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
-            {userSolPosition > 0 && (
+            {isCreator && (
+              <button
+                onClick={() => setIsCreatorConsoleOpen(true)}
+                className="bg-amber-900/30 text-amber-200 font-normal px-3 py-3 rounded-full border border-amber-700/30 active:scale-95 transition-all flex items-center gap-1.5 text-xs"
+                title="Creator Console (authority only)"
+              >
+                <Layers className="w-4 h-4" /> Manage
+              </button>
+            )}
+            {!isPfmm && userSolPosition > 0 && (
               <button
                 onClick={() => setIsRedeemOpen(true)}
                 className="bg-white/10 text-white/70 font-normal px-4 py-3 rounded-full border border-white/10 active:scale-95 transition-all flex items-center gap-1.5 text-sm"
@@ -778,10 +1265,18 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
               </button>
             )}
             <button
-              onClick={() => setIsInvestOpen(true)}
-              className="bg-[#B8863F] text-black font-normal px-8 py-3 rounded-full shadow-[0_4px_20px_rgba(184,134,63,0.3)] active:scale-95 transition-all flex items-center gap-2"
+              onClick={() => {
+                if (poolPaused) {
+                  showToast('Strategy is paused by the creator — trading disabled', 'info');
+                  return;
+                }
+                setIsInvestOpen(true);
+              }}
+              disabled={poolPaused}
+              title={poolPaused ? 'Strategy paused by the creator' : undefined}
+              className="bg-[#B8863F] text-black font-normal px-8 py-3 rounded-full shadow-[0_4px_20px_rgba(184,134,63,0.3)] active:scale-95 transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 disabled:shadow-none"
             >
-              Trade <ArrowRight className="w-4 h-4" />
+              {poolPaused ? 'Paused' : 'Trade'} <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -793,7 +1288,19 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         strategy={strategy}
         onConfirm={handleTransaction}
         status={investStatus}
-        userVaultBalance={userSolPosition}
+        hasBasketPosition={
+          etfStateData ? userEtfBalance > 0n : basketBalances.some((b) => b > 0n)
+        }
+        basketMints={basketMints}
+        basketBalances={basketBalances}
+        etfStateData={etfStateData}
+        userEtfBalance={userEtfBalance}
+      />
+
+      <CreatorConsole
+        isOpen={isCreatorConsoleOpen}
+        onClose={() => setIsCreatorConsoleOpen(false)}
+        strategy={strategy}
       />
 
       <RedeemModal

@@ -8,6 +8,7 @@ import {
   useSignTransaction as usePrivySignTransaction,
 } from '@privy-io/react-auth/solana';
 import { ConnectionContext } from '../context/ConnectionContext';
+import { useDirectWallet } from './useDirectWallet';
 
 const FORCE_LOGOUT_KEY = 'axis_force_logged_out';
 
@@ -140,14 +141,55 @@ function useLoginModalPrivy() {
   return { setVisible, visible: false };
 }
 
+/// Direct Phantom-compatible fallback used when Privy's auth iframe is
+/// blocked (e.g. Privy app's allowed-origins doesn't include the current
+/// host). Once a direct connection lands, every consumer of `useWallet`
+/// transparently gets the direct publicKey + signing path so the rest of
+/// the app keeps working without further wiring.
 export function useWallet(): WalletContextState {
-  return useWalletPrivy(); // eslint-disable-line react-hooks/rules-of-hooks
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const privy = useWalletPrivy();
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const direct = useDirectWallet();
+
+  if (direct.publicKey && !privy.connected) {
+    const directSign = direct.signTransaction as unknown as (tx: Transaction) => Promise<Transaction>;
+    return {
+      connected: true,
+      connecting: direct.connecting,
+      publicKey: direct.publicKey,
+      signTransaction: directSign,
+      signAllTransactions: undefined,
+      disconnect: direct.disconnect,
+      ready: true,
+      authenticated: true,
+      wallet: null,
+      connectMWA: privy.connectMWA,
+      isMWA: false,
+      mwaConnecting: false,
+    };
+  }
+
+  return privy;
 }
 
 export function useConnection() {
   return useConnectionPrivy(); // eslint-disable-line react-hooks/rules-of-hooks
 }
 
+/// Login modal hook with both paths. `setVisible(true)` opens the Privy
+/// modal as before; `connectDirect()` skips Privy entirely and pops the
+/// Phantom approval popup via window.solana. UI surfaces the second one
+/// as a "fallback" affordance only when `isDirectAvailable` is true.
 export function useLoginModal() {
-  return useLoginModalPrivy(); // eslint-disable-line react-hooks/rules-of-hooks
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const privy = useLoginModalPrivy();
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const direct = useDirectWallet();
+  return {
+    ...privy,
+    connectDirect: direct.connect,
+    isDirectAvailable: direct.isAvailable,
+    isDirectConnecting: direct.connecting,
+  };
 }

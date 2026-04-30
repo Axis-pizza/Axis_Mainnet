@@ -64,6 +64,11 @@ export function TradingChart({
   const [candles,    setCandles]    = useState<Candle[]>([]);
   const [hovered,    setHovered]    = useState<Candle | null>(null);
   const [isLoading,  setIsLoading]  = useState(true);
+  // Why: when an endpoint is provided (real strategy view) but the backend has
+  // no NAV snapshots yet, falling back to a seeded random walk silently
+  // misled users into thinking the candles were real. Track empty separately
+  // and render a "Building history" empty state instead.
+  const [isEmpty,    setIsEmpty]    = useState(false);
 
   // --- Data load ---
   useEffect(() => {
@@ -78,15 +83,23 @@ export function TradingChart({
           if (!cancelled) {
             if (json.success && Array.isArray(json.data) && json.data.length > 0) {
               setCandles(json.data);
+              setIsEmpty(false);
             } else {
-              setCandles(generateSyntheticCandles(seed, timeframe));
+              setCandles([]);
+              setIsEmpty(true);
             }
           }
         } else if (!cancelled) {
+          // Demo / preview surfaces (no endpoint provided) keep the synthetic
+          // candles so design tooling and SwipeDiscoverView still render a chart.
           setCandles(generateSyntheticCandles(seed, timeframe));
+          setIsEmpty(false);
         }
       } catch {
-        if (!cancelled) setCandles(generateSyntheticCandles(seed, timeframe));
+        if (!cancelled) {
+          setCandles([]);
+          setIsEmpty(true);
+        }
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -274,11 +287,17 @@ export function TradingChart({
           <span className="text-3xl sm:text-4xl font-serif tracking-tight text-white">
             ${headerValue}
           </span>
-          <div className={`flex items-center gap-1 text-xs ${isUp ? 'text-[#26A69A]' : 'text-[#EF5350]'}`}>
-            {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {isUp ? '+' : ''}{changePct.toFixed(2)}%
-            <span className="text-[#57534E] ml-1 uppercase tracking-wider text-[10px]">{timeframe}</span>
-          </div>
+          {latest ? (
+            <div className={`flex items-center gap-1 text-xs ${isUp ? 'text-[#26A69A]' : 'text-[#EF5350]'}`}>
+              {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+              {isUp ? '+' : ''}{changePct.toFixed(2)}%
+              <span className="text-[#57534E] ml-1 uppercase tracking-wider text-[10px]">{timeframe}</span>
+            </div>
+          ) : (
+            <div className="text-[10px] uppercase tracking-wider text-[#57534E]">
+              {timeframe} · awaiting first snapshot
+            </div>
+          )}
         </div>
 
         {ath && latest && (
@@ -370,6 +389,17 @@ export function TradingChart({
               <Loader2 className="w-4 h-4 animate-spin text-[#B8863F]" />
               <span className="text-[10px] uppercase tracking-[0.2em] text-[#78716C]">Loading chart</span>
             </div>
+          </div>
+        )}
+        {!isLoading && isEmpty && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40 backdrop-blur-[1px] text-center px-6">
+            <BarChart3 className="w-5 h-5 text-[#57534E]" />
+            <span className="text-[11px] uppercase tracking-[0.2em] text-[#78716C]">
+              Building chart history
+            </span>
+            <span className="text-[10px] text-[#57534E] max-w-xs">
+              No NAV snapshots recorded yet. The cron logs the first candle on the next 5-minute tick.
+            </span>
           </div>
         )}
       </div>

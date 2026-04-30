@@ -17,7 +17,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const API_BASE_URL =
-    import.meta.env.VITE_API_URL || 'https://axis-api.yusukekikuta-05.workers.dev';
+    import.meta.env.VITE_API_URL || 'https://axis-api-mainnet.yusukekikuta-05.workers.dev';
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

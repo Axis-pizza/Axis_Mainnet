@@ -44,7 +44,6 @@ const AnimatedPlusIcon = ({ isActive, className, strokeWidth }: { isActive: bool
   </motion.svg>
 );
 
-// (c) User: 頭が少し浮き上がり、肩のラインがスゥーっと描画される
 // (c) User: わずかな「深呼吸」（胸を張ってゆっくり息を吐く動き）
 const AnimatedUserIcon = ({ isActive, className, strokeWidth }: { isActive: boolean, className: string, strokeWidth: number }) => (
   <motion.svg 

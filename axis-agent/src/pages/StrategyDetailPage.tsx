@@ -50,7 +50,15 @@ export const StrategyDetailPage = () => {
         if (!fetchedData) {
           const res = await api.getStrategyById(id);
           if (res.success && res.strategy) {
-            fetchedData = res.strategy;
+            // Backend returns `vaultAddress` (camelCased from vault_address);
+            // every downstream consumer (StrategyDetailView, CreatorConsole)
+            // reads `strategy.address`. Normalise here so PFMM pool readbacks
+            // (Manage / pool reserves / position) actually find the PDA.
+            const s = res.strategy;
+            fetchedData = {
+              ...s,
+              address: s.address ?? s.vaultAddress ?? s.vault_address ?? null,
+            };
           }
         }
 

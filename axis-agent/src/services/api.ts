@@ -2,7 +2,7 @@
  * API Service - Centralized API calls
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://axis-api.yusukekikuta-05.workers.dev';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://axis-api-mainnet.yusukekikuta-05.workers.dev';
 
 const API_URL = API_BASE.replace(/\/$/, '').endsWith('/api')
   ? API_BASE.replace(/\/$/, '')

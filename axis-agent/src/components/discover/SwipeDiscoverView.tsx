@@ -22,7 +22,9 @@ import {
 import { SwipeCard } from './SwipeCard';
 import { api } from '../../services/api';
 import { useWallet, useConnection, useLoginModal } from '../../hooks/useWallet';
+import { useAxisVaultWallet } from '../../hooks/useAxisVaultWallet';
 import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { JupiterService } from '../../services/jupiter';
 import {
   depositSol,
@@ -31,6 +33,16 @@ import {
   getUserPosition,
   lamportsToSol,
 } from '../../protocol/kagemusha';
+import {
+  AXIS_VAULT_PROGRAM_ID,
+  buildDepositSolPlan,
+  buildJupiterSolSeedPlan,
+  buildWithdrawSolPlan,
+  fetchEtfState,
+  findEtfState,
+  sendVersionedTx,
+  type EtfStateData,
+} from '../../protocol/axis-vault';
 import { DexScreenerService } from '../../services/dexscreener';
 import { useToast } from '../../context/ToastContext';
 
@@ -356,10 +368,15 @@ interface InvestSheetProps {
   strategy: any;
   onConfirm: (amount: string, mode: 'BUY' | 'SELL') => Promise<void>;
   status: TransactionStatus;
+  /// When true the strategy resolves to an axis-vault ETF and SELL is treated
+  /// as a percentage (0..100) of the user's ETF balance. When false the legacy
+  /// kagemusha vaultBalance lamports path is used.
+  useAxisVault: boolean;
+  userEtfBalance: bigint;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status }: InvestSheetProps) => {
+const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, useAxisVault, userEtfBalance }: InvestSheetProps) => {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
   const { showToast } = useToast();
@@ -398,7 +415,16 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status }: InvestShe
     }
   }, [isOpen]);
 
-  const currentBalance = mode === 'BUY' ? solBalance : vaultBalance;
+  // axis-vault SELL is a percentage of the user's ETF balance (0..100); legacy
+  // SELL is a SOL amount drawn from the user's kagemusha vault position.
+  const isSellAxis = mode === 'SELL' && useAxisVault;
+  const sellMaxPercent = isSellAxis && userEtfBalance > 0n ? 100 : 0;
+  const currentBalance = mode === 'BUY'
+    ? solBalance
+    : isSellAxis
+      ? sellMaxPercent
+      : vaultBalance;
+  const unitLabel = isSellAxis ? '%' : 'SOL';
 
   const estimatedOutput = useMemo(() => {
     const val = parseFloat(amount);
@@ -421,10 +447,19 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status }: InvestShe
   const handleExecute = () => {
     const val = parseFloat(amount);
     if (isNaN(val) || val <= 0) {
-      showToast('Enter valid amount', 'error');
+      showToast(isSellAxis ? 'Enter a percentage between 0 and 100' : 'Enter valid amount', 'error');
       return;
     }
-    if (val > currentBalance) {
+    if (isSellAxis) {
+      if (userEtfBalance === 0n) {
+        showToast('No ETF position to withdraw', 'error');
+        return;
+      }
+      if (val > 100) {
+        showToast('Max 100%', 'error');
+        return;
+      }
+    } else if (val > currentBalance) {
       showToast('Insufficient balance', 'error');
       return;
     }
@@ -480,16 +515,24 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status }: InvestShe
                   {amount}
                 </span>
               </div>
-              <span className="text-[#78716C] font-normal text-lg">SOL</span>
+              <span className="text-[#78716C] font-normal text-lg">{unitLabel}</span>
             </div>
 
             <div className="flex items-center gap-2 bg-[#1C1C1E] py-2 px-4 rounded-full border border-white/5 mb-8">
               <Wallet className="w-3.5 h-3.5 text-[#78716C]" />
               <span className="text-[#A8A29E] text-xs font-mono">
-                Available: {currentBalance.toFixed(4)} SOL
+                {isSellAxis
+                  ? userEtfBalance > 0n
+                    ? '100% sellable'
+                    : 'No ETF position'
+                  : `Available: ${currentBalance.toFixed(4)} ${unitLabel}`}
               </span>
               <button
                 onClick={() => {
+                  if (isSellAxis) {
+                    setAmount(userEtfBalance > 0n ? '100' : '0');
+                    return;
+                  }
                   const max = mode === 'BUY' ? Math.max(0, solBalance - 0.005) : vaultBalance;
                   setAmount(max.toFixed(4));
                 }}
@@ -505,7 +548,9 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status }: InvestShe
                 <span>
                   {mode === 'BUY'
                     ? `Deposit ${estimatedOutput} SOL into ${strategy.name}`
-                    : `Withdraw ${estimatedOutput} SOL from vault`}
+                    : isSellAxis
+                      ? `Burn ${estimatedOutput}% of your ETF position`
+                      : `Withdraw ${estimatedOutput} SOL from vault`}
                 </span>
               </div>
             )}
@@ -713,6 +758,7 @@ export const SwipeDiscoverView = ({
 }: SwipeDiscoverViewProps) => {
   const wallet = useWallet();
   const { publicKey } = wallet;
+  const axisWallet = useAxisVaultWallet();
   const { connection } = useConnection();
   const { showToast } = useToast();
   const { setVisible: openWalletModal } = useLoginModal();
@@ -731,6 +777,60 @@ export const SwipeDiscoverView = ({
   const [isInvestOpen, setIsInvestOpen] = useState(false);
   const [investStatus, setInvestStatus] = useState<TransactionStatus>('IDLE');
   const [investTarget, setInvestTarget] = useState<any | null>(null);
+  // axis-vault probe for the active investTarget. When non-null deposit/withdraw
+  // routes through axis-vault (Deposit/Withdraw) instead of the legacy Jupiter/
+  // kagemusha paths.
+  const [investEtfState, setInvestEtfState] = useState<PublicKey | null>(null);
+  const [investEtfData, setInvestEtfData] = useState<EtfStateData | null>(null);
+  const [investUserEtfBalance, setInvestUserEtfBalance] = useState<bigint>(0n);
+
+  useEffect(() => {
+    if (!investTarget) {
+      setInvestEtfState(null);
+      setInvestEtfData(null);
+      setInvestUserEtfBalance(0n);
+      return;
+    }
+    const owner = investTarget.ownerPubkey ?? investTarget.owner;
+    const name = investTarget.name;
+    if (!owner || !name) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const ownerPk = new PublicKey(owner);
+        const [pda] = findEtfState(AXIS_VAULT_PROGRAM_ID, ownerPk, name);
+        if (cancelled) return;
+        setInvestEtfState(pda);
+        try {
+          const data = await fetchEtfState(connection, pda);
+          if (cancelled) return;
+          setInvestEtfData(data);
+          if (wallet.publicKey) {
+            try {
+              const ata = getAssociatedTokenAddressSync(data.etfMint, wallet.publicKey, false);
+              const bal = await connection.getTokenAccountBalance(ata, 'confirmed');
+              if (!cancelled) setInvestUserEtfBalance(BigInt(bal.value.amount));
+            } catch {
+              if (!cancelled) setInvestUserEtfBalance(0n);
+            }
+          }
+        } catch {
+          if (!cancelled) {
+            setInvestEtfData(null);
+            setInvestUserEtfBalance(0n);
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setInvestEtfState(null);
+          setInvestEtfData(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [investTarget, connection, wallet.publicKey, investStatus]);
 
   const dataFetched = useRef(false);
   const appliedFocusRef = useRef<string | null>(null);
@@ -1055,31 +1155,170 @@ export const SwipeDiscoverView = ({
       return;
     }
 
+    // Routing precedence:
+    // 1. axis-vault ETF (real per-strategy mint + program-owned vaults) — preferred
+    //    once the strategy has an etfState account on-chain.
+    // 2. PFMM (legacy "ETF" deploys that are really just a PFMM pool) — Jupiter
+    //    SOL→basket on BUY; SELL bounces to detail page (the swipe sheet has no
+    //    %-of-basket UI).
+    // 3. Kagemusha legacy `depositSol`/`withdrawSol` — last resort.
+    const useAxisVault = investEtfState !== null && investEtfData !== null;
+    const isPfmm = investTarget?.config?.protocol === 'pfda-amm-3';
+    if (!useAxisVault && isPfmm && mode === 'SELL') {
+      showToast('Open the strategy page to manage your PFMM position', 'info');
+      return;
+    }
+
     setInvestStatus('SIGNING');
     try {
       const parsedAmount = parseFloat(amountStr);
       if (isNaN(parsedAmount) || parsedAmount <= 0) throw new Error('Invalid amount');
 
-      const strategyPubkey = new PublicKey(targetAddressStr.trim());
-      const amountLamports = solToLamports(parsedAmount);
-
-      if (mode === 'BUY') {
-        await depositSol(connection, wallet, strategyPubkey, amountLamports);
+      if (useAxisVault) {
+        if (!axisWallet) throw new Error('Wallet not ready');
+        if (investEtfData!.paused) throw new Error('ETF is paused by the creator');
+        if (mode === 'BUY') {
+          const solIn = BigInt(Math.floor(parsedAmount * LAMPORTS_PER_SOL));
+          const treasuryEtfAta = getAssociatedTokenAddressSync(
+            investEtfData!.etfMint,
+            investEtfData!.treasury,
+            true,
+          );
+          const plan = await buildDepositSolPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            programId: AXIS_VAULT_PROGRAM_ID,
+            etfName: investEtfData!.name,
+            etfState: investEtfState!,
+            etfMint: investEtfData!.etfMint,
+            treasury: investEtfData!.treasury,
+            treasuryEtfAta,
+            basketMints: investEtfData!.tokenMints,
+            weights: investEtfData!.weightsBps,
+            vaults: investEtfData!.tokenVaults,
+            solIn,
+            minEtfOut: 0n,
+            existingEtfTotalSupply: investEtfData!.totalSupply,
+            maxAccounts: 14,
+          });
+          setInvestStatus('CONFIRMING');
+          let sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+          if (plan.mode === 'split' && plan.depositTx) {
+            setInvestStatus('PROCESSING');
+            sig = await sendVersionedTx(connection, axisWallet, plan.depositTx);
+          }
+          fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userPubkey: wallet.publicKey.toBase58(),
+              amount: parsedAmount,
+              mode,
+              strategyId: investTarget.id,
+              txSig: sig,
+            }),
+          }).catch(() => {});
+        } else {
+          // SELL: parsedAmount is treated as a percentage 0..100 here, mirroring
+          // StrategyDetailView. The swipe sheet currently passes a raw number, so
+          // we clamp to 100 max and refuse zero.
+          const pct = Math.max(0, Math.min(100, parsedAmount));
+          if (pct === 0) throw new Error('Enter a percentage between 0 and 100');
+          if (investUserEtfBalance === 0n) throw new Error('No ETF position to withdraw');
+          const burnAmount = (investUserEtfBalance * BigInt(Math.floor(pct * 100))) / 10_000n;
+          if (burnAmount === 0n) throw new Error('Withdraw amount rounds to zero');
+          const plan = await buildWithdrawSolPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            programId: AXIS_VAULT_PROGRAM_ID,
+            etfState: investEtfState!,
+            etfStateData: investEtfData!,
+            burnAmount,
+            maxAccounts: 14,
+          });
+          setInvestStatus('CONFIRMING');
+          let sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+          if (plan.mode === 'split' && plan.swapTx) {
+            setInvestStatus('PROCESSING');
+            sig = await sendVersionedTx(connection, axisWallet, plan.swapTx);
+          }
+          fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userPubkey: wallet.publicKey.toBase58(),
+              amount: Number(plan.expectedSolOut) / LAMPORTS_PER_SOL,
+              mode,
+              strategyId: investTarget.id,
+              txSig: sig,
+            }),
+          }).catch(() => {});
+        }
+      } else if (isPfmm) {
+        if (!axisWallet) throw new Error('Wallet not ready');
+        const tokens = (investTarget.tokens || []) as Array<{
+          mint?: string;
+          address?: string;
+          weight?: number;
+        }>;
+        if (tokens.length === 0) throw new Error('Strategy basket not loaded');
+        const basketMints = tokens.map(
+          (t) => new PublicKey((t.mint || t.address) as string)
+        );
+        const weights = tokens.map((t) => Math.max(0, Math.round((t.weight ?? 0) * 100)));
+        const sum = weights.reduce((a, b) => a + b, 0);
+        if (sum === 0) {
+          const even = Math.floor(10_000 / Math.max(1, weights.length));
+          for (let i = 0; i < weights.length; i++) weights[i] = even;
+          weights[weights.length - 1] += 10_000 - even * weights.length;
+        } else if (sum !== 10_000) {
+          weights[weights.length - 1] += 10_000 - sum;
+        }
+        const solIn = BigInt(Math.floor(parsedAmount * LAMPORTS_PER_SOL));
+        const plan = await buildJupiterSolSeedPlan({
+          conn: connection,
+          user: wallet.publicKey,
+          outputMints: basketMints,
+          weights,
+          solIn,
+          slippageBps: 50,
+          maxAccounts: 14,
+          closeWsolAtEnd: true,
+        });
+        setInvestStatus('CONFIRMING');
+        const sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+        setInvestStatus('PROCESSING');
+        fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userPubkey: wallet.publicKey.toBase58(),
+            amount: parsedAmount,
+            mode,
+            strategyId: investTarget.id,
+            txSig: sig,
+          }),
+        }).catch(() => {});
       } else {
-        await withdrawSol(connection, wallet, strategyPubkey, amountLamports);
+        const strategyPubkey = new PublicKey(targetAddressStr.trim());
+        const amountLamports = solToLamports(parsedAmount);
+        if (mode === 'BUY') {
+          await depositSol(connection, wallet, strategyPubkey, amountLamports);
+        } else {
+          await withdrawSol(connection, wallet, strategyPubkey, amountLamports);
+        }
+        setInvestStatus('PROCESSING');
+        void api
+          .syncUserStats(wallet.publicKey!.toBase58(), 0, parsedAmount, investTarget.id)
+          .catch(() => {});
       }
-
-      setInvestStatus('PROCESSING');
-
-      void api
-        .syncUserStats(wallet.publicKey!.toBase58(), 0, parsedAmount, investTarget.id)
-        .catch(() => {});
 
       setTimeout(() => {
         setInvestStatus('SUCCESS');
+        const targetName = investTarget?.name ? ` ${investTarget.name}` : ' vault';
         showToast(
           mode === 'BUY'
-            ? `Deposited ${parsedAmount} SOL into vault`
+            ? `Deposited ${parsedAmount} SOL into${targetName}`
             : `Withdrew ${parsedAmount} SOL from vault`,
           'success'
         );
@@ -1245,6 +1484,8 @@ export const SwipeDiscoverView = ({
           strategy={investTarget}
           onConfirm={handleDeposit}
           status={investStatus}
+          useAxisVault={investEtfState !== null && investEtfData !== null}
+          userEtfBalance={investUserEtfBalance}
         />
       )}
     </div>

@@ -16,7 +16,7 @@ import { useManualDashboard } from '../../hooks/useManualDashboard';
 import { useTokenPreferences } from '../../hooks/useTokenPreferences';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { MobileBuilder, DesktopBuilder } from './manual/Builder';
-import { DeploymentBlueprint } from './DeploymentBlueprint';
+import { PfmmDeploymentBlueprint } from './PfmmDeploymentBlueprint';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3D Background (reused from CreateLanding)
@@ -170,6 +170,9 @@ function InlineIdentityStep({
   connected,
   onDeploy,
   onGenerateRandomTicker,
+  onConnectDirect,
+  isDirectAvailable,
+  isDirectConnecting,
 }: {
   config: { name: string; ticker: string; description: string };
   setConfig: React.Dispatch<React.SetStateAction<{ name: string; ticker: string; description: string }>>;
@@ -179,6 +182,9 @@ function InlineIdentityStep({
   connected: boolean;
   onDeploy: () => void;
   onGenerateRandomTicker: () => void;
+  onConnectDirect?: () => void;
+  isDirectAvailable?: boolean;
+  isDirectConnecting?: boolean;
 }) {
   return (
     <div className="max-w-md mx-auto px-5 py-10 space-y-6">
@@ -325,6 +331,16 @@ function InlineIdentityStep({
             'Connect Wallet'
           )}
         </motion.button>
+        {!connected && isDirectAvailable && onConnectDirect && (
+          <button
+            type="button"
+            onClick={onConnectDirect}
+            disabled={isDirectConnecting}
+            className="mt-3 w-full text-center text-[11px] tracking-wider text-amber-600/60 hover:text-amber-500 transition-colors py-2 disabled:opacity-50"
+          >
+            {isDirectConnecting ? 'connecting Phantom…' : 'Privy not loading? → Connect Phantom directly'}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -340,7 +356,12 @@ export interface ETFScrollFlowProps {
 
 export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
   const { publicKey, connected } = useWallet();
-  const { setVisible: setWalletModalVisible } = useLoginModal();
+  const {
+    setVisible: setWalletModalVisible,
+    connectDirect,
+    isDirectAvailable,
+    isDirectConnecting,
+  } = useLoginModal();
   const isMobile = useIsMobile();
   const preferences = useTokenPreferences();
 
@@ -517,6 +538,13 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
             connected={connected}
             onDeploy={handleIdentityNext}
             onGenerateRandomTicker={dashboard.generateRandomTicker}
+            onConnectDirect={() => {
+              void connectDirect().catch((e) => {
+                console.warn('[axis] direct phantom connect failed', e);
+              });
+            }}
+            isDirectAvailable={isDirectAvailable}
+            isDirectConnecting={isDirectConnecting}
           />
         </GlassSection>
       </div>
@@ -524,7 +552,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
       {/* ── Section 4: Review & Deploy ────────────────────────────────────── */}
       <div ref={reviewRef}>
         <GlassSection className="py-4" innerClassName="px-4 pt-6 pb-20">
-          <DeploymentBlueprint
+          <PfmmDeploymentBlueprint
             strategyName={dashboard.config.name || 'Untitled'}
             strategyType="BALANCED"
             tokens={reviewTokens}
