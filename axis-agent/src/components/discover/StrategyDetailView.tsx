@@ -39,6 +39,7 @@ import { getUserPosition, lamportsToSol } from '../../protocol/kagemusha';
 import {
   buildJupiterSolSeedPlan,
   buildJupiterBasketSellPlan,
+  fetchPoolState3,
   getQuote,
   sendVersionedTx,
   SOL_MINT,
@@ -509,6 +510,11 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const [userSolPosition, setUserSolPosition] = useState(0);
   const [basketBalances, setBasketBalances] = useState<bigint[]>([]);
   const [isCreatorConsoleOpen, setIsCreatorConsoleOpen] = useState(false);
+  // PFMM pool runtime state — `paused` here is what the creator toggled via
+  // ixSetPaused3. We block Trade when paused so the swap UI matches the
+  // strategy's intent, even though our Jupiter routing technically bypasses
+  // the pool itself (basket tokens live in the user wallet).
+  const [poolPaused, setPoolPaused] = useState(false);
 
   const isCreator = useMemo(() => {
     if (!wallet.publicKey) return false;
@@ -578,6 +584,26 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     };
     fetchSolPosition();
   }, [wallet.publicKey, connection, strategyAddress, investStatus, isRedeemOpen]);
+
+  // --- PFMM pool runtime state (paused flag) ---
+  // Re-read whenever the Creator Console closes so toggling pause inside the
+  // modal flips the badge + Trade button state without requiring a refresh.
+  useEffect(() => {
+    if (!strategyAddress) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const pubkey = new PublicKey(strategyAddress);
+        const data = await fetchPoolState3(connection, pubkey);
+        if (!cancelled) setPoolPaused(Boolean(data?.paused));
+      } catch {
+        if (!cancelled) setPoolPaused(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [connection, strategyAddress, isCreatorConsoleOpen]);
 
   // Don't fall back to a fake "$100 / 0.00%" — that misled users into thinking
   // the strategy had a real history when it was just deployed. Render a `—`
@@ -687,6 +713,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const handleTransaction = async (amountStr: string, mode: 'BUY' | 'SELL') => {
     if (!wallet.publicKey || !axisWallet) return showToast('Connect Wallet', 'error');
     if (!basketMints) return showToast('Strategy basket not loaded', 'error');
+    if (poolPaused) return showToast('Strategy is paused by the creator', 'error');
 
     setInvestStatus('SIGNING');
     try {
@@ -820,7 +847,14 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         <div className="px-4 md:px-24 pt-24 space-y-6">
           {/* Hero */}
           <div className="flex flex-col items-start">
-            <h1 className="text-xl font-normal text-[#78716C] mb-1">{strategy?.name}</h1>
+            <div className="flex items-center gap-2 mb-1">
+              <h1 className="text-xl font-normal text-[#78716C]">{strategy?.name}</h1>
+              {poolPaused && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider bg-red-500/15 text-red-300 border border-red-500/30">
+                  Paused
+                </span>
+              )}
+            </div>
             <div className="flex items-baseline gap-3">
               <span className="text-5xl font-serif font-normal tracking-tighter text-white">
                 {hasPrice ? `$${rawPrice!.toFixed(2)}` : `${tvlDisplay} SOL`}
@@ -1042,10 +1076,18 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
               </button>
             )}
             <button
-              onClick={() => setIsInvestOpen(true)}
-              className="bg-[#B8863F] text-black font-normal px-8 py-3 rounded-full shadow-[0_4px_20px_rgba(184,134,63,0.3)] active:scale-95 transition-all flex items-center gap-2"
+              onClick={() => {
+                if (poolPaused) {
+                  showToast('Strategy is paused by the creator — trading disabled', 'info');
+                  return;
+                }
+                setIsInvestOpen(true);
+              }}
+              disabled={poolPaused}
+              title={poolPaused ? 'Strategy paused by the creator' : undefined}
+              className="bg-[#B8863F] text-black font-normal px-8 py-3 rounded-full shadow-[0_4px_20px_rgba(184,134,63,0.3)] active:scale-95 transition-all flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 disabled:shadow-none"
             >
-              Trade <ArrowRight className="w-4 h-4" />
+              {poolPaused ? 'Paused' : 'Trade'} <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
