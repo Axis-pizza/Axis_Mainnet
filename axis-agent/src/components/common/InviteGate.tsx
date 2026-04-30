@@ -26,7 +26,7 @@ export const TOS_VERSION        = '0.1-beta';
 
 const API_BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ||
-  'https://axis-api.yusukekikuta-05.workers.dev';
+  'https://axis-api-mainnet.yusukekikuta-05.workers.dev';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 // 'checking' is a transient state (no UI rendered — auto-advances)

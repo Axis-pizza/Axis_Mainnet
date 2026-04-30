@@ -10,7 +10,7 @@ import type { JupiterToken } from './jupiter';
 import { JupiterService } from './jupiter';
 
 const AXIS_API_BASE =
-  import.meta.env.VITE_API_URL || 'https://axis-api.yusukekikuta-05.workers.dev';
+  import.meta.env.VITE_API_URL || 'https://axis-api-mainnet.yusukekikuta-05.workers.dev';
 const CHAIN_ID = 101;
 
 interface DFlowApiToken {

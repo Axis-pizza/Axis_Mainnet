@@ -508,7 +508,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
       setInvestStatus('PROCESSING');
 
       try {
-        await fetch('https://axis-api.yusukekikuta-05.workers.dev/trade', {
+        await fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
