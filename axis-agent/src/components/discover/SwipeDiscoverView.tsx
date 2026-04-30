@@ -610,9 +610,23 @@ const SuccessOverlay = ({
               alt="creator"
               className="w-16 h-16 rounded-full border-2 border-[rgba(184,134,63,0.15)] bg-black object-cover"
             />
-            <div className="absolute -bottom-2 -right-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-[10px] font-normal px-2 py-0.5 rounded-full border border-[#140E08] shadow-lg flex items-center gap-1">
-              ROI {(strategy.roi || 0).toFixed(0)}%
-            </div>
+            {(() => {
+              const isNew = (Math.floor(Date.now() / 1000) - (strategy.createdAt ?? 0)) < 86400;
+              const roi = Number(strategy.roi);
+              const usable = !isNew && Number.isFinite(roi) && Math.abs(roi) <= 500;
+              if (!usable) {
+                return (
+                  <div className="absolute -bottom-2 -right-1 bg-zinc-700 text-white text-[10px] font-normal px-2 py-0.5 rounded-full border border-[#140E08] shadow-lg">
+                    {isNew ? 'NEW' : '—'}
+                  </div>
+                );
+              }
+              return (
+                <div className="absolute -bottom-2 -right-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-[10px] font-normal px-2 py-0.5 rounded-full border border-[#140E08] shadow-lg flex items-center gap-1">
+                  ROI {roi.toFixed(0)}%
+                </div>
+              );
+            })()}
           </div>
           <div className="min-w-0">
             <h3 className="font-normal text-white text-xl leading-tight truncate">{strategy.name}</h3>

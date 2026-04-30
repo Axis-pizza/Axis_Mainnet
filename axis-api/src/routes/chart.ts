@@ -1,6 +1,37 @@
 import { Context } from 'hono';
 import { Bindings } from '../config/env';
 
+type PriceMatrix = Map<number, Map<string, number>>;
+
+// composition 全銘柄の価格が出揃った時点以降のみ、加重和でインデックス値を出力する。
+// それ以前の timestamp は「部分合算」になるため drop。
+// 出揃って以降は、その ts に欠けた銘柄は直近観測値で forward-fill（cron jitter 耐性）。
+function buildIndexSeries(
+  composition: { symbol: string; weight: number }[],
+  totalWeight: number,
+  pricesByTimestamp: PriceMatrix,
+): { time: number; value: number }[] {
+  if (composition.length === 0 || totalWeight <= 0) return [];
+
+  const sortedTs = [...pricesByTimestamp.keys()].sort((a, b) => a - b);
+  const lastPrice = new Map<string, number>();
+  const out: { time: number; value: number }[] = [];
+
+  for (const ts of sortedTs) {
+    for (const [symbol, price] of pricesByTimestamp.get(ts)!) {
+      lastPrice.set(symbol, price);
+    }
+    if (!composition.every(t => lastPrice.has(t.symbol))) continue;
+
+    let value = 0;
+    for (const { symbol, weight } of composition) {
+      value += lastPrice.get(symbol)! * (weight / totalWeight);
+    }
+    out.push({ time: ts, value });
+  }
+  return out;
+}
+
 // GET /strategies/:id/chart?period=7d  (also: /linechart)
 // token_prices から composition の重み付きでインデックス価格を計算して返す
 export async function getLineChartData(c: Context<{ Bindings: Bindings }>) {
@@ -46,24 +77,14 @@ export async function getLineChartData(c: Context<{ Bindings: Bindings }>) {
   ).bind(...symbols, fromUnix).all();
 
   // recorded_at ごとに token_name と price_usd をマッピング
-  const pricesByTimestamp = new Map<number, Map<string, number>>();
+  const pricesByTimestamp: PriceMatrix = new Map();
   for (const row of results as any[]) {
     const ts = row.recorded_at as number;
     if (!pricesByTimestamp.has(ts)) pricesByTimestamp.set(ts, new Map());
     pricesByTimestamp.get(ts)!.set(row.token_name as string, row.price_usd as number);
   }
 
-  // recorded_at ごとに Σ(price × weight / totalWeight) を計算
-  const linechartData: { time: number; value: number }[] = [];
-  for (const [ts, tokenPrices] of pricesByTimestamp) {
-    let value = 0;
-    for (const { symbol, weight } of composition) {
-      const price = tokenPrices.get(symbol);
-      if (price && totalWeight > 0) value += price * (weight / totalWeight);
-    }
-    linechartData.push({ time: ts, value });
-  }
-
+  const linechartData = buildIndexSeries(composition, totalWeight, pricesByTimestamp);
   return c.json({ success: true, data: linechartData });
 }
 
@@ -126,24 +147,18 @@ export async function getCandleChartData(c: Context<{ Bindings: Bindings }>) {
   }
 
   // recorded_at ごとに token_name と price_usd をマッピング
-  const pricesByTimestamp = new Map<number, Map<string, number>>();
+  const pricesByTimestamp: PriceMatrix = new Map();
   for (const row of results as any[]) {
     const ts = row.recorded_at as number;
     if (!pricesByTimestamp.has(ts)) pricesByTimestamp.set(ts, new Map());
     pricesByTimestamp.get(ts)!.set(row.token_name as string, row.price_usd as number);
   }
 
-  // recorded_at ごとの index 値を計算
-  const indexValues: { time: number; value: number }[] = [];
-  for (const [ts, tokenPrices] of pricesByTimestamp) {
-    let value = 0;
-    for (const { symbol, weight } of composition) {
-      const price = tokenPrices.get(symbol);
-      if (price && totalWeight > 0) value += price * (weight / totalWeight);
-    }
-    indexValues.push({ time: ts, value });
+  // 全銘柄が出揃った ts 以降のみで index 値を構築（buildIndexSeries は時系列順に返す）
+  const indexValues = buildIndexSeries(composition, totalWeight, pricesByTimestamp);
+  if (indexValues.length === 0) {
+    return c.json({ success: true, interval: intervalParam, data: [] });
   }
-  indexValues.sort((a, b) => a.time - b.time);
 
   // interval ごとにグループ化
   const candleMap = new Map<number, number[]>();

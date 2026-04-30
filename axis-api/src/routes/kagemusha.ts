@@ -481,26 +481,7 @@ app.post('/trade', async (c) => {
 });
 
 
-// -----------------------------------------------------------
-// 📊 Charts & Helpers (復活)
-// -----------------------------------------------------------
-
-app.get('/strategies/:id/chart', async (c) => {
-  const type = c.req.query('type') === 'candle' ? 'candle' : 'line';
-
-  const data = [];
-  const now = Math.floor(Date.now() / 1000);
-  let val = 100;
-
-  for(let i=0; i<30; i++) {
-    val = val * (1 + (Math.random() * 0.1 - 0.04));
-    data.push(type === 'line'
-      ? { time: now - (29-i)*86400, value: val }
-      : { time: now - (29-i)*86400, open: val, high: val*1.02, low: val*0.98, close: val*1.01 }
-    );
-  }
-  return c.json({ success: true, data, type });
-});
+// /strategies/:id/chart は app.ts で getLineChartData として登録済み
 
 // GET /strategies/:id/performance - ETFパフォーマンスサマリー
 app.get('/strategies/:id/performance', async (c) => {

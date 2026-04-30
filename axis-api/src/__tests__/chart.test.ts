@@ -119,7 +119,9 @@ describe('GET /strategies/:id/linechart', () => {
     expect(json.data).toEqual([]);
   });
 
-  test('異常: token_price の一部が欠損している場合、あるデータのみで計算して返す', async () => {
+  test('異常: composition の一部銘柄が期間中ずっと欠損している場合は空配列を返す（部分合算しない）', async () => {
+    // partialTokenPriceRows は USDC が完全欠損。部分合算で出すと「USDCの寄与だけ抜けた小さな値」が出てしまい、
+    // 24h change 計算で爆発する原因になるため、この場合は出さない仕様。
     const res = await app.request(
       `/strategies/${STRATEGY_ID}/linechart?period=7d`,
       {},
@@ -128,8 +130,30 @@ describe('GET /strategies/:id/linechart', () => {
     expect(res.status).toBe(200);
     const json = await res.json() as any;
     expect(json.success).toBe(true);
-    // USDCが欠損 → SOLのみで計算: 60×50/100 = 30.0
-    expect(json.data[0]).toEqual({ time: T1, value: 30.0 });
+    expect(json.data).toEqual([]);
+  });
+
+  test('正常: warmup 中の partial timestamp は drop し、全銘柄出揃って以降のみ返す', async () => {
+    // T1: SOLのみ / T2: SOLのみ / T3: SOL+USDC / T4: SOL のみ
+    // → T1, T2 は drop。T3 で出揃う(30+0.475=29.975)。T4 は SOL の新値 + USDC は forward-fill (T3の0.95) で 29+0.475=29.475
+    const rows = [
+      { token_name: 'SOL',  recorded_at: T1, price_usd: 60.0 },
+      { token_name: 'SOL',  recorded_at: T2, price_usd: 59.0 },
+      { token_name: 'SOL',  recorded_at: T3, price_usd: 59.0 },
+      { token_name: 'USDC', recorded_at: T3, price_usd: 0.95 },
+      { token_name: 'SOL',  recorded_at: T4, price_usd: 58.0 },
+    ];
+    const res = await app.request(
+      `/strategies/${STRATEGY_ID}/linechart?period=7d`,
+      {},
+      { axis_main_db: makeMainDb(), axis_price_db: makePriceDb(rows) } as any,
+    );
+    const json = await res.json() as any;
+    expect(json.data).toHaveLength(2);
+    expect(json.data[0]).toEqual({ time: T3, value: 29.975 });
+    // T4: 58×0.5 + (forward-filled USDC 0.95)×0.5 = 29 + 0.475 = 29.475
+    expect(json.data[1].time).toBe(T4);
+    expect(json.data[1].value).toBeCloseTo(29.475);
   });
 
   test('異常: 先頭が欠損している場合、存在するデータのみで計算して返す', async () => {

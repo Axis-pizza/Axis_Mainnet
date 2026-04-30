@@ -413,7 +413,19 @@ export const SwipeCardBody = ({
   const [chartPoints, setChartPoints] = useState<PerformancePoint[] | undefined>(strategy.performanceData);
   const [chartRoi, setChartRoi] = useState<number | null>(null);
 
+  // 24h未満のETFは比較対象が無いので "NEW" 扱い（部分合算データで爆発する 192876% を防ぐ）
+  const isNewStrategy = (Math.floor(Date.now() / 1000) - (strategy.createdAt ?? 0)) < 86400;
+
   useEffect(() => {
+    if (isNewStrategy) {
+      setChartRoi(null);
+      return;
+    }
+    // 5分粒度を想定し、最低 1 時間ぶん(=12点)のサンプルを要求
+    const MIN_POINTS = 12;
+    // 24h で物理的にあり得ない範囲の % は計算前提が壊れているので捨てる
+    const MAX_PLAUSIBLE_PCT = 500;
+
     let cancelled = false;
     const fetchChart = async () => {
       try {
@@ -425,16 +437,27 @@ export const SwipeCardBody = ({
         if (!json.success || !json.data?.length || cancelled) return;
         const points: PerformancePoint[] = json.data.map(d => ({ timestamp: d.time, nav: d.value }));
         setChartPoints(points);
+
+        if (points.length < MIN_POINTS) { setChartRoi(null); return; }
         const first = points[0].nav;
         const last = points[points.length - 1].nav;
-        setChartRoi(first > 0 ? ((last - first) / first) * 100 : 0);
+        if (!Number.isFinite(first) || !Number.isFinite(last) || first <= 0) {
+          setChartRoi(null);
+          return;
+        }
+        const change = ((last - first) / first) * 100;
+        if (!Number.isFinite(change) || Math.abs(change) > MAX_PLAUSIBLE_PCT) {
+          setChartRoi(null);
+          return;
+        }
+        setChartRoi(change);
       } catch {
         // フォールバック: モックのまま
       }
     };
     fetchChart();
     return () => { cancelled = true; };
-  }, [strategy.id]);
+  }, [strategy.id, isNewStrategy]);
 
   return (
     <div
@@ -515,7 +538,32 @@ export const SwipeCardBody = ({
         <div className="grid grid-cols-2 gap-2">
           {/* 24H Change */}
           {(() => {
-            const roi = chartRoi ?? strategy.roi ?? 0;
+            // isNew: ETF が 24h 未満 → 比較対象なし
+            // unavailable: 24h は経っているが集計データが信頼できない（fetch 失敗 / 点数不足 / 爆発値）
+            const fallbackRoi = strategy.roi;
+            const hasValidFallback = typeof fallbackRoi === 'number' && Number.isFinite(fallbackRoi) && fallbackRoi !== 0;
+            const unavailable = !isNewStrategy && chartRoi === null && !hasValidFallback;
+
+            if (isNewStrategy || unavailable) {
+              const label = isNewStrategy ? 'NEW' : '—';
+              const neutral = '#A1A1AA';
+              return (
+                <div
+                  className={`rounded-2xl border bg-[#0a0a0a] shadow-inner flex flex-col justify-center relative overflow-hidden ${c ? 'h-[48px] px-3' : 'h-[60px] px-4'}`}
+                  style={{ borderColor: neutral + '25' }}
+                >
+                  <span className={`text-white/40 uppercase font-normal tracking-widest mb-0.5 ${c ? 'text-[8px]' : 'text-[10px]'}`}>24H Change</span>
+                  <div
+                    className={`font-normal tracking-tight leading-none ${c ? 'text-sm' : 'text-xl'}`}
+                    style={{ color: neutral }}
+                  >
+                    {label}
+                  </div>
+                </div>
+              );
+            }
+
+            const roi = chartRoi ?? fallbackRoi ?? 0;
             const roiPositive = roi >= 0;
             const roiColor = roiPositive ? '#34D399' : '#F87171';
             const roiGlow  = roiPositive ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)';
