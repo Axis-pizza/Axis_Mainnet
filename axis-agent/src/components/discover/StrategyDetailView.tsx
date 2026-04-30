@@ -280,10 +280,20 @@ const InvestSheet = ({
     };
   }, [mode, amount, basketMints, basketBalances]);
 
-  // BUY caps the input at wallet SOL (minus a tiny fee buffer); SELL is a
+  // BUY caps the input at wallet SOL (minus rent + fee reserve); SELL is a
   // percent of the user's existing basket holdings (1..100).
+  // Why: Jupiter SOL→basket creates a wSOL ATA (closed at end, rent recovered)
+  // plus N persistent output ATAs. If we only reserve a fee buffer, simulation
+  // fails with "Attempt to debit ... no prior credit" once the ATA-rent debits
+  // run the wallet dry. Reserve the rents up front and enforce a min deposit
+  // big enough that per-leg dust still routes through Jupiter.
   const isSell = mode === 'SELL';
-  const maxValue = isSell ? 100 : Math.max(0, solBalance - 0.005);
+  const TOKEN_ACCOUNT_RENT_SOL = 0.00203928;
+  const FEE_BUFFER_SOL = 0.005;
+  const basketSize = basketMints?.length ?? 0;
+  const buyReservedSol = FEE_BUFFER_SOL + basketSize * TOKEN_ACCOUNT_RENT_SOL;
+  const minBuySol = 0.001;
+  const maxValue = isSell ? 100 : Math.max(0, solBalance - buyReservedSol);
   const unit = isSell ? '%' : 'SOL';
   const balanceLabel = isSell
     ? hasBasketPosition
@@ -308,6 +318,23 @@ const InvestSheet = ({
     if (isNaN(val) || val <= 0) {
       showToast(`Enter valid ${isSell ? 'percentage' : 'amount'}`, 'error');
       return;
+    }
+    if (!isSell) {
+      if (solBalance <= 0) {
+        showToast('Wallet has no SOL — fund the wallet to deposit', 'error');
+        return;
+      }
+      if (val < minBuySol) {
+        showToast(`Minimum deposit is ${minBuySol} SOL`, 'error');
+        return;
+      }
+      if (solBalance < val + buyReservedSol) {
+        showToast(
+          `Need ~${(val + buyReservedSol).toFixed(4)} SOL (deposit + ${buyReservedSol.toFixed(4)} for ATA rent + fees)`,
+          'error'
+        );
+        return;
+      }
     }
     if (val > maxValue) {
       showToast(isSell ? 'Max 100%' : 'Insufficient balance', 'error');
@@ -544,11 +571,32 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     fetchSolPosition();
   }, [wallet.publicKey, connection, strategyAddress, investStatus, isRedeemOpen]);
 
+  // Don't fall back to a fake "$100 / 0.00%" — that misled users into thinking
+  // the strategy had a real history when it was just deployed. Render a `—`
+  // when no price/ROI exists yet; the chart and TVL strip carry the real data.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const latestValue = (strategy as any).price || 100;
+  const rawPrice = typeof (strategy as any).price === 'number' ? (strategy as any).price : null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const changePct = (strategy as any).roi || 0;
+  const rawRoi = typeof (strategy as any).roi === 'number' ? (strategy as any).roi : null;
+  const hasPrice = rawPrice !== null;
+  const hasRoi = rawRoi !== null;
+  const changePct = rawRoi ?? 0;
   const isPositive = changePct >= 0;
+  const tvlSol = typeof strategy?.tvl === 'number' ? strategy.tvl : 0;
+  const tvlDisplay =
+    tvlSol >= 1000
+      ? `${(tvlSol / 1000).toFixed(1)}k`
+      : tvlSol >= 1
+        ? tvlSol.toFixed(2)
+        : tvlSol > 0
+          ? tvlSol.toFixed(4)
+          : '0';
+  // PFMM keeps basket tokens in the user's wallet (no per-user vault account),
+  // so getUserPosition always reports 0 — surface basket-token presence instead
+  // so the bottom bar isn't permanently "0.0000 SOL" for active PFMM users.
+  const isPfmm = strategy?.config?.protocol === 'pfda-amm-3';
+  const heldTokenCount = basketBalances.filter((b) => b > 0n).length;
+  const basketSize = basketMints?.length ?? 0;
 
   useEffect(() => {
     const init = async () => {
@@ -767,14 +815,23 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             <h1 className="text-xl font-normal text-[#78716C] mb-1">{strategy?.name}</h1>
             <div className="flex items-baseline gap-3">
               <span className="text-5xl font-serif font-normal tracking-tighter text-white">
-                ${latestValue?.toFixed(2)}
+                {hasPrice ? `$${rawPrice!.toFixed(2)}` : `${tvlDisplay} SOL`}
               </span>
+              {!hasPrice && (
+                <span className="text-xs uppercase tracking-wider text-[#57534E]">TVL</span>
+              )}
             </div>
-            <div className={`flex items-center gap-1 mt-2 text-sm font-normal ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-              {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-              {Math.abs(changePct).toFixed(2)}%{' '}
-              <span className="text-[#57534E] font-normal ml-1">Today</span>
-            </div>
+            {hasRoi ? (
+              <div className={`flex items-center gap-1 mt-2 text-sm font-normal ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                {Math.abs(changePct).toFixed(2)}%{' '}
+                <span className="text-[#57534E] font-normal ml-1">Today</span>
+              </div>
+            ) : (
+              <div className="mt-2 text-xs text-[#57534E]">
+                Building history — performance shown after the first NAV snapshot.
+              </div>
+            )}
           </div>
 
           <TradingChart
@@ -792,11 +849,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
                 <span className="text-[10px] uppercase font-normal tracking-wider">TVL</span>
               </div>
               <p className="text-lg font-normal text-white">
-                {typeof strategy?.tvl === 'number'
-                  ? strategy.tvl >= 1000
-                    ? `${(strategy.tvl / 1000).toFixed(1)}k`
-                    : strategy.tvl.toFixed(0)
-                  : '0'}{' '}
+                {tvlDisplay}{' '}
                 <span className="text-xs font-normal text-[#57534E]">SOL</span>
               </p>
             </div>
@@ -940,9 +993,25 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
       <div className="absolute bottom-0 inset-x-0 bg-[#080503]/95 backdrop-blur-md border-t border-[rgba(184,134,63,0.15)] z-40 pt-3 px-6 pb-[calc(env(safe-area-inset-bottom,8px)+8px)]">
         <div className="flex items-center justify-between gap-4">
           <div className="flex flex-col">
-            <span className="text-[10px] text-[#78716C] uppercase tracking-wider">In Vault</span>
+            <span className="text-[10px] text-[#78716C] uppercase tracking-wider">
+              {isPfmm ? 'Basket' : 'In Vault'}
+            </span>
             <span className="text-lg font-serif font-normal text-white">
-              {userSolPosition.toFixed(4)} <span className="text-xs text-[#78716C]">SOL</span>
+              {isPfmm ? (
+                heldTokenCount > 0 ? (
+                  <>
+                    {heldTokenCount}/{basketSize}{' '}
+                    <span className="text-xs text-[#78716C]">held</span>
+                  </>
+                ) : (
+                  <span className="text-[#78716C]">—</span>
+                )
+              ) : (
+                <>
+                  {userSolPosition.toFixed(4)}{' '}
+                  <span className="text-xs text-[#78716C]">SOL</span>
+                </>
+              )}
             </span>
           </div>
 
@@ -956,7 +1025,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
                 <Layers className="w-4 h-4" /> Manage
               </button>
             )}
-            {userSolPosition > 0 && (
+            {!isPfmm && userSolPosition > 0 && (
               <button
                 onClick={() => setIsRedeemOpen(true)}
                 className="bg-white/10 text-white/70 font-normal px-4 py-3 rounded-full border border-white/10 active:scale-95 transition-all flex items-center gap-1.5 text-sm"

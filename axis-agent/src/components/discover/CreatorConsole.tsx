@@ -232,9 +232,25 @@ export const CreatorConsole = ({ isOpen, onClose, strategy }: CreatorConsoleProp
               </div>
 
               {!isAuthority && (
-                <div className="rounded-xl bg-amber-900/20 border border-amber-700/30 px-3 py-2.5 mb-4 text-[11px] text-amber-200">
-                  Connected wallet is not the pool authority — actions will fail on-chain.
-                  Authority: {truncatePubkey(pool.authority.toBase58())}
+                <div className="rounded-xl bg-amber-900/20 border border-amber-700/30 px-3 py-2.5 mb-4 text-[11px] text-amber-200 space-y-1.5">
+                  <p>
+                    Connected wallet is not the pool authority — actions will fail on-chain.
+                  </p>
+                  <div className="font-mono text-[10px] leading-relaxed text-amber-100/90 break-all">
+                    <div>
+                      <span className="text-amber-300/70">Pool authority:&nbsp;</span>
+                      {pool.authority.toBase58()}
+                    </div>
+                    <div>
+                      <span className="text-amber-300/70">Connected wallet:&nbsp;</span>
+                      {wallet.publicKey ? wallet.publicKey.toBase58() : '—'}
+                    </div>
+                  </div>
+                  <p className="text-amber-100/70">
+                    If you created this pool, switch to the wallet that signed the InitPool tx
+                    (e.g. reconnect via the same Privy account or Phantom popup that was used at
+                    creation).
+                  </p>
                 </div>
               )}
 
