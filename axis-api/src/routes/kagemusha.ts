@@ -193,6 +193,8 @@ app.post('/strategies', async (c) => {
       return c.json({ success: false, error: 'owner_pubkey and name are required' }, 400);
     }
 
+    await ensureUserExists(c.env.axis_main_db, owner_pubkey);
+
     const now = Math.floor(Date.now() / 1000);
 
     const existing = await c.env.axis_main_db.prepare(
@@ -272,10 +274,15 @@ app.post('/deploy', async (c) => {
 
     // フロントエンドから送られてきた情報
     const { signature } = body;
-    const { ownerPubkey, name, ticker, description, type, tokens, config, tvl } = body.metadata || body;
+    const { ownerPubkey, name, ticker, description, type, tokens, config, tvl, address, protocol } = body.metadata || body;
     const depositAmountSOL = tvl || 0;
     const now = Math.floor(Date.now() / 1000);
     const id = body.strategyId || crypto.randomUUID();
+
+    if (!ownerPubkey) {
+      return c.json({ success: false, error: 'ownerPubkey is required' }, 400);
+    }
+    await ensureUserExists(c.env.axis_main_db, ownerPubkey);
 
     // 1. 環境設定
     if (!c.env.SERVER_PRIVATE_KEY) throw new Error("Missing SERVER_PRIVATE_KEY");
@@ -328,6 +335,11 @@ app.post('/deploy', async (c) => {
     }
 
     // 3. DB保存
+    // PFMM (pfda-amm-3) deploys send the pool PDA as `address`; persist that as
+    // vault_address so /discover and Buy/Sell can read it back. Legacy hybrid
+    // deploys without `address` fall back to the admin pubkey for compatibility.
+    const vaultAddress = address || adminPubkeyStr;
+    const mergedConfig = protocol ? { ...(config || {}), protocol } : (config || {});
     await c.env.axis_main_db.prepare(`
         INSERT INTO strategies (
           id, owner_pubkey, name, ticker, description, type,
@@ -337,10 +349,10 @@ app.post('/deploy', async (c) => {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, 0, ?, ?)
     `).bind(
         id, ownerPubkey, name, ticker, description || '', type || 'MANUAL',
-        JSON.stringify(tokens), JSON.stringify(config || {}),
+        JSON.stringify(tokens), JSON.stringify(mergedConfig),
         now, depositAmountSOL, depositAmountSOL,
-        MASTER_MINT_ADDRESS.toString(), // ★共通トークン
-        adminPubkeyStr
+        MASTER_MINT_ADDRESS.toString(),
+        vaultAddress
     ).run();
 
     // XP付与 (Phase 2: 50 XP per deploy)
@@ -674,6 +686,22 @@ app.get('/strategies/:id/transactions', async (c) => {
     return c.json({ success: false, error: e.message }, 500);
   }
 });
+
+// strategies.owner_pubkey has a FK to users.wallet_address. Phantom-direct
+// connects skip /register, so the row may not exist yet — create a minimal one
+// before any strategies INSERT to keep the FK satisfied.
+async function ensureUserExists(db: D1Database, walletAddress: string) {
+  const existing = await db.prepare(
+    `SELECT 1 FROM users WHERE wallet_address = ?`
+  ).bind(walletAddress).first();
+  if (existing) return;
+  const id = crypto.randomUUID();
+  const inviteCode = `AXIS-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  await db.prepare(
+    `INSERT OR IGNORE INTO users (id, wallet_address, invite_code, total_xp, rank_tier, last_checkin)
+     VALUES (?, ?, ?, 0, 'Novice', 0)`
+  ).bind(id, walletAddress, inviteCode).run();
+}
 
 // Helper function for XP
 async function addXP(db: D1Database, pubkey: string, amount: number, actionType: string, description: string) {
