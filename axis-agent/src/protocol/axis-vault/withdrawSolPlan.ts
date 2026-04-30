@@ -149,21 +149,40 @@ export async function buildWithdrawSolPlan(args: WithdrawSolPlanArgs): Promise<W
       );
     }
     let quote: JupiterQuoteResponse;
-    try {
-      quote = await getQuote({
-        inputMint: mints[i],
-        outputMint: SOL_MINT,
-        amount: quotedAmount,
-        slippageBps,
+    if (mints[i].equals(SOL_MINT)) {
+      // SOL leg: vault holds wSOL, no Jupiter swap needed. The basket-to-user
+      // transfer in axis_vault::Withdraw lands wSOL directly in the user's
+      // wSOL ATA, which is the swap destination. Synthesize a 1:1 passthrough.
+      const out = quotedAmount.toString();
+      quote = {
+        inputMint: mints[i].toBase58(),
+        outputMint: SOL_MINT.toBase58(),
+        inAmount: out,
+        outAmount: out,
+        otherAmountThreshold: out,
         swapMode: 'ExactIn',
-        maxAccounts,
-      });
-    } catch (e) {
-      throw new Error(
-        `Jupiter quote failed on leg ${i} (${mints[i].toBase58().slice(0, 8)}…): ${
-          e instanceof Error ? e.message : String(e)
-        }`
-      );
+        slippageBps,
+        priceImpactPct: '0',
+        routePlan: [{ swapInfo: { label: 'wrap' }, percent: 100 }],
+        contextSlot: 0,
+      };
+    } else {
+      try {
+        quote = await getQuote({
+          inputMint: mints[i],
+          outputMint: SOL_MINT,
+          amount: quotedAmount,
+          slippageBps,
+          swapMode: 'ExactIn',
+          maxAccounts,
+        });
+      } catch (e) {
+        throw new Error(
+          `Jupiter quote failed on leg ${i} (${mints[i].toBase58().slice(0, 8)}…): ${
+            e instanceof Error ? e.message : String(e)
+          }`
+        );
+      }
     }
     const expectedSolOut = BigInt(quote.outAmount);
     const minSolOut = BigInt(quote.otherAmountThreshold);
@@ -181,9 +200,11 @@ export async function buildWithdrawSolPlan(args: WithdrawSolPlanArgs): Promise<W
     totalMinSol += minSolOut;
   }
 
+  // SOL legs need no swap (Withdraw already returns wSOL into user's wSOL ATA).
   const swapBundles = await Promise.all(
-    legs.map((leg, i) =>
-      getSwapInstructions({
+    legs.map((leg, i) => {
+      if (leg.mint.equals(SOL_MINT)) return Promise.resolve(null);
+      return getSwapInstructions({
         quote: leg.quote,
         userPublicKey: args.user,
         destinationTokenAccount: userWsolAta,
@@ -194,13 +215,14 @@ export async function buildWithdrawSolPlan(args: WithdrawSolPlanArgs): Promise<W
             e instanceof Error ? e.message : String(e)
           }`
         );
-      })
-    )
+      });
+    })
   );
 
   let cuSum = 0;
   let microLamportsMax = 0;
   for (const bundle of swapBundles) {
+    if (!bundle) continue;
     for (const raw of bundle.computeBudgetInstructions) {
       const ix = deserializeIx(raw);
       if (ix.data[0] === 0x02 && ix.data.length >= 5) {
@@ -268,6 +290,7 @@ export async function buildWithdrawSolPlan(args: WithdrawSolPlanArgs): Promise<W
     }
   };
   for (const bundle of swapBundles) {
+    if (!bundle) continue;
     for (const raw of bundle.setupInstructions) pushDedup(swapIxs, deserializeIx(raw));
     pushDedup(swapIxs, deserializeIx(bundle.swapInstruction));
     if (bundle.cleanupInstruction) pushDedup(swapIxs, deserializeIx(bundle.cleanupInstruction));
@@ -279,7 +302,7 @@ export async function buildWithdrawSolPlan(args: WithdrawSolPlanArgs): Promise<W
 
   const altAccounts = await fetchAltAccounts(
     args.conn,
-    swapBundles.flatMap((b) => b.addressLookupTableAddresses)
+    swapBundles.flatMap((b) => (b ? b.addressLookupTableAddresses : []))
   );
   const { blockhash } = await args.conn.getLatestBlockhash('confirmed');
 

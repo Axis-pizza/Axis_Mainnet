@@ -240,9 +240,16 @@ export async function buildDepositSolPlan(args: DepositSolPlanArgs): Promise<Dep
     );
   }
 
+  // SOL legs need no Jupiter swap — the wrap step (System.transfer + SyncNative
+  // below) already lands wSOL in the user's wSOL ATA, which IS the user's
+  // basket ATA for the SOL leg. Skip those legs from getSwapInstructions to
+  // avoid Jupiter's CIRCULAR_ARBITRAGE_IS_DISABLED error on input==output.
   const swapBundles = await Promise.all(
-    quotes.map((quote, i) =>
-      getSwapInstructions({
+    quotes.map((quote, i) => {
+      if (args.basketMints[i].equals(SOL_MINT)) {
+        return Promise.resolve(null);
+      }
+      return getSwapInstructions({
         quote,
         userPublicKey: args.user,
         destinationTokenAccount: userBasketAtas[i],
@@ -253,14 +260,14 @@ export async function buildDepositSolPlan(args: DepositSolPlanArgs): Promise<Dep
             e instanceof Error ? e.message : String(e)
           }`
         );
-      })
-    )
+      });
+    })
   );
 
   const depositAmount = seedPreview.depositAmount;
 
   const legBudgets = swapBundles.map((b) =>
-    b.computeBudgetInstructions.map((raw) => decodeComputeBudgetIx(deserializeIx(raw)))
+    b ? b.computeBudgetInstructions.map((raw) => decodeComputeBudgetIx(deserializeIx(raw))) : []
   );
   const cb = buildComputeBudgetIxs(legBudgets, args.priorityMicroLamports);
 
@@ -302,6 +309,7 @@ export async function buildDepositSolPlan(args: DepositSolPlanArgs): Promise<Dep
     }
   };
   for (const bundle of swapBundles) {
+    if (!bundle) continue; // SOL leg: nothing to swap
     for (const raw of bundle.setupInstructions) pushDedup(swapIxs, deserializeIx(raw));
     pushDedup(swapIxs, deserializeIx(bundle.swapInstruction));
     if (bundle.cleanupInstruction) {
@@ -329,7 +337,7 @@ export async function buildDepositSolPlan(args: DepositSolPlanArgs): Promise<Dep
 
   const altAccounts = await fetchAltAccounts(
     args.conn,
-    swapBundles.flatMap((b) => b.addressLookupTableAddresses)
+    swapBundles.flatMap((b) => (b ? b.addressLookupTableAddresses : []))
   );
   const { blockhash } = await args.conn.getLatestBlockhash('confirmed');
 

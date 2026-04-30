@@ -92,17 +92,37 @@ export async function buildJupiterSeedPreview({
   validateSeedInputs(mints, weights, solIn);
 
   const legLamports = splitWeightedLamports(solIn, weights);
+  // SOL legs: no Jupiter quote — the deposit's wrap step lands wSOL directly
+  // in the user's wSOL ATA (which is the same address as the user's basket
+  // ATA for the SOL mint), so there's nothing to swap. Synthesize a 1:1
+  // passthrough quote so the bottleneck math still works.
   const quoteResults = await Promise.all(
-    mints.map((mint, i) =>
-      quoteClient.getQuote({
+    mints.map((mint, i) => {
+      if (mint.equals(SOL_MINT)) {
+        const out = legLamports[i].toString();
+        const passthrough: JupiterQuoteResponse = {
+          inputMint: SOL_MINT.toBase58(),
+          outputMint: mint.toBase58(),
+          inAmount: out,
+          outAmount: out,
+          otherAmountThreshold: out,
+          swapMode: 'ExactIn',
+          slippageBps,
+          priceImpactPct: '0',
+          routePlan: [{ swapInfo: { label: 'wrap' }, percent: 100 }],
+          contextSlot: 0,
+        };
+        return Promise.resolve(passthrough);
+      }
+      return quoteClient.getQuote({
         inputMint: SOL_MINT,
         outputMint: mint,
         amount: legLamports[i],
         slippageBps,
         swapMode: 'ExactIn',
         maxAccounts,
-      })
-    )
+      });
+    })
   );
 
   const legs = quoteResults.map((quote, i) => {
