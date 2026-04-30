@@ -698,10 +698,11 @@ export const PfmmDeploymentBlueprint = ({
     <div className="max-w-2xl mx-auto animate-in slide-in-from-bottom-8 duration-500 text-white">
       <div className="text-center mb-6">
         <h2 className="text-2xl font-serif font-normal text-white/90 mb-1">
-          This is Your Basket Token
+          This is Your ETF
         </h2>
         <p className="text-white/40 text-sm">
-          Review your basket — deploys to PFMM (pfda-amm-3) on Solana mainnet.
+          Review your basket — deploys an axis-vault ETF (mint + vaults) and a PFMM
+          (pfda-amm-3) pool on Solana mainnet.
         </p>
       </div>
 
@@ -813,7 +814,7 @@ export const PfmmDeploymentBlueprint = ({
           className="flex-1 py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#080503] font-normal rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Wallet className="w-5 h-5" />
-          {safeTokens.length === 3 ? 'Deploy PFMM Pool' : `${safeTokens.length}/3 tokens required`}
+          {safeTokens.length === 3 ? 'Deploy ETF + PFMM Pool' : `${safeTokens.length}/3 tokens required`}
         </motion.button>
       </div>
 
@@ -838,11 +839,11 @@ export const PfmmDeploymentBlueprint = ({
                 style={{ willChange: 'transform, opacity' }}
               >
                 <h3 className="text-xl font-normal text-[#F2E0C8] mb-1 flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-amber-400" /> PFMM Pool Deployment
+                  <Layers className="w-4 h-4 text-amber-400" /> ETF + PFMM Pool Deployment
                 </h3>
                 <p className="text-[11px] text-[#B89860] mb-4">
-                  Init pool → seed via Jupiter → AddLiquidity. ClearBatch & Claim become available
-                  once the auction window ends.
+                  axis-vault CreateEtf → PFMM init → seed via Jupiter → AddLiquidity. First ETF
+                  deposit is your job after this finishes.
                 </p>
 
                 {poolPda && (
@@ -969,7 +970,7 @@ export const PfmmDeploymentBlueprint = ({
                   ) : (
                     <Sparkles className="w-4 h-4" />
                   )}
-                  {pool ? 'Continue Flow (Seed + AddLiquidity)' : 'Run InitPool + Seed + AddLiquidity'}
+                  {pool ? 'Continue Flow (Seed + AddLiquidity)' : 'Run CreateEtf + InitPool + Seed + AddLiquidity'}
                 </button>
 
                 {/* Manual stage controls — once the pool exists, surface clear/claim/swap. */}
