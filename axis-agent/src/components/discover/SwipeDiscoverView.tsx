@@ -22,6 +22,7 @@ import {
 import { SwipeCard } from './SwipeCard';
 import { api } from '../../services/api';
 import { useWallet, useConnection, useLoginModal } from '../../hooks/useWallet';
+import { useAxisVaultWallet } from '../../hooks/useAxisVaultWallet';
 import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { JupiterService } from '../../services/jupiter';
 import {
@@ -31,6 +32,7 @@ import {
   getUserPosition,
   lamportsToSol,
 } from '../../protocol/kagemusha';
+import { buildJupiterSolSeedPlan, sendVersionedTx } from '../../protocol/axis-vault';
 import { DexScreenerService } from '../../services/dexscreener';
 import { useToast } from '../../context/ToastContext';
 
@@ -699,6 +701,7 @@ export const SwipeDiscoverView = ({
 }: SwipeDiscoverViewProps) => {
   const wallet = useWallet();
   const { publicKey } = wallet;
+  const axisWallet = useAxisVaultWallet();
   const { connection } = useConnection();
   const { showToast } = useToast();
   const { setVisible: openWalletModal } = useLoginModal();
@@ -1041,31 +1044,90 @@ export const SwipeDiscoverView = ({
       return;
     }
 
+    // PFMM (pfda-amm-3) keeps basket tokens in the user's wallet — there is no
+    // kagemusha vault PDA for a PFMM pool address. Routing such deposits through
+    // the legacy `depositSol` instruction makes Solana refuse the tx with
+    // "Attempt to debit ... no prior credit" because the kagemusha-derived
+    // vault_sol account never received a lamport. Detect PFMM here and run the
+    // same Jupiter SOL→basket flow used by StrategyDetailView. SELL needs the
+    // user's per-mint basket balances + a % UI we don't have on this sheet, so
+    // bounce the user to the strategy detail page.
+    const isPfmm = investTarget?.config?.protocol === 'pfda-amm-3';
+    if (isPfmm && mode === 'SELL') {
+      showToast('Open the strategy page to manage your PFMM position', 'info');
+      return;
+    }
+
     setInvestStatus('SIGNING');
     try {
       const parsedAmount = parseFloat(amountStr);
       if (isNaN(parsedAmount) || parsedAmount <= 0) throw new Error('Invalid amount');
 
-      const strategyPubkey = new PublicKey(targetAddressStr.trim());
-      const amountLamports = solToLamports(parsedAmount);
-
-      if (mode === 'BUY') {
-        await depositSol(connection, wallet, strategyPubkey, amountLamports);
+      if (isPfmm) {
+        if (!axisWallet) throw new Error('Wallet not ready');
+        const tokens = (investTarget.tokens || []) as Array<{
+          mint?: string;
+          address?: string;
+          weight?: number;
+        }>;
+        if (tokens.length === 0) throw new Error('Strategy basket not loaded');
+        const basketMints = tokens.map(
+          (t) => new PublicKey((t.mint || t.address) as string)
+        );
+        const weights = tokens.map((t) => Math.max(0, Math.round((t.weight ?? 0) * 100)));
+        const sum = weights.reduce((a, b) => a + b, 0);
+        if (sum === 0) {
+          const even = Math.floor(10_000 / Math.max(1, weights.length));
+          for (let i = 0; i < weights.length; i++) weights[i] = even;
+          weights[weights.length - 1] += 10_000 - even * weights.length;
+        } else if (sum !== 10_000) {
+          weights[weights.length - 1] += 10_000 - sum;
+        }
+        const solIn = BigInt(Math.floor(parsedAmount * LAMPORTS_PER_SOL));
+        const plan = await buildJupiterSolSeedPlan({
+          conn: connection,
+          user: wallet.publicKey,
+          outputMints: basketMints,
+          weights,
+          solIn,
+          slippageBps: 50,
+          maxAccounts: 14,
+          closeWsolAtEnd: true,
+        });
+        setInvestStatus('CONFIRMING');
+        const sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
+        setInvestStatus('PROCESSING');
+        fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userPubkey: wallet.publicKey.toBase58(),
+            amount: parsedAmount,
+            mode,
+            strategyId: investTarget.id,
+            txSig: sig,
+          }),
+        }).catch(() => {});
       } else {
-        await withdrawSol(connection, wallet, strategyPubkey, amountLamports);
+        const strategyPubkey = new PublicKey(targetAddressStr.trim());
+        const amountLamports = solToLamports(parsedAmount);
+        if (mode === 'BUY') {
+          await depositSol(connection, wallet, strategyPubkey, amountLamports);
+        } else {
+          await withdrawSol(connection, wallet, strategyPubkey, amountLamports);
+        }
+        setInvestStatus('PROCESSING');
+        void api
+          .syncUserStats(wallet.publicKey!.toBase58(), 0, parsedAmount, investTarget.id)
+          .catch(() => {});
       }
-
-      setInvestStatus('PROCESSING');
-
-      void api
-        .syncUserStats(wallet.publicKey!.toBase58(), 0, parsedAmount, investTarget.id)
-        .catch(() => {});
 
       setTimeout(() => {
         setInvestStatus('SUCCESS');
+        const targetName = investTarget?.name ? ` ${investTarget.name}` : ' vault';
         showToast(
           mode === 'BUY'
-            ? `Deposited ${parsedAmount} SOL into vault`
+            ? `Deposited ${parsedAmount} SOL into${targetName}`
             : `Withdrew ${parsedAmount} SOL from vault`,
           'success'
         );
