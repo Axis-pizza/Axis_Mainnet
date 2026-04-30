@@ -1,5 +1,4 @@
 packages:
   - 'axis-api'
   - 'axis-mock'
-  - 'kagemusha-program'
   - 'axis-agent'
