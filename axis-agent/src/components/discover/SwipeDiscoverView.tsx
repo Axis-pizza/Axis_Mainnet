@@ -1152,6 +1152,7 @@ export const SwipeDiscoverView = ({
             solIn,
             minEtfOut: 0n,
             existingEtfTotalSupply: investEtfData!.totalSupply,
+            maxAccounts: 14,
           });
           setInvestStatus('CONFIRMING');
           let sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
@@ -1186,6 +1187,7 @@ export const SwipeDiscoverView = ({
             etfState: investEtfState!,
             etfStateData: investEtfData!,
             burnAmount,
+            maxAccounts: 14,
           });
           setInvestStatus('CONFIRMING');
           let sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);

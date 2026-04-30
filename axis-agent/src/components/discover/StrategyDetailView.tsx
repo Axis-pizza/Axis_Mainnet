@@ -868,6 +868,9 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             solIn,
             minEtfOut: 0n,
             existingEtfTotalSupply: etfStateData!.totalSupply,
+            // Tighter than the default 16 so Jupiter picks compact routes that
+            // fit under the 1232-byte tx cap once bundled with axis-vault Deposit.
+            maxAccounts: 14,
           });
           setInvestStatus('CONFIRMING');
           sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
@@ -930,6 +933,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             etfState: etfStatePda!,
             etfStateData: etfStateData!,
             burnAmount,
+            maxAccounts: 14,
           });
           setInvestStatus('CONFIRMING');
           sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
