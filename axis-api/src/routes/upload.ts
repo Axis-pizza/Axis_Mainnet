@@ -3,15 +3,36 @@ import { Bindings } from '../config/env';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-const MAX_SIZE = 5 * 1024 * 1024; // 5MBに拡張
+const ALLOWED_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  // iOS shares often arrive as HEIC/HEIF — accept both so PFP upload works on iPhone.
+  'image/heic',
+  'image/heif',
+];
+const MAX_SIZE = 5 * 1024 * 1024;
 
-// ... (generateImageKeyなどはそのまま)
+const extensionForMime = (mime: string): string => {
+  const m = mime.toLowerCase();
+  if (m === 'image/jpeg') return 'jpg';
+  if (m === 'image/png') return 'png';
+  if (m === 'image/webp') return 'webp';
+  if (m === 'image/gif') return 'gif';
+  if (m === 'image/heic') return 'heic';
+  if (m === 'image/heif') return 'heif';
+  return 'bin';
+};
 
-const generateImageKey = (walletAddress: string, type: 'strategy' | 'profile'): string => {
+const generateImageKey = (
+  walletAddress: string,
+  type: 'strategy' | 'profile',
+  mime: string,
+): string => {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 8);
-  return `${type}/${walletAddress}/${timestamp}-${random}.webp`;
+  return `${type}/${walletAddress}/${timestamp}-${random}.${extensionForMime(mime)}`;
 };
 
 app.post('/image', async (c) => {
@@ -44,10 +65,10 @@ app.post('/image', async (c) => {
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const key = generateImageKey(walletAddress, imageType);
+    const key = generateImageKey(walletAddress, imageType, file.type);
 
     await c.env.IMAGES.put(key, arrayBuffer, {
-      httpMetadata: { contentType: 'image/webp' },
+      httpMetadata: { contentType: file.type },
       customMetadata: {
         originalType: file.type,
         walletAddress: walletAddress,

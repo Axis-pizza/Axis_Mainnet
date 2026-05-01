@@ -23,6 +23,7 @@ import {
   AXIS_VAULT_PROGRAM_ID,
   buildBareMintAccountIxs,
   buildBareTokenAccountIxs,
+  buildDepositSolPlan,
   buildJupiterSolSeedPlan,
   explorerAddr,
   explorerTx,
@@ -41,6 +42,7 @@ import {
   ixInitPool3,
   ixSwapRequest3,
   MAINNET_PROTOCOL_TREASURY,
+  MIN_FIRST_DEPOSIT_BASE,
   sendTx,
   sendVersionedTx,
   truncatePubkey,
@@ -90,6 +92,7 @@ type Stage =
   | 'init'
   | 'seed'
   | 'addLiq'
+  | 'etf-deposit'
   | 'swap'
   | 'clear'
   | 'claim'
@@ -140,6 +143,10 @@ export const PfmmDeploymentBlueprint = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [seedSol, setSeedSol] = useState<string>('0.05');
+  // Separate seed for the creator's first ETF position. Default 0.005 SOL is
+  // typically enough to clear MIN_FIRST_DEPOSIT_BASE = 1_000_000 (= 1.0 ETF at
+  // 6 decimals) when the basket bottleneck mint has reasonable liquidity.
+  const [etfSeedSol, setEtfSeedSol] = useState<string>('0.005');
   const [feeBps, setFeeBps] = useState<number>(30);
   const [windowSlots, setWindowSlots] = useState<number>(40);
   const [slippageBps, setSlippageBps] = useState<number>(50);
@@ -153,9 +160,11 @@ export const PfmmDeploymentBlueprint = ({
   >(null);
 
   const isBusy =
+    stage === 'createEtf' ||
     stage === 'init' ||
     stage === 'seed' ||
     stage === 'addLiq' ||
+    stage === 'etf-deposit' ||
     stage === 'swap' ||
     stage === 'clear' ||
     stage === 'claim' ||
@@ -163,6 +172,7 @@ export const PfmmDeploymentBlueprint = ({
 
   const estimatedMinSol = useMemo(() => {
     const seedNum = Math.max(0, parseFloat(seedSol) || 0);
+    const etfSeedNum = Math.max(0, parseFloat(etfSeedSol) || 0);
     const TOKEN_ACCOUNT_RENT_SOL = 0.00203928;
     const FEE_BUFFER_SOL = 0.01;
     const vaultRent = pool ? 0 : TOKEN_ACCOUNT_RENT_SOL * 3;
@@ -170,8 +180,12 @@ export const PfmmDeploymentBlueprint = ({
       config.jupiterEnabled && seedNum > 0
         ? TOKEN_ACCOUNT_RENT_SOL * (1 + safeTokens.length)
         : 0;
-    return seedNum + vaultRent + seedRents + FEE_BUFFER_SOL;
-  }, [seedSol, pool, config.jupiterEnabled, safeTokens.length]);
+    // Step 4 (creator ETF deposit) needs wSOL ATA + ETF ATA + treasury ETA
+    // rent on top of the basket ATA rents already counted above.
+    const etfDepositRents =
+      config.jupiterEnabled && etfSeedNum > 0 ? TOKEN_ACCOUNT_RENT_SOL * 2 : 0;
+    return seedNum + etfSeedNum + vaultRent + seedRents + etfDepositRents + FEE_BUFFER_SOL;
+  }, [seedSol, etfSeedSol, pool, config.jupiterEnabled, safeTokens.length]);
   const insufficientFunds =
     solBalance !== null && solBalance > 0 && solBalance < estimatedMinSol;
 
@@ -278,12 +292,29 @@ export const PfmmDeploymentBlueprint = ({
 
     const seedSolNum = Math.max(0, parseFloat(seedSol) || 0);
     const seedLamports = BigInt(Math.floor(seedSolNum * 1_000_000_000));
+    const etfSeedSolNum = Math.max(0, parseFloat(etfSeedSol) || 0);
+    const etfSeedLamports = BigInt(Math.floor(etfSeedSolNum * 1_000_000_000));
 
     let lastSig = '';
     let livePool = pool;
+    // Captured from CreateEtf when the flow opens a fresh ETF; null when the
+    // ETF already existed and we have to fetch the on-chain state in step 4.
+    let createdEtfMint: PublicKey | null = null;
+    let createdEtfVaults: PublicKey[] | null = null;
 
     try {
       const m = mintStrings.map((s) => new PublicKey(s)) as [PublicKey, PublicKey, PublicKey];
+      const basketMintsForEtf = safeTokens
+        .map((t) => t.mint || t.address || '')
+        .filter(Boolean)
+        .map((s) => new PublicKey(s));
+      const basketWeightsBpsForEtf = (() => {
+        const raw = safeTokens.map((t) => Math.max(0, Math.round((t.weight ?? 0) * 100)));
+        const sum = raw.reduce((a, b) => a + b, 0);
+        if (sum === 0) return raw.map(() => Math.floor(10_000 / Math.max(1, raw.length)));
+        if (sum !== 10_000) raw[raw.length - 1] += 10_000 - sum;
+        return raw;
+      })();
 
       // ── 0. axis-vault CreateEtf — open etfState PDA + ETF mint + N vaults ─
       // The ETF wraps the strategy basket as a single SPL token. PDA is
@@ -300,22 +331,11 @@ export const PfmmDeploymentBlueprint = ({
       } catch {
         setStage('createEtf');
         setDeployStep('Creating ETF on axis-vault…');
-        const basketMints = safeTokens
-          .map((t) => t.mint || t.address || '')
-          .filter(Boolean)
-          .map((s) => new PublicKey(s));
-        const basketWeightsBps = (() => {
-          const raw = safeTokens.map((t) => Math.max(0, Math.round((t.weight ?? 0) * 100)));
-          const sum = raw.reduce((a, b) => a + b, 0);
-          if (sum === 0) return raw.map(() => Math.floor(10_000 / Math.max(1, raw.length)));
-          if (sum !== 10_000) raw[raw.length - 1] += 10_000 - sum;
-          return raw;
-        })();
         const etfMintBundle = await buildBareMintAccountIxs(connection, wallet.publicKey);
         const vaultBundle = await buildBareTokenAccountIxs(
           connection,
           wallet.publicKey,
-          basketMints.length,
+          basketMintsForEtf.length,
         );
         const createIx = ixCreateEtf({
           programId: AXIS_VAULT_PROGRAM_ID,
@@ -323,9 +343,9 @@ export const PfmmDeploymentBlueprint = ({
           etfState: etfStatePda,
           etfMint: etfMintBundle.pubkey,
           treasury: MAINNET_PROTOCOL_TREASURY,
-          basketMints,
+          basketMints: basketMintsForEtf,
           vaults: vaultBundle.pubkeys,
-          weightsBps: basketWeightsBps,
+          weightsBps: basketWeightsBpsForEtf,
           ticker: safeSymbol,
           name: strategyName,
           uri: '',
@@ -337,19 +357,14 @@ export const PfmmDeploymentBlueprint = ({
           [etfMintBundle.signer, ...vaultBundle.signers],
         );
         lastSig = createSig;
+        createdEtfMint = etfMintBundle.pubkey;
+        createdEtfVaults = vaultBundle.pubkeys;
         pushLog(
-          `✓ create_etf "${strategyName}" (${basketMints.length} legs): ${createSig.slice(0, 12)}…  → ${explorerTx(createSig, config.explorerCluster)}`,
+          `✓ create_etf "${strategyName}" (${basketMintsForEtf.length} legs): ${createSig.slice(0, 12)}…  → ${explorerTx(createSig, config.explorerCluster)}`,
         );
         pushLog(`  ETF state: ${etfStatePda.toBase58()}`);
         pushLog(`  ETF mint:  ${etfMintBundle.pubkey.toBase58()}`);
       }
-
-      // First ETF deposit is left to the creator via StrategyDetailView's
-      // Deposit button after this flow finishes — keeps the create-time SOL
-      // budget on the PFMM seed and avoids splitting Jupiter calls between
-      // ETF vaults and PFMM vaults inside one tx burst.
-
-
 
       // Why: per-leg pre-flight inside buildJupiterSolSeedPlan reads
       // getBalance('confirmed') which lags between legs, so a multi-leg
@@ -363,8 +378,21 @@ export const PfmmDeploymentBlueprint = ({
         config.jupiterEnabled && seedLamports > 0n
           ? TOKEN_ACCOUNT_RENT * BigInt(safeTokens.length)
           : 0n;
+      // Step 4 needs: wSOL ATA (idempotent — may already exist after PFMM
+      // seed), basket ATAs (idempotent — same), userEtfAta, treasuryEtfAta.
+      // Worst case is a fresh wallet: count wSOL + ETF + treasury. The basket
+      // ATAs are already in outputAtaRentTotal above when the PFMM seed runs;
+      // budget the new pair regardless to keep the floor honest.
+      const etfDepositAtaRent =
+        config.jupiterEnabled && etfSeedLamports > 0n ? TOKEN_ACCOUNT_RENT * 2n : 0n;
       const totalNeeded =
-        seedLamports + vaultRentTotal + wsolRent + outputAtaRentTotal + TX_FEE_RESERVE;
+        seedLamports +
+        etfSeedLamports +
+        vaultRentTotal +
+        wsolRent +
+        outputAtaRentTotal +
+        etfDepositAtaRent +
+        TX_FEE_RESERVE;
       const balanceLamports = BigInt(
         await connection.getBalance(wallet.publicKey, 'confirmed')
       );
@@ -372,8 +400,10 @@ export const PfmmDeploymentBlueprint = ({
         const fmt = (n: bigint) => (Number(n) / 1e9).toFixed(4);
         throw new Error(
           `Insufficient SOL: need ~${fmt(totalNeeded)} SOL ` +
-            `(seed ${fmt(seedLamports)} + vault rent ${fmt(vaultRentTotal)} + ` +
+            `(seed ${fmt(seedLamports)} + ETF seed ${fmt(etfSeedLamports)} + ` +
+            `vault rent ${fmt(vaultRentTotal)} + ` +
             `wSOL rent ${fmt(wsolRent)} + ATA rent ${fmt(outputAtaRentTotal)} + ` +
+            `ETF deposit ATA rent ${fmt(etfDepositAtaRent)} + ` +
             `fee buffer ${fmt(TX_FEE_RESERVE)}), have ${fmt(balanceLamports)} SOL. ` +
             `Top up the wallet and retry.`
         );
@@ -563,7 +593,67 @@ export const PfmmDeploymentBlueprint = ({
         await refreshPool();
       }
 
-      // ── 4. Persist backend metadata ──────────────────────────────────────
+      // ── 4. Mint creator's first ETF position ─────────────────────────────
+      // Without this, the creator's wallet shows 0 ETF after the deploy and
+      // the only way to get a position is to click another button — UX dead
+      // end. Resolve the etfMint + vaults from CreateEtf if it just ran, or
+      // fall back to fetching the on-chain etfState if the ETF preexisted.
+      if (config.jupiterEnabled && etfSeedLamports > 0n) {
+        setStage('etf-deposit');
+        setDeployStep(`Step 4: depositing ${etfSeedSolNum} SOL to ETF for creator position…`);
+        pushLog(
+          `Step 4: depositing ${etfSeedSolNum} SOL to ETF for creator position`
+        );
+
+        let etfMintForDeposit: PublicKey;
+        let vaultsForDeposit: PublicKey[];
+        if (createdEtfMint && createdEtfVaults) {
+          etfMintForDeposit = createdEtfMint;
+          vaultsForDeposit = createdEtfVaults;
+        } else {
+          const etfStateData = await fetchEtfState(connection, etfStatePda);
+          etfMintForDeposit = etfStateData.etfMint;
+          vaultsForDeposit = etfStateData.tokenVaults;
+        }
+
+        const treasuryEtfAta = getAssociatedTokenAddressSync(
+          etfMintForDeposit,
+          MAINNET_PROTOCOL_TREASURY,
+          true,
+        );
+
+        const depositPlan = await buildDepositSolPlan({
+          conn: connection,
+          user: wallet.publicKey,
+          programId: AXIS_VAULT_PROGRAM_ID,
+          etfName: strategyName,
+          etfState: etfStatePda,
+          etfMint: etfMintForDeposit,
+          treasury: MAINNET_PROTOCOL_TREASURY,
+          treasuryEtfAta,
+          basketMints: basketMintsForEtf,
+          weights: basketWeightsBpsForEtf,
+          vaults: vaultsForDeposit,
+          solIn: etfSeedLamports,
+          minEtfOut: 0n,
+          maxAccounts: 14,
+        });
+        pushLog(
+          `  etf deposit plan: ${depositPlan.mode} · ${depositPlan.txBytes}/1232 b · ${depositPlan.ixCount} ix · expected ETF ${depositPlan.depositAmount.toString()} (min ${MIN_FIRST_DEPOSIT_BASE.toString()})`
+        );
+        let etfSig = await sendVersionedTx(connection, axisWallet, depositPlan.versionedTx);
+        if (depositPlan.mode === 'split' && depositPlan.depositTx) {
+          etfSig = await sendVersionedTx(connection, axisWallet, depositPlan.depositTx);
+        }
+        lastSig = etfSig;
+        pushLog(
+          `✓ etf_deposit: ${etfSig.slice(0, 12)}…  → ${explorerTx(etfSig, config.explorerCluster)}`,
+        );
+      } else if (etfSeedLamports > 0n && !config.jupiterEnabled) {
+        pushLog(`Jupiter disabled — skipping creator ETF deposit (no router available)`);
+      }
+
+      // ── 5. Persist backend metadata ──────────────────────────────────────
       const strategyId = await persistMetadata(poolPda.toBase58(), seedSolNum, lastSig);
       setStage('done');
       setDeployStep('Pool ready. Window auctions will clear automatically.');
@@ -843,8 +933,8 @@ export const PfmmDeploymentBlueprint = ({
                   <Layers className="w-4 h-4 text-amber-400" /> ETF + PFMM Pool Deployment
                 </h3>
                 <p className="text-[11px] text-[#B89860] mb-4">
-                  axis-vault CreateEtf → PFMM init → seed via Jupiter → AddLiquidity. First ETF
-                  deposit is your job after this finishes.
+                  axis-vault CreateEtf → PFMM init → Jupiter seed → AddLiquidity → creator
+                  ETF deposit. You receive ETF tokens at the end of the flow.
                 </p>
 
                 {poolPda && (
@@ -894,7 +984,7 @@ export const PfmmDeploymentBlueprint = ({
 
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <label className="flex flex-col text-xs">
-                    <span className="text-[#B89860] mb-1">SOL → basket (seed)</span>
+                    <span className="text-[#B89860] mb-1">SOL → basket (PFMM seed)</span>
                     <input
                       type="number"
                       min="0"
@@ -916,6 +1006,27 @@ export const PfmmDeploymentBlueprint = ({
                       disabled={isBusy}
                       className="w-full p-2.5 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-sm font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
                     />
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 mb-3">
+                  <label className="flex flex-col text-xs">
+                    <span className="text-[#B89860] mb-1">
+                      Your ETF position (SOL) — mints ETF tokens to your wallet
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      value={etfSeedSol}
+                      onChange={(e) => setEtfSeedSol(e.target.value)}
+                      disabled={isBusy}
+                      className="w-full p-2.5 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-sm font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
+                    />
+                    <span className="text-[10px] text-[#B89860]/60 mt-1">
+                      Step 4 deposits this on top of the PFMM seed so you receive ETF
+                      tokens immediately. Minimum first deposit yields ≥ 1.0 ETF.
+                    </span>
                   </label>
                 </div>
 
@@ -971,7 +1082,9 @@ export const PfmmDeploymentBlueprint = ({
                   ) : (
                     <Sparkles className="w-4 h-4" />
                   )}
-                  {pool ? 'Continue Flow (Seed + AddLiquidity)' : 'Run CreateEtf + InitPool + Seed + AddLiquidity'}
+                  {pool
+                    ? 'Continue Flow (Seed + AddLiquidity + ETF Deposit)'
+                    : 'Run CreateEtf + InitPool + Seed + AddLiquidity + ETF Deposit'}
                 </button>
 
                 {/* Manual stage controls — once the pool exists, surface clear/claim/swap. */}

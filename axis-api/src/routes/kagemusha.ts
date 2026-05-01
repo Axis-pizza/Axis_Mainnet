@@ -378,77 +378,31 @@ app.post('/deploy', async (c) => {
 app.post('/trade', async (c) => {
   try {
       const body = await c.req.json();
-      const { userPubkey, amount, mode, signature, strategyId } = body;
-      // mode: 'BUY' (User sends SOL, gets AXIS) or 'SELL' (User sends AXIS, gets SOL)
+      const { userPubkey, amount, mode, signature, txSig, strategyId } = body;
+      // mode: 'BUY' (user deposited SOL into the ETF) or 'SELL' (user withdrew SOL).
+      //
+      // NOTE: This endpoint NO LONGER moves funds. All on-chain settlement is done
+      // by the client (axis-vault / PFMM flows). This handler is bookkeeping only:
+      //   - update strategies.tvl
+      //   - run TVL milestone XP bonus
+      //   - update users.total_invested_usd + investments rows so the profile's
+      //     "Invested" tab reflects v1.1 axis-vault and PFMM activity.
+      // The previous implementation also minted a placeholder AXIS token on BUY
+      // and sent SOL from the admin treasury on SELL. Both were kagemusha-mock
+      // leftovers that polluted user wallets / drained admin funds; removed.
 
-      // 1. 環境設定
-      const rpcUrl = c.env.HELIUS_RPC_URL || 'https://api.devnet.solana.com';
-      const connection = new Connection(rpcUrl, 'confirmed');
-      const adminWallet = Keypair.fromSecretKey(bs58.decode(c.env.SERVER_PRIVATE_KEY));
+      const parsedAmount = Number(amount) || 0;
 
-      const MASTER_MINT_ADDRESS = new PublicKey("2JiisncKr8DhvA68MpszFDjGAVu2oFtqJJC837LLiKdT");
-      const PRIORITY_FEE = 500000;
-
-      let txSig = "";
-
-      if (mode === 'BUY') {
-          // --- BUY: User wants AXIS (Admin sends AXIS) ---
-          const userPubkeyObj = new PublicKey(userPubkey);
-          // Rate 1:1 -> 1 SOL = 1 AXIS
-          const tokenAmount = BigInt(Math.floor(amount * 1_000_000_000)); // 9 decimals
-
-          const adminATA = await getAssociatedTokenAddress(MASTER_MINT_ADDRESS, adminWallet.publicKey);
-          const userATA = await getAssociatedTokenAddress(MASTER_MINT_ADDRESS, userPubkeyObj);
-
-          const tx = new Transaction();
-          tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: PRIORITY_FEE }));
-
-          // ユーザーの受取口座がなければ作る(運営負担)
-          const info = await connection.getAccountInfo(userATA);
-          if (!info) {
-              tx.add(createAssociatedTokenAccountInstruction(
-                  adminWallet.publicKey, userATA, userPubkeyObj, MASTER_MINT_ADDRESS
-              ));
-          }
-
-          // AXIS送付
-          tx.add(createTransferInstruction(adminATA, userATA, adminWallet.publicKey, tokenAmount));
-
-          const latest = await connection.getLatestBlockhash('confirmed');
-          tx.recentBlockhash = latest.blockhash;
-          tx.feePayer = adminWallet.publicKey;
-          tx.sign(adminWallet);
-
-          txSig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
-
-      } else {
-          // --- SELL: User wants SOL (Admin sends SOL) ---
-          const userPubkeyObj = new PublicKey(userPubkey);
-          const solAmount = Math.floor(amount * 1_000_000_000); // Lamports
-
-          const tx = new Transaction();
-          tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: PRIORITY_FEE }));
-
-          // SOL送付 (SystemProgram)
-          tx.add(
-              SystemProgram.transfer({
-                  fromPubkey: adminWallet.publicKey,
-                  toPubkey: userPubkeyObj,
-                  lamports: solAmount
-              })
-          );
-
-          const latest = await connection.getLatestBlockhash('confirmed');
-          tx.recentBlockhash = latest.blockhash;
-          tx.feePayer = adminWallet.publicKey;
-          tx.sign(adminWallet);
-
-          txSig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+      if (!mode || (mode !== 'BUY' && mode !== 'SELL')) {
+          return c.json({ success: false, error: "mode must be 'BUY' or 'SELL'" }, 400);
+      }
+      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+          return c.json({ success: false, error: 'amount must be a positive number' }, 400);
       }
 
-      // DB更新 (TVL等)
+      // 1) strategies.tvl update (signed by mode) + TVL milestone bonus on BUY
       if (strategyId) {
-          const change = mode === 'BUY' ? amount : -amount;
+          const change = mode === 'BUY' ? parsedAmount : -parsedAmount;
 
           // TVL更新前の値を取得（マイルストーン判定用）
           const stratBefore = await c.env.axis_main_db.prepare(
@@ -463,7 +417,7 @@ app.post('/trade', async (c) => {
           const TVL_MILESTONE = 10000;
           if (mode === 'BUY' && stratBefore) {
             const tvlBefore = (stratBefore.tvl as number) || 0;
-            const tvlAfter = tvlBefore + amount;
+            const tvlAfter = tvlBefore + parsedAmount;
             const ownerPubkey = stratBefore.owner_pubkey as string;
 
             if (tvlBefore < TVL_MILESTONE && tvlAfter >= TVL_MILESTONE && ownerPubkey) {
@@ -484,7 +438,47 @@ app.post('/trade', async (c) => {
           }
       }
 
-      return c.json({ success: true, tx: txSig, message: `Trade Complete: ${mode} ${amount}` });
+      // 2) Per-user investment tracking (mirrors POST /user/stats pattern).
+      //    Skip if either userPubkey or strategyId is missing — legacy callers
+      //    don't always include strategyId, and we can't attribute without one.
+      // FIXME: amount is SOL not USD; needs spot-price conversion. Tracked separately.
+      if (userPubkey && strategyId) {
+          const user = await c.env.axis_main_db.prepare(
+            'SELECT id FROM users WHERE wallet_address = ?'
+          ).bind(userPubkey).first();
+
+          if (user) {
+              if (mode === 'BUY') {
+                  await c.env.axis_main_db.prepare(
+                    `UPDATE users SET total_invested_usd = total_invested_usd + ? WHERE wallet_address = ?`
+                  ).bind(parsedAmount, userPubkey).run();
+
+                  const invId = crypto.randomUUID();
+                  await c.env.axis_main_db.prepare(`
+                    INSERT INTO investments (id, user_id, strategy_id, amount_usd)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(user_id, strategy_id) DO UPDATE SET amount_usd = amount_usd + ?
+                  `).bind(invId, user.id, strategyId, parsedAmount, parsedAmount).run();
+              } else {
+                  // SELL: subtract, clamp at 0 so a partial withdraw past basis
+                  // doesn't roll into negative on either the user total or the
+                  // per-strategy row.
+                  await c.env.axis_main_db.prepare(
+                    `UPDATE users SET total_invested_usd = MAX(0, total_invested_usd - ?) WHERE wallet_address = ?`
+                  ).bind(parsedAmount, userPubkey).run();
+
+                  const invId = crypto.randomUUID();
+                  await c.env.axis_main_db.prepare(`
+                    INSERT INTO investments (id, user_id, strategy_id, amount_usd)
+                    VALUES (?, ?, ?, 0)
+                    ON CONFLICT(user_id, strategy_id) DO UPDATE SET amount_usd = MAX(0, amount_usd - ?)
+                  `).bind(invId, user.id, strategyId, parsedAmount).run();
+              }
+          }
+      }
+
+      // No on-chain admin tx anymore — echo the client-supplied signature/txSig if present.
+      return c.json({ success: true, txSig: signature ?? txSig ?? null });
 
   } catch (e: any) {
       console.error("Trade Error:", e);

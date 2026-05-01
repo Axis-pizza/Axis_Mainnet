@@ -169,9 +169,15 @@ export const api = {
         method: 'POST',
         body: formData,
       });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        console.error('[uploadProfileImage]', res.status, text);
+        return { success: false, error: text || `Upload Failed (${res.status})` };
+      }
       return await res.json();
-    } catch {
-      return { success: false, error: 'Upload Failed' };
+    } catch (e) {
+      console.error('[uploadProfileImage] network error', e);
+      return { success: false, error: 'Upload Failed (network)' };
     }
   },
 
@@ -367,6 +373,8 @@ export const api = {
     type: string;
     tokens: { symbol: string; mint: string; weight: number; logoURI?: string }[];
     address: string;
+    protocol?: string;
+    tvl?: number;
     config?: any;
   }) => {
     try {

@@ -6,6 +6,7 @@ import {
 } from '@solana/spl-token';
 import { useConnection, useWallet } from '../../hooks/useWallet';
 import { useAxisVaultWallet } from '../../hooks/useAxisVaultWallet';
+import { api, clearStrategyCache } from '../../services/api';
 import {
   buildBareMintAccountIxs,
   buildBareTokenAccountIxs,
@@ -136,6 +137,46 @@ export function CreateEtfPanel({
       pushLog(`ETF mint: ${etfMint.pubkey.toBase58()}`);
       pushLog(`See: ${explorerTx(sig2, config.explorerCluster)}`);
       onCreated?.(etfState.toBase58(), etfMint.pubkey.toBase58(), name);
+
+      // Register the ETF with the axis-api backend so it shows up in Discover
+      // and Profile → Created. The on-chain CreateEtf is the source of truth;
+      // an API failure here must not roll back the strategy, so the call is
+      // wrapped in a swallow-all try/catch (mirrors DepositFlow.tsx).
+      const initialTvlSol =
+        doDepositAfter && config.jupiterEnabled && solSeed > 0 ? solSeed : 0;
+      try {
+        const result = await api.createStrategy({
+          owner_pubkey: publicKey.toBase58(),
+          name,
+          ticker,
+          description: `Axis Vault ETF "${ticker}" (${rows.length} legs)`,
+          type: 'BALANCED',
+          tokens: rows.map((r) => ({
+            symbol: truncatePubkey(r.mint, 4, 4),
+            mint: r.mint,
+            weight: Math.floor(r.weight / 100),
+          })),
+          address: etfState.toBase58(),
+          protocol: 'axis-vault',
+          tvl: initialTvlSol,
+          config: {
+            protocol: 'axis-vault',
+            etfMint: etfMint.pubkey.toBase58(),
+            weightsBps: rows.map((r) => r.weight),
+          },
+        });
+        if (result?.success === false) {
+          pushLog(`⚠ backend register failed: ${result.error ?? 'unknown'} (on-chain ETF unaffected)`);
+        } else {
+          clearStrategyCache();
+          pushLog('✓ registered with backend (Discover + Profile)');
+        }
+      } catch (e) {
+        pushLog(
+          `⚠ backend register threw: ${e instanceof Error ? e.message : String(e)} (on-chain ETF unaffected)`
+        );
+      }
+
       const fresh = Date.now().toString(36).toUpperCase();
       setName(`AX${fresh.slice(-6)}`);
       setTicker(`AX${fresh.slice(-3)}`);
