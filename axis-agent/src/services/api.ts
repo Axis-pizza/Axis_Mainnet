@@ -4,6 +4,10 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://axis-api-mainnet.yusukekikuta-05.workers.dev';
 
+// Leaderboard だけ別バックエンド（旧 axis-api）を参照する。VITE_LEADERBOARD_API_URL で上書き可。
+const LEADERBOARD_API_BASE =
+  import.meta.env.VITE_LEADERBOARD_API_URL || 'https://axis-api.yusukekikuta-05.workers.dev';
+
 const API_URL = API_BASE.replace(/\/$/, '').endsWith('/api')
   ? API_BASE.replace(/\/$/, '')
   : `${API_BASE.replace(/\/$/, '')}/api`;
@@ -332,7 +336,7 @@ export const api = {
     if (cached) return cached;
 
     try {
-      const res = await fetch(`${API_BASE}/leaderboard?sort=${sort}`);
+      const res = await fetch(`${LEADERBOARD_API_BASE}/leaderboard?sort=${sort}`);
       const result = await res.json();
       _setCache(cacheKey, result);
       return result;
