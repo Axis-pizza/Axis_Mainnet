@@ -24,6 +24,7 @@ import {
   buildBareMintAccountIxs,
   buildBareTokenAccountIxs,
   buildDepositSolPlan,
+  buildJupiterSeedPreview,
   buildJupiterSolSeedPlan,
   explorerAddr,
   explorerTx,
@@ -41,6 +42,7 @@ import {
   ixCreateEtf,
   ixInitPool3,
   ixSwapRequest3,
+  liveJupiterQuoteClient,
   MAINNET_PROTOCOL_TREASURY,
   MIN_FIRST_DEPOSIT_BASE,
   sendTx,
@@ -143,10 +145,13 @@ export const PfmmDeploymentBlueprint = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [seedSol, setSeedSol] = useState<string>('0.05');
-  // Separate seed for the creator's first ETF position. Default 0.005 SOL is
-  // typically enough to clear MIN_FIRST_DEPOSIT_BASE = 1_000_000 (= 1.0 ETF at
-  // 6 decimals) when the basket bottleneck mint has reasonable liquidity.
+  // Separate seed for the creator's first ETF position. The actual minimum
+  // depends on basket liquidity (the bottleneck leg's SOL→token rate must
+  // produce ≥ MIN_FIRST_DEPOSIT_BASE = 1_000_000 base = 1.0 ETF at 6 decimals).
+  // 0.005 SOL is a placeholder; real minimum is computed via "Compute min".
   const [etfSeedSol, setEtfSeedSol] = useState<string>('0.005');
+  const [computingEtfMin, setComputingEtfMin] = useState(false);
+  const [etfMinHint, setEtfMinHint] = useState<string>('');
   const [feeBps, setFeeBps] = useState<number>(30);
   const [windowSlots, setWindowSlots] = useState<number>(40);
   const [slippageBps, setSlippageBps] = useState<number>(50);
@@ -253,6 +258,46 @@ export const PfmmDeploymentBlueprint = ({
   function getVaults(): [PublicKey, PublicKey, PublicKey] | null {
     if (pool) return pool.vaults;
     return pendingVaults;
+  }
+
+  // Probe the basket's bottleneck leg via a 1 SOL Jupiter preview, then back
+  // out the seed needed to mint ≥ MIN_FIRST_DEPOSIT_BASE base units. Mirrors
+  // the formula in depositSolPlan.ts:232-233 so the suggestion matches what
+  // the pre-flight will accept, plus a 10% buffer baked into that formula.
+  async function computeEtfSeedMin() {
+    if (safeTokens.length === 0) return;
+    setComputingEtfMin(true);
+    setEtfMinHint('');
+    try {
+      const probeSol = 1n * BigInt(LAMPORTS_PER_SOL);
+      const preview = await buildJupiterSeedPreview({
+        basketMints: safeTokens.map((t) => (t.mint || t.address) as string),
+        weights: percentToBpsWeights(safeTokens.map((t) => t.weight)),
+        solIn: probeSol,
+        slippageBps,
+        quoteClient: liveJupiterQuoteClient,
+      });
+      if (preview.depositAmount === 0n) {
+        throw new Error('basket bottleneck yields 0 ETF — check basket liquidity');
+      }
+      const suggestedLamports =
+        (probeSol * MIN_FIRST_DEPOSIT_BASE * 11n) / (preview.depositAmount * 10n);
+      const suggestedSol = Number(suggestedLamports) / 1e9;
+      // Round up to 4 decimals so the displayed value is what we set.
+      const rounded = Math.ceil(suggestedSol * 10000) / 10000;
+      setEtfSeedSol(rounded.toFixed(4));
+      setEtfMinHint(
+        `min ≈ ${rounded.toFixed(4)} SOL · bottleneck ${truncatePubkey(
+          preview.legs[preview.bottleneckIndex].mint.toBase58(),
+          4,
+          4
+        )}`
+      );
+    } catch (e) {
+      setEtfMinHint(`✗ ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setComputingEtfMin(false);
+    }
   }
 
   async function persistMetadata(poolAddress: string, depositSol: number, txSig: string) {
@@ -1014,19 +1059,45 @@ export const PfmmDeploymentBlueprint = ({
                     <span className="text-[#B89860] mb-1">
                       Your ETF position (SOL) — mints ETF tokens to your wallet
                     </span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.001"
-                      value={etfSeedSol}
-                      onChange={(e) => setEtfSeedSol(e.target.value)}
-                      disabled={isBusy}
-                      className="w-full p-2.5 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-sm font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={etfSeedSol}
+                        onChange={(e) => {
+                          setEtfSeedSol(e.target.value);
+                          setEtfMinHint('');
+                        }}
+                        disabled={isBusy}
+                        className="flex-1 p-2.5 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-sm font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
+                      />
+                      <button
+                        type="button"
+                        onClick={computeEtfSeedMin}
+                        disabled={isBusy || computingEtfMin || safeTokens.length === 0}
+                        className="px-3 py-2 bg-[#080503] border border-[rgba(184,134,63,0.3)] rounded-xl text-xs text-[#B89860] hover:border-[#B8863F] disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {computingEtfMin ? 'Computing…' : 'Compute min'}
+                      </button>
+                    </div>
                     <span className="text-[10px] text-[#B89860]/60 mt-1">
                       Step 4 deposits this on top of the PFMM seed so you receive ETF
-                      tokens immediately. Minimum first deposit yields ≥ 1.0 ETF.
+                      tokens immediately. The minimum depends on the basket — click
+                      "Compute min" to probe Jupiter and auto-fill.
                     </span>
+                    {etfMinHint && (
+                      <span
+                        className={
+                          'text-[10px] mt-1 ' +
+                          (etfMinHint.startsWith('✗')
+                            ? 'text-rose-400'
+                            : 'text-emerald-400/80')
+                        }
+                      >
+                        {etfMinHint}
+                      </span>
+                    )}
                   </label>
                 </div>
 
