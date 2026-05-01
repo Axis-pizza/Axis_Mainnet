@@ -15,6 +15,8 @@ export {
   u32Le,
   u16Le,
   findEtfState,
+  METAPLEX_TOKEN_METADATA_PROGRAM_ID,
+  findMetadataPda,
   ixCreateEtf,
   ixDeposit,
   ixWithdraw,

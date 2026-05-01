@@ -47,6 +47,9 @@ export function CreateEtfPanel({
   const [ticker, setTicker] = useState(
     () => `AX${Date.now().toString(36).toUpperCase().slice(-3)}`
   );
+  // v1.1: Metaplex Token Metadata URI (off-chain JSON). Empty allowed —
+  // wallets fall back to the on-chain name/symbol.
+  const [uri, setUri] = useState('');
   const [rows, setRows] = useState<BasketRow[]>([]);
   const [depositBase, setDepositBase] = useState<number>(1_000_000_000);
   const [solSeed, setSolSeed] = useState<number>(0.02);
@@ -120,6 +123,7 @@ export function CreateEtfPanel({
         weightsBps: rows.map((r) => r.weight),
         ticker,
         name,
+        uri,
       });
       pushLog(`Tx1: alloc ETF mint + ${basketMints.length} vaults + CreateEtf "${name}"`);
       const sig2 = await sendTx(
@@ -234,14 +238,16 @@ export function CreateEtfPanel({
     }
   }
 
+  const uriBytes = new TextEncoder().encode(uri).length;
   const enabled =
     !!publicKey &&
     !!wallet &&
     weightsOk &&
     name.length >= 1 &&
     ticker.length >= 2 &&
-    ticker.length <= 16 &&
+    ticker.length <= 10 &&
     /^[A-Z0-9]+$/.test(ticker) &&
+    uriBytes <= 200 &&
     stage !== 'alloc' &&
     stage !== 'create' &&
     stage !== 'deposit';
@@ -273,26 +279,48 @@ export function CreateEtfPanel({
               />
             </label>
             <label className="flex flex-col">
-              <span className="mb-1 text-slate-400">Ticker (A-Z 0-9, 2..16)</span>
+              <span className="mb-1 text-slate-400">Ticker (A-Z 0-9, 2..10)</span>
               <input
                 value={ticker}
                 onChange={(e) => setTicker(e.target.value.toUpperCase())}
                 className={
                   'rounded bg-slate-800 px-2 py-1 font-mono text-slate-100 ' +
                   (ticker.length >= 2 &&
-                  ticker.length <= 16 &&
+                  ticker.length <= 10 &&
                   /^[A-Z0-9]+$/.test(ticker)
                     ? 'border border-transparent'
                     : 'border border-rose-500/50')
                 }
               />
-              {!(ticker.length >= 2 && ticker.length <= 16 && /^[A-Z0-9]+$/.test(ticker)) && (
+              {!(ticker.length >= 2 && ticker.length <= 10 && /^[A-Z0-9]+$/.test(ticker)) && (
                 <span className="mt-1 text-[10px] text-rose-400">
-                  must be 2..16 ASCII upper-case letters or digits
+                  must be 2..10 ASCII upper-case letters or digits (Metaplex MAX_SYMBOL_LENGTH)
                 </span>
               )}
             </label>
           </div>
+
+          <label className="flex flex-col text-xs">
+            <span className="mb-1 text-slate-400">
+              Metadata URI (≤200 bytes, optional — off-chain JSON for wallets)
+            </span>
+            <input
+              value={uri}
+              onChange={(e) => setUri(e.target.value)}
+              placeholder="https://example.com/etf-metadata.json"
+              className={
+                'rounded bg-slate-800 px-2 py-1 font-mono text-slate-100 ' +
+                (uriBytes <= 200
+                  ? 'border border-transparent'
+                  : 'border border-rose-500/50')
+              }
+            />
+            {uriBytes > 200 && (
+              <span className="mt-1 text-[10px] text-rose-400">
+                URI exceeds Metaplex MAX_URI_LENGTH (200 bytes)
+              </span>
+            )}
+          </label>
 
           <div>
             <p className="mb-2 text-xs text-slate-400">

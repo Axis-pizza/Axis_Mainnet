@@ -328,6 +328,7 @@ export const PfmmDeploymentBlueprint = ({
           weightsBps: basketWeightsBps,
           ticker: safeSymbol,
           name: strategyName,
+          uri: '',
         });
         const createSig = await sendTx(
           connection,
