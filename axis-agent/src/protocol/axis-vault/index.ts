@@ -117,6 +117,33 @@ export type {
   WithdrawSolLegPreview,
 } from './withdrawSolPlan';
 export {
+  DEFAULT_MAX_ACCOUNTS_LADDER,
+  buildDepositSolPlanWithRetry,
+  buildWithdrawSolPlanWithRetry,
+  signDepositSolPlan,
+  signWithdrawSolPlan,
+  runDepositSolFlow,
+  runWithdrawSolFlow,
+  preflightDepositSol,
+} from './jupiterSwapRunner';
+export type {
+  JupiterSwapCallbacks,
+  JupiterSwapCallbacksFor,
+  DepositSwapCallbacks,
+  WithdrawSwapCallbacks,
+  JupiterPlanReadyInfo,
+  JupiterSwapRetryInfo,
+  JupiterSwapStep,
+  PlanAttempt,
+  PlanRetryResult,
+  RunDepositSolArgs,
+  RunDepositSolResult,
+  RunWithdrawSolArgs,
+  RunWithdrawSolResult,
+  PreflightDepositSolArgs,
+  JupiterDepositPreflight,
+} from './jupiterSwapRunner';
+export {
   decodePoolState3,
   fetchPoolState3,
 } from './pfmmState';

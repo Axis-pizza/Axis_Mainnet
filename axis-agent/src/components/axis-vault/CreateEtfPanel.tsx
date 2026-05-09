@@ -10,13 +10,13 @@ import { api, clearStrategyCache } from '../../services/api';
 import {
   buildBareMintAccountIxs,
   buildBareTokenAccountIxs,
-  buildDepositSolPlan,
   explorerTx,
   findEtfState,
   ixCreateEtf,
   ixDeposit,
+  preflightDepositSol,
+  runDepositSolFlow,
   sendTx,
-  sendVersionedTx,
   truncatePubkey,
   type ClusterConfig,
 } from '../../protocol/axis-vault';
@@ -186,52 +186,68 @@ export function CreateEtfPanel({
         const userEtfAta = getAssociatedTokenAddressSync(etfMint.pubkey, publicKey);
         const treasuryEtfAta = getAssociatedTokenAddressSync(etfMint.pubkey, treasury, true);
         if (config.jupiterEnabled) {
-          const plan = await buildDepositSolPlan({
-            conn: connection,
-            user: publicKey,
-            programId: axisVault,
-            etfName: name,
-            etfState,
-            etfMint: etfMint.pubkey,
-            treasury,
-            treasuryEtfAta,
-            basketMints,
+          const solIn = BigInt(Math.floor(solSeed * 1_000_000_000));
+          const pre = preflightDepositSol({
+            basketSize: basketMints.length,
             weights: rows.map((r) => r.weight),
-            vaults: vaults.pubkeys,
-            solIn: BigInt(Math.floor(solSeed * 1_000_000_000)),
-            minEtfOut: 0n,
-            slippageBps,
+            solIn,
           });
-          pushLog(
-            `Tx2: Jupiter SOL-in seed (${solSeed} SOL) + Deposit; mode=${plan.mode}; ix=${plan.ixCount}; tx=${plan.txBytes}b`
-          );
-          const bottleneck = plan.seedPreview.legs[plan.seedPreview.bottleneckIndex];
-          pushLog(
-            `Jupiter floor: ${plan.depositAmount.toString()} base; bottleneck=${truncatePubkey(
-              bottleneck.mint.toBase58(),
-              6,
-              6
-            )}`
-          );
-          pushLog(
-            `Expected out: ${plan.seedPreview.legs
-              .map((leg) => `${truncatePubkey(leg.mint.toBase58(), 4, 4)}=${leg.expectedOut}`)
-              .join(' / ')}`
-          );
-          if (plan.mode === 'single') {
-            const sig3 = await sendVersionedTx(connection, wallet, plan.versionedTx);
-            pushLog(`✓ jupiter_seed_deposit: ${sig3.slice(0, 12)}…`);
-            pushLog(`See: ${explorerTx(sig3, config.explorerCluster)}`);
-          } else {
-            pushLog('split: signing tx0 (swaps) then tx1 (deposit)…');
-            const sig3a = await sendVersionedTx(connection, wallet, plan.versionedTx);
-            pushLog(`✓ swaps: ${sig3a.slice(0, 12)}…`);
-            pushLog(`See: ${explorerTx(sig3a, config.explorerCluster)}`);
-            if (!plan.depositTx) throw new Error('split plan missing depositTx — internal bug');
-            const sig3b = await sendVersionedTx(connection, wallet, plan.depositTx);
-            pushLog(`✓ deposit: ${sig3b.slice(0, 12)}…`);
-            pushLog(`See: ${explorerTx(sig3b, config.explorerCluster)}`);
+          if (!pre.ok) {
+            throw new Error(`preflight failed: ${pre.errors.join('; ')}`);
           }
+          for (const w of pre.warnings) pushLog(`⚠ ${w}`);
+          const result = await runDepositSolFlow({
+            conn: connection,
+            wallet,
+            planArgs: {
+              conn: connection,
+              user: publicKey,
+              programId: axisVault,
+              etfName: name,
+              etfState,
+              etfMint: etfMint.pubkey,
+              treasury,
+              treasuryEtfAta,
+              basketMints,
+              weights: rows.map((r) => r.weight),
+              vaults: vaults.pubkeys,
+              solIn,
+              minEtfOut: 0n,
+              slippageBps,
+            },
+            callbacks: {
+              onRetry: ({ previousMaxAccounts, nextMaxAccounts }) =>
+                pushLog(
+                  `↻ tx blew 1232 b at maxAccounts=${previousMaxAccounts}; retrying at ${nextMaxAccounts}…`
+                ),
+              onPlanReady: ({ plan, maxAccounts }) => {
+                pushLog(
+                  `Tx2: Jupiter SOL-in seed (${solSeed} SOL) + Deposit; mode=${plan.mode}; ix=${plan.ixCount}; tx=${plan.txBytes}b · maxAccounts=${maxAccounts}`
+                );
+                const bottleneck = plan.seedPreview.legs[plan.seedPreview.bottleneckIndex];
+                pushLog(
+                  `Jupiter floor: ${plan.depositAmount.toString()} base; bottleneck=${truncatePubkey(
+                    bottleneck.mint.toBase58(),
+                    6,
+                    6
+                  )}`
+                );
+                pushLog(
+                  `Expected out: ${plan.seedPreview.legs
+                    .map((leg) => `${truncatePubkey(leg.mint.toBase58(), 4, 4)}=${leg.expectedOut}`)
+                    .join(' / ')}`
+                );
+                if (plan.mode === 'split') pushLog('split: signing tx0 (swaps) then tx1 (deposit)…');
+              },
+              onStepDone: (step, sig) => {
+                const label =
+                  step === 'single' ? 'jupiter_seed_deposit' : step === 'swap' ? 'swaps' : 'deposit';
+                pushLog(`✓ ${label}: ${sig.slice(0, 12)}…`);
+                pushLog(`See: ${explorerTx(sig, config.explorerCluster)}`);
+              },
+            },
+          });
+          void result;
         } else {
           const userBasketAtas = basketMints.map((m) =>
             getAssociatedTokenAddressSync(m, publicKey)

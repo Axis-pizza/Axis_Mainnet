@@ -4,11 +4,12 @@ import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { useConnection, useWallet } from '../../hooks/useWallet';
 import { useAxisVaultWallet } from '../../hooks/useAxisVaultWallet';
 import {
-  buildDepositSolPlan,
+  buildDepositSolPlanWithRetry,
   explorerAddr,
   explorerTx,
   fetchEtfState,
-  sendVersionedTx,
+  preflightDepositSol,
+  signDepositSolPlan,
   truncatePubkey,
   type ClusterConfig,
   type DepositSolPlan,
@@ -104,31 +105,52 @@ export function DepositSolPanel({
 
   async function previewPlan() {
     if (!publicKey || !etf) return;
+    const pre = preflightDepositSol({
+      basketSize: etf.tokenMints.length,
+      weights: etf.weightsBps,
+      solIn: solSeedLamports,
+    });
+    if (!pre.ok) {
+      setStage('err');
+      setLog([]);
+      pushLog('✗ preflight failed:');
+      for (const e of pre.errors) pushLog(`  · ${e}`);
+      return;
+    }
     setStage('preview');
     setLog([]);
     setPlan(null);
+    for (const w of pre.warnings) pushLog(`⚠ ${w}`);
     try {
       const treasuryEtfAta = getAssociatedTokenAddressSync(etf.etfMint, etf.treasury, true);
-      const next = await buildDepositSolPlan({
-        conn: connection,
-        user: publicKey,
-        programId: axisVault,
-        etfName: etf.name,
-        etfState: new PublicKey(etfStateAddr),
-        etfMint: etf.etfMint,
-        treasury: etf.treasury,
-        treasuryEtfAta,
-        basketMints: etf.tokenMints,
-        weights: etf.weightsBps,
-        vaults: etf.tokenVaults,
-        solIn: solSeedLamports,
-        minEtfOut: 0n,
-        slippageBps,
-        existingEtfTotalSupply: etf.totalSupply,
-      });
+      const built = await buildDepositSolPlanWithRetry(
+        {
+          conn: connection,
+          user: publicKey,
+          programId: axisVault,
+          etfName: etf.name,
+          etfState: new PublicKey(etfStateAddr),
+          etfMint: etf.etfMint,
+          treasury: etf.treasury,
+          treasuryEtfAta,
+          basketMints: etf.tokenMints,
+          weights: etf.weightsBps,
+          vaults: etf.tokenVaults,
+          solIn: solSeedLamports,
+          minEtfOut: 0n,
+          slippageBps,
+          existingEtfTotalSupply: etf.totalSupply,
+        },
+        undefined,
+        ({ previousMaxAccounts, nextMaxAccounts }) =>
+          pushLog(
+            `↻ tx blew 1232 b at maxAccounts=${previousMaxAccounts}; retrying at ${nextMaxAccounts}…`
+          )
+      );
+      const next = built.plan;
       setPlan(next);
       pushLog(
-        `preview: deposit floor ${next.depositAmount.toString()} base; mode=${next.mode}; tx ${next.txBytes}/1232 b · ix=${next.ixCount} · CU ${next.computeUnitLimit} @ ${next.computeUnitPrice} μL/CU`
+        `preview: deposit floor ${next.depositAmount.toString()} base; mode=${next.mode}; tx ${next.txBytes}/1232 b · ix=${next.ixCount} · CU ${next.computeUnitLimit} @ ${next.computeUnitPrice} μL/CU · maxAccounts=${built.chosen.maxAccounts}`
       );
       const seed = next.seedPreview;
       pushLog(
@@ -153,20 +175,16 @@ export function DepositSolPanel({
     if (!publicKey || !plan || !wallet) return;
     setStage('send');
     try {
-      if (plan.mode === 'single') {
-        const sig = await sendVersionedTx(connection, wallet, plan.versionedTx);
-        pushLog(`✓ deposit_sol: ${sig.slice(0, 12)}…`);
-        pushLog(`See: ${explorerTx(sig, config.explorerCluster)}`);
-      } else {
-        if (!plan.depositTx) throw new Error('split plan missing depositTx — internal bug');
+      if (plan.mode === 'split') {
         pushLog('split: signing tx0 (swaps) then tx1 (deposit)…');
-        const sig0 = await sendVersionedTx(connection, wallet, plan.versionedTx);
-        pushLog(`✓ swaps: ${sig0.slice(0, 12)}…`);
-        pushLog(`See: ${explorerTx(sig0, config.explorerCluster)}`);
-        const sig1 = await sendVersionedTx(connection, wallet, plan.depositTx);
-        pushLog(`✓ deposit: ${sig1.slice(0, 12)}…`);
-        pushLog(`See: ${explorerTx(sig1, config.explorerCluster)}`);
       }
+      await signDepositSolPlan(connection, wallet, plan, {
+        onStepDone: (step, sig) => {
+          const label = step === 'single' ? 'deposit_sol' : step === 'swap' ? 'swaps' : 'deposit';
+          pushLog(`✓ ${label}: ${sig.slice(0, 12)}…`);
+          pushLog(`See: ${explorerTx(sig, config.explorerCluster)}`);
+        },
+      });
       setStage('ok');
       try {
         if (etf && publicKey) {

@@ -39,8 +39,6 @@ import { getUserPosition, lamportsToSol } from '../../protocol/kagemusha';
 import {
   buildJupiterSolSeedPlan,
   buildJupiterBasketSellPlan,
-  buildDepositSolPlan,
-  buildWithdrawSolPlan,
   fetchEtfState,
   fetchVaultBalances,
   expectedWithdrawOutputs,
@@ -48,6 +46,9 @@ import {
   AXIS_VAULT_PROGRAM_ID,
   fetchPoolState3,
   getQuote,
+  preflightDepositSol,
+  runDepositSolFlow,
+  runWithdrawSolFlow,
   sendVersionedTx,
   SOL_MINT,
   type EtfStateData,
@@ -853,31 +854,39 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             etfStateData!.treasury,
             true,
           );
-          const plan = await buildDepositSolPlan({
-            conn: connection,
-            user: wallet.publicKey,
-            programId: AXIS_VAULT_PROGRAM_ID,
-            etfName: etfStateData!.name,
-            etfState: etfStatePda!,
-            etfMint: etfStateData!.etfMint,
-            treasury: etfStateData!.treasury,
-            treasuryEtfAta,
-            basketMints: etfStateData!.tokenMints,
+          const pre = preflightDepositSol({
+            basketSize: etfStateData!.tokenMints.length,
             weights: etfStateData!.weightsBps,
-            vaults: etfStateData!.tokenVaults,
             solIn,
-            minEtfOut: 0n,
-            existingEtfTotalSupply: etfStateData!.totalSupply,
-            // Tighter than the default 16 so Jupiter picks compact routes that
-            // fit under the 1232-byte tx cap once bundled with axis-vault Deposit.
-            maxAccounts: 14,
           });
-          setInvestStatus('CONFIRMING');
-          sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
-          if (plan.mode === 'split' && plan.depositTx) {
-            setInvestStatus('PROCESSING');
-            sig = await sendVersionedTx(connection, axisWallet, plan.depositTx);
-          }
+          if (!pre.ok) throw new Error(`preflight failed: ${pre.errors.join('; ')}`);
+          const result = await runDepositSolFlow({
+            conn: connection,
+            wallet: axisWallet,
+            planArgs: {
+              conn: connection,
+              user: wallet.publicKey,
+              programId: AXIS_VAULT_PROGRAM_ID,
+              etfName: etfStateData!.name,
+              etfState: etfStatePda!,
+              etfMint: etfStateData!.etfMint,
+              treasury: etfStateData!.treasury,
+              treasuryEtfAta,
+              basketMints: etfStateData!.tokenMints,
+              weights: etfStateData!.weightsBps,
+              vaults: etfStateData!.tokenVaults,
+              solIn,
+              minEtfOut: 0n,
+              existingEtfTotalSupply: etfStateData!.totalSupply,
+            },
+            callbacks: {
+              onStepStart: (step) => {
+                if (step === 'single' || step === 'swap') setInvestStatus('CONFIRMING');
+                else if (step === 'deposit') setInvestStatus('PROCESSING');
+              },
+            },
+          });
+          sig = result.sigs[result.sigs.length - 1];
         } else {
           const plan = await buildJupiterSolSeedPlan({
             conn: connection,
@@ -926,22 +935,26 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
           }
           const burnAmount = (userEtfBalance * BigInt(Math.floor(pct * 100))) / 10_000n;
           if (burnAmount === 0n) throw new Error('Withdraw amount rounds to zero');
-          const plan = await buildWithdrawSolPlan({
+          const result = await runWithdrawSolFlow({
             conn: connection,
-            user: wallet.publicKey,
-            programId: AXIS_VAULT_PROGRAM_ID,
-            etfState: etfStatePda!,
-            etfStateData: etfStateData!,
-            burnAmount,
-            maxAccounts: 14,
+            wallet: axisWallet,
+            planArgs: {
+              conn: connection,
+              user: wallet.publicKey,
+              programId: AXIS_VAULT_PROGRAM_ID,
+              etfState: etfStatePda!,
+              etfStateData: etfStateData!,
+              burnAmount,
+            },
+            callbacks: {
+              onStepStart: (step) => {
+                if (step === 'single' || step === 'withdraw') setInvestStatus('CONFIRMING');
+                else if (step === 'swap') setInvestStatus('PROCESSING');
+              },
+            },
           });
-          setInvestStatus('CONFIRMING');
-          sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
-          if (plan.mode === 'split' && plan.swapTx) {
-            setInvestStatus('PROCESSING');
-            sig = await sendVersionedTx(connection, axisWallet, plan.swapTx);
-          }
-          expectedSol = Number(plan.expectedSolOut) / LAMPORTS_PER_SOL;
+          sig = result.sigs[result.sigs.length - 1];
+          expectedSol = Number(result.plan.expectedSolOut) / LAMPORTS_PER_SOL;
         } else {
           const inputs = basketMints
             .map((mint, i) => {

@@ -167,6 +167,18 @@ function ixDedupKey(ix: TransactionInstruction): string {
   ].join('#');
 }
 
+function dedupeIxs(ixs: TransactionInstruction[]): TransactionInstruction[] {
+  const seen = new Set<string>();
+  const out: TransactionInstruction[] = [];
+  for (const ix of ixs) {
+    const key = ixDedupKey(ix);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ix);
+  }
+  return out;
+}
+
 export async function buildDepositSolPlan(args: DepositSolPlanArgs): Promise<DepositSolPlan> {
   const n = args.basketMints.length;
   if (n !== args.weights.length || n !== args.vaults.length) {
@@ -271,7 +283,11 @@ export async function buildDepositSolPlan(args: DepositSolPlanArgs): Promise<Dep
   );
   const cb = buildComputeBudgetIxs(legBudgets, args.priorityMicroLamports);
 
-  const ataCreates = [
+  // Split ATA creates by which half of the flow actually touches them. In
+  // split mode this lets us drop `etfAta` + `treasuryEtfAta` (and the
+  // `etfMint` / `treasury` static keys they pull in) out of the swap-half tx,
+  // which is the leg most likely to brush the 1232-byte wire cap.
+  const swapAtaCreatesRaw = [
     createAssociatedTokenAccountIdempotentInstruction(args.user, userWsolAta, args.user, SOL_MINT),
     ...args.basketMints.map((mint, i) =>
       createAssociatedTokenAccountIdempotentInstruction(
@@ -281,6 +297,8 @@ export async function buildDepositSolPlan(args: DepositSolPlanArgs): Promise<Dep
         mint
       )
     ),
+  ];
+  const depositAtaCreates = [
     createAssociatedTokenAccountIdempotentInstruction(args.user, userEtfAta, args.user, args.etfMint),
     createAssociatedTokenAccountIdempotentInstruction(
       args.user,
@@ -289,6 +307,8 @@ export async function buildDepositSolPlan(args: DepositSolPlanArgs): Promise<Dep
       args.etfMint
     ),
   ];
+  const swapAtaCreates = dedupeIxs(swapAtaCreatesRaw);
+  const ataCreates = [...swapAtaCreates, ...depositAtaCreates];
 
   const wrapIxs = [
     SystemProgram.transfer({
@@ -363,13 +383,14 @@ export async function buildDepositSolPlan(args: DepositSolPlanArgs): Promise<Dep
   const swapTxIxs = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: cb.cuLimit }),
     ComputeBudgetProgram.setComputeUnitPrice({ microLamports: cb.cuPrice }),
-    ...ataCreates,
+    ...swapAtaCreates,
     ...wrapIxs,
     ...swapIxs,
   ];
   const depositTxIxs = [
     ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }),
     ComputeBudgetProgram.setComputeUnitPrice({ microLamports: cb.cuPrice }),
+    ...depositAtaCreates,
     depositIx,
     ...closeWsolIxs,
   ];
@@ -377,11 +398,12 @@ export async function buildDepositSolPlan(args: DepositSolPlanArgs): Promise<Dep
   const swapAttempt = tryCompileV0(args.user, blockhash, swapTxIxs, altAccounts);
   if (!swapAttempt.ok) {
     throw new Error(
-      `Even after splitting, the Jupiter swap leg blew the 1232-byte wire cap ` +
+      `Even after splitting and pushing the ETF ATA creates into the deposit half, ` +
+        `the Jupiter swap leg blew the 1232-byte wire cap ` +
         `(estimated ${swapAttempt.bytes ?? '?'} bytes; ix count ${swapTxIxs.length}; ` +
         `static keys ${swapAttempt.staticKeys ?? '?'}; ALT addresses ${altAccounts.length}). ` +
-        `Try a smaller basket (2 mints), lower the per-leg \`maxAccounts\` (currently ${maxAccounts}), ` +
-        `or pick mints with simpler Jupiter routes. Underlying error: ${swapAttempt.error}`
+        `Try a smaller basket (2 mints), lower the per-leg \`maxAccounts\` (currently ${maxAccounts}; ` +
+        `try 10–12), or pick mints with simpler Jupiter routes. Underlying error: ${swapAttempt.error}`
     );
   }
   const depositAttempt = tryCompileV0(args.user, blockhash, depositTxIxs, []);

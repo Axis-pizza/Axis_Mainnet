@@ -35,11 +35,12 @@ import {
 } from '../../protocol/kagemusha';
 import {
   AXIS_VAULT_PROGRAM_ID,
-  buildDepositSolPlan,
   buildJupiterSolSeedPlan,
-  buildWithdrawSolPlan,
   fetchEtfState,
   findEtfState,
+  preflightDepositSol,
+  runDepositSolFlow,
+  runWithdrawSolFlow,
   sendVersionedTx,
   type EtfStateData,
 } from '../../protocol/axis-vault';
@@ -1184,29 +1185,39 @@ export const SwipeDiscoverView = ({
             investEtfData!.treasury,
             true,
           );
-          const plan = await buildDepositSolPlan({
-            conn: connection,
-            user: wallet.publicKey,
-            programId: AXIS_VAULT_PROGRAM_ID,
-            etfName: investEtfData!.name,
-            etfState: investEtfState!,
-            etfMint: investEtfData!.etfMint,
-            treasury: investEtfData!.treasury,
-            treasuryEtfAta,
-            basketMints: investEtfData!.tokenMints,
+          const pre = preflightDepositSol({
+            basketSize: investEtfData!.tokenMints.length,
             weights: investEtfData!.weightsBps,
-            vaults: investEtfData!.tokenVaults,
             solIn,
-            minEtfOut: 0n,
-            existingEtfTotalSupply: investEtfData!.totalSupply,
-            maxAccounts: 14,
           });
-          setInvestStatus('CONFIRMING');
-          let sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
-          if (plan.mode === 'split' && plan.depositTx) {
-            setInvestStatus('PROCESSING');
-            sig = await sendVersionedTx(connection, axisWallet, plan.depositTx);
-          }
+          if (!pre.ok) throw new Error(`preflight failed: ${pre.errors.join('; ')}`);
+          const result = await runDepositSolFlow({
+            conn: connection,
+            wallet: axisWallet,
+            planArgs: {
+              conn: connection,
+              user: wallet.publicKey,
+              programId: AXIS_VAULT_PROGRAM_ID,
+              etfName: investEtfData!.name,
+              etfState: investEtfState!,
+              etfMint: investEtfData!.etfMint,
+              treasury: investEtfData!.treasury,
+              treasuryEtfAta,
+              basketMints: investEtfData!.tokenMints,
+              weights: investEtfData!.weightsBps,
+              vaults: investEtfData!.tokenVaults,
+              solIn,
+              minEtfOut: 0n,
+              existingEtfTotalSupply: investEtfData!.totalSupply,
+            },
+            callbacks: {
+              onStepStart: (step) => {
+                if (step === 'single' || step === 'swap') setInvestStatus('CONFIRMING');
+                else if (step === 'deposit') setInvestStatus('PROCESSING');
+              },
+            },
+          });
+          const sig = result.sigs[result.sigs.length - 1];
           fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1227,27 +1238,31 @@ export const SwipeDiscoverView = ({
           if (investUserEtfBalance === 0n) throw new Error('No ETF position to withdraw');
           const burnAmount = (investUserEtfBalance * BigInt(Math.floor(pct * 100))) / 10_000n;
           if (burnAmount === 0n) throw new Error('Withdraw amount rounds to zero');
-          const plan = await buildWithdrawSolPlan({
+          const result = await runWithdrawSolFlow({
             conn: connection,
-            user: wallet.publicKey,
-            programId: AXIS_VAULT_PROGRAM_ID,
-            etfState: investEtfState!,
-            etfStateData: investEtfData!,
-            burnAmount,
-            maxAccounts: 14,
+            wallet: axisWallet,
+            planArgs: {
+              conn: connection,
+              user: wallet.publicKey,
+              programId: AXIS_VAULT_PROGRAM_ID,
+              etfState: investEtfState!,
+              etfStateData: investEtfData!,
+              burnAmount,
+            },
+            callbacks: {
+              onStepStart: (step) => {
+                if (step === 'single' || step === 'withdraw') setInvestStatus('CONFIRMING');
+                else if (step === 'swap') setInvestStatus('PROCESSING');
+              },
+            },
           });
-          setInvestStatus('CONFIRMING');
-          let sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
-          if (plan.mode === 'split' && plan.swapTx) {
-            setInvestStatus('PROCESSING');
-            sig = await sendVersionedTx(connection, axisWallet, plan.swapTx);
-          }
+          const sig = result.sigs[result.sigs.length - 1];
           fetch('https://axis-api-mainnet.yusukekikuta-05.workers.dev/trade', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               userPubkey: wallet.publicKey.toBase58(),
-              amount: Number(plan.expectedSolOut) / LAMPORTS_PER_SOL,
+              amount: Number(result.plan.expectedSolOut) / LAMPORTS_PER_SOL,
               mode,
               strategyId: investTarget.id,
               txSig: sig,

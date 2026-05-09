@@ -23,7 +23,6 @@ import {
   AXIS_VAULT_PROGRAM_ID,
   buildBareMintAccountIxs,
   buildBareTokenAccountIxs,
-  buildDepositSolPlan,
   buildJupiterSeedPreview,
   buildJupiterSolSeedPlan,
   explorerAddr,
@@ -45,6 +44,8 @@ import {
   liveJupiterQuoteClient,
   MAINNET_PROTOCOL_TREASURY,
   MIN_FIRST_DEPOSIT_BASE,
+  preflightDepositSol,
+  runDepositSolFlow,
   sendTx,
   sendVersionedTx,
   truncatePubkey,
@@ -667,29 +668,45 @@ export const PfmmDeploymentBlueprint = ({
           true,
         );
 
-        const depositPlan = await buildDepositSolPlan({
-          conn: connection,
-          user: wallet.publicKey,
-          programId: AXIS_VAULT_PROGRAM_ID,
-          etfName: strategyName,
-          etfState: etfStatePda,
-          etfMint: etfMintForDeposit,
-          treasury: MAINNET_PROTOCOL_TREASURY,
-          treasuryEtfAta,
-          basketMints: basketMintsForEtf,
+        const pre = preflightDepositSol({
+          basketSize: basketMintsForEtf.length,
           weights: basketWeightsBpsForEtf,
-          vaults: vaultsForDeposit,
           solIn: etfSeedLamports,
-          minEtfOut: 0n,
-          maxAccounts: 14,
         });
-        pushLog(
-          `  etf deposit plan: ${depositPlan.mode} · ${depositPlan.txBytes}/1232 b · ${depositPlan.ixCount} ix · expected ETF ${depositPlan.depositAmount.toString()} (min ${MIN_FIRST_DEPOSIT_BASE.toString()})`
-        );
-        let etfSig = await sendVersionedTx(connection, axisWallet, depositPlan.versionedTx);
-        if (depositPlan.mode === 'split' && depositPlan.depositTx) {
-          etfSig = await sendVersionedTx(connection, axisWallet, depositPlan.depositTx);
+        if (!pre.ok) {
+          throw new Error(`ETF deposit preflight failed: ${pre.errors.join('; ')}`);
         }
+        for (const w of pre.warnings) pushLog(`  ⚠ ${w}`);
+        const depositResult = await runDepositSolFlow({
+          conn: connection,
+          wallet: axisWallet,
+          planArgs: {
+            conn: connection,
+            user: wallet.publicKey,
+            programId: AXIS_VAULT_PROGRAM_ID,
+            etfName: strategyName,
+            etfState: etfStatePda,
+            etfMint: etfMintForDeposit,
+            treasury: MAINNET_PROTOCOL_TREASURY,
+            treasuryEtfAta,
+            basketMints: basketMintsForEtf,
+            weights: basketWeightsBpsForEtf,
+            vaults: vaultsForDeposit,
+            solIn: etfSeedLamports,
+            minEtfOut: 0n,
+          },
+          callbacks: {
+            onRetry: ({ previousMaxAccounts, nextMaxAccounts }) =>
+              pushLog(
+                `  ↻ tx blew 1232 b at maxAccounts=${previousMaxAccounts}; retrying at ${nextMaxAccounts}…`
+              ),
+            onPlanReady: ({ plan, maxAccounts }) =>
+              pushLog(
+                `  etf deposit plan: ${plan.mode} · ${plan.txBytes}/1232 b · ${plan.ixCount} ix · maxAccounts=${maxAccounts} · expected ETF ${plan.depositAmount.toString()} (min ${MIN_FIRST_DEPOSIT_BASE.toString()})`
+              ),
+          },
+        });
+        const etfSig = depositResult.sigs[depositResult.sigs.length - 1];
         lastSig = etfSig;
         pushLog(
           `✓ etf_deposit: ${etfSig.slice(0, 12)}…  → ${explorerTx(etfSig, config.explorerCluster)}`,
