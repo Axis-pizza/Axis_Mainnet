@@ -37,17 +37,22 @@ React Components
 
 ### Services Layer (`src/services/`)
 
-- **api.ts** — Backend REST client (user management, strategy CRUD, token operations, deployment). Base URL: `https://axis-api.yusukekikuta-05.workers.dev` (override via `VITE_API_URL`).
-- **kagemusha.ts** — On-chain program interaction via Anchor. Program ID: `2kdDnjHHLmHex8v5pk8XgB7ddFeiuBW4Yp5Ykx8JmBLd`. Handles strategy initialization, SOL deposits/withdrawals, and account queries using PDAs.
+- **api.ts** — Backend REST client (user management, strategy CRUD, token operations, deployment). Base URL: `https://axis-api-mainnet.yusukekikuta-05.workers.dev` (override via `VITE_API_URL`).
 - **jupiter.ts** — Jupiter Lite API v2 for token search/prices. Implements memory + localStorage caching (6h TTL) with a hardcoded fallback list for major tokens.
 - **coingecko.ts** — Market data with batched price fetching and 5-minute cache.
 - **dexscreener.ts / geckoterminal.ts** — Additional market data sources.
+
+### Solana Programs
+
+- **axis-vault** (`Agae3WetHx7J9CE7nP927ekzAeegSKE1KfkZDMYLDGHX`) — current ETF program (IDL v1.1.0). Per-ETF Metaplex mint, program-owned vault accounts, deposit/withdraw via `src/protocol/axis-vault/`.
+- **pfda-amm-3** (`3SBbfZgzAHyaijxbUbxBLt89aX6Z2d4ptL5PH6pzMazV`) — Pure-Fee Dynamic AMM pool program for legacy "ETF" deploys that are really pools. Override via `VITE_PFDA_AMM3_PROGRAM_ID`.
+- The legacy `kagemusha` program (`2kdDnj…`) is removed — its module, IDL, and call sites have been deleted from the FE.
 
 ### State Management
 
 - **Zustand** (`useTacticalStore`): Manages the multi-step strategy creation flow (DIRECTIVE → MATRIX → SIMULATION → ASSEMBLY → DEPLOYMENT) including token allocations and generated tactics.
 - **Core types** in `src/types/index.ts`: `Strategy`, `TokenInfo`, `TokenAllocation`, `Vault`, `CreateStep`.
-- **Solana wallet state**: Via `@solana/wallet-adapter-react` context. Network is **Devnet**.
+- **Solana wallet state**: Via `@solana/wallet-adapter-react` context. Network is **Mainnet**.
 
 ### Component Organization
 

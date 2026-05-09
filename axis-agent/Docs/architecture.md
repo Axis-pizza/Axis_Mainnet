@@ -13,14 +13,14 @@ graph TD
         entry["main.tsx → Providers → App → Home"]
         views["Views<br/>DISCOVER / CREATE / PROFILE / STRATEGY_DETAIL"]
         state["State<br/>Zustand · ToastContext · Wallet Adapter"]
-        services["Services Layer<br/>api.ts · kagemusha.ts · jupiter.ts<br/>coingecko.ts · dexscreener.ts · geckoterminal.ts"]
+        services["Services Layer<br/>api.ts · jupiter.ts<br/>coingecko.ts · dexscreener.ts · geckoterminal.ts"]
         entry --> views
         views --> state
         state --> services
     end
 
     services --> axisapi["axis-api<br/>(Cloudflare Workers)"]
-    services --> solana["Solana RPC<br/>(Devnet)"]
+    services --> solana["Solana RPC<br/>(Mainnet)"]
     services --> jupiter["Jupiter Lite API v2"]
     services --> coingecko["CoinGecko API v3"]
     services --> dex["DexScreener /<br/>GeckoTerminal"]
@@ -42,7 +42,7 @@ flowchart LR
 | ------------------- | ------------------------------------------------------------------------------------------------ |
 | `index.html`        | HTML shell. Loads `/src/main.tsx` as a module                                                    |
 | `src/main.tsx`      | ReactDOM.createRoot. Mounts `<Providers>` → `<App>`                                              |
-| `src/Providers.tsx` | Provides Solana ConnectionProvider / WalletProvider / WalletModalProvider. Network is **Devnet** |
+| `src/Providers.tsx` | Provides Solana ConnectionProvider / WalletProvider / WalletModalProvider. Network is **Mainnet** |
 | `src/App.tsx`       | ToastProvider + RouterProvider. Stores referral code (`?ref=`) to localStorage                   |
 | `src/router.tsx`    | Uses react-router-dom. Currently only one route: `/` → `Home`                                    |
 | `src/Home.tsx`      | Main orchestrator. Switches between 4 views via internal state (`view`)                          |
@@ -71,7 +71,8 @@ flowchart LR
 | File               | Target                        | Responsibility                                                                                  |
 | ------------------ | ----------------------------- | ----------------------------------------------------------------------------------------------- |
 | `api.ts`           | axis-api (Cloudflare Workers) | User management, strategy CRUD, token search, deploy, leaderboard, image upload, AI analysis    |
-| `kagemusha.ts`     | Solana RPC (Devnet)           | On-chain program (Anchor). Strategy initialization (PDA), SOL deposit/withdraw, account queries |
+| `protocol/axis-vault/` | Solana RPC (Mainnet)       | Anchor client for the axis-vault ETF program (`Agae3Wet…`). CreateEtf, Deposit/Withdraw via Jupiter, vault state queries. |
+| `protocol/pfda-amm/`   | Solana RPC (Mainnet)       | Pool client for the pfda-amm-3 program (`3SBbfZgz…`). Pool reserves, position lookups, swaps.   |
 | `jupiter.ts`       | lite-api.jup.ag               | Token list retrieval, token search, price fetching. Memory + localStorage cache (6h TTL)        |
 | `coingecko.ts`     | api.coingecko.com             | Solana ecosystem tokens ranked by market cap, mint-address-based price fetching. 5-min cache    |
 | `dexscreener.ts`   | api.dexscreener.com           | Price and 24h change for memecoins / Pump.fun tokens. 30-sec cache                              |
@@ -91,8 +92,8 @@ flowchart LR
 
 | Service                                           | Purpose               | Auth                                                      |
 | ------------------------------------------------- | --------------------- | --------------------------------------------------------- |
-| axis-api (`axis-api.yusukekikuta-05.workers.dev`) | Backend REST API      | None (TBD: auth mechanism)                                |
-| Solana Devnet RPC                                 | Blockchain operations | None (public RPC)                                         |
+| axis-api (`axis-api-mainnet.yusukekikuta-05.workers.dev`) | Backend REST API      | None (TBD: auth mechanism)                                |
+| Solana Mainnet RPC                                 | Blockchain operations | None (public RPC)                                         |
 | Jupiter Lite API v2 (`lite-api.jup.ag`)           | Token data & prices   | API Key (header `x-api-key`, env: `VITE_JUPITER_API_KEY`) |
 | CoinGecko API v3                                  | Market data           | None (rate-limited; TBD: whether a Pro key exists)        |
 | DexScreener API                                   | Price & change        | None (300 req/min)                                        |
@@ -102,12 +103,12 @@ flowchart LR
 
 | Item                         | Value                                                                                                                              |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Program ID                   | `2kdDnjHHLmHex8v5pk8XgB7ddFeiuBW4Yp5Ykx8JmBLd`                                                                                     |
-| Framework                    | Anchor 0.29                                                                                                                        |
-| Network                      | Solana Devnet                                                                                                                      |
-| Instructions                 | `initializeStrategy`, `depositSol`, `withdrawSol` (withdrawSol is experimental)                                                    |
-| PDA Seeds                    | `["strategy", owner, name]` / `["position", strategy, user]` / `["vault_sol", strategy]`                                           |
-| Account Structure (Strategy) | owner, name, strategyType (u8), targetWeights (vec u16, fixed 10 elements), numTokens, isActive, tvl, feesCollected, lastRebalance |
+| axis-vault Program ID        | `Agae3WetHx7J9CE7nP927ekzAeegSKE1KfkZDMYLDGHX` (IDL v1.1.0)                                                                          |
+| pfda-amm-3 Program ID        | `3SBbfZgzAHyaijxbUbxBLt89aX6Z2d4ptL5PH6pzMazV`                                                                                       |
+| Framework                    | Anchor                                                                                                                               |
+| Network                      | Solana Mainnet                                                                                                                       |
+| axis-vault Instructions      | `CreateEtf`, `Deposit` (Jupiter SOL→basket), `Withdraw` (basket→SOL via Jupiter), management ops                                     |
+| axis-vault PDA seeds         | `["etf_state", owner, name]` / `["etf_mint", etf_state]` / per-leg vault token accounts                                              |
 
 ### Key npm Dependencies
 
@@ -129,10 +130,6 @@ flowchart LR
 
 ## TBD / Open Questions
 
-- Location of the backend (axis-api) source code / repository
 - axis-api authentication mechanism (currently called without auth headers from the frontend)
-- Location of the Kagemusha on-chain program source code
-- On-chain implementation status of `withdrawSol` (frontend comments indicate it may not be implemented yet)
 - Plans for Privy Auth integration (currently commented out in App.tsx)
-- Mainnet migration plan (currently hardcoded to Devnet)
 - Whether a CoinGecko Pro API key exists

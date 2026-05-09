@@ -2,7 +2,7 @@
 
 ## Backend REST API (api.ts → axis-api)
 
-Base URL: `https://axis-api.yusukekikuta-05.workers.dev` (overridable via env `VITE_API_URL`)
+Base URL: `https://axis-api-mainnet.yusukekikuta-05.workers.dev` (overridable via env `VITE_API_URL`)
 
 ### Request Flow
 
@@ -33,7 +33,7 @@ sequenceDiagram
 
 | Method | Endpoint                                                 | Description            | Request Body                                                                                                       | Response |
 | ------ | -------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------ | -------- |
-| POST   | `/strategies`                                            | Create strategy        | `{ owner_pubkey, name, ticker, description?, type, tokens: [{symbol, mint, weight, logoURI?}], address, config? }` | TBD      |
+| POST   | `/strategies`                                            | Create strategy        | `{ owner_pubkey, name, ticker, description?, type, tokens: [{symbol, mint, weight, logoURI?}], address, mint_address?, config? }` (token weights must sum to 100) | TBD      |
 | GET    | `/strategies/{pubkey}`                                   | List user's strategies | —                                                                                                                  | TBD      |
 | GET    | `/strategies/{id}/chart?period={7d}&type={line\|candle}` | Strategy chart data    | query: period, type                                                                                                | TBD      |
 | POST   | `/strategies/{id}/watchlist`                             | Toggle watchlist       | `{ userPubkey }`                                                                                                   | TBD      |
@@ -54,120 +54,38 @@ sequenceDiagram
 | Method | Endpoint              | Description        | Request Body                     |
 | ------ | --------------------- | ------------------ | -------------------------------- |
 | GET    | `/prepare-deployment` | Prepare deployment | —                                |
-| POST   | `/deploy`             | Execute deployment | `{ signature, ...strategyData }` |
+| POST   | `/deploy`             | Persist strategy metadata + optional AXIS reward airdrop (gated on `env.AXIS_MINT`). Token weights must sum to 100. | `{ signature, metadata: { ownerPubkey, name, ticker, type, tokens, tvl, address, mintAddress?, protocol? } }` |
 
 ### Other
 
 | Method | Endpoint                                      | Description             | Request Body                                                             |
 | ------ | --------------------------------------------- | ----------------------- | ------------------------------------------------------------------------ |
 | GET    | `/leaderboard?sort={points\|volume\|created}` | Leaderboard             | query: sort                                                              |
-| GET    | `/vaults`                                     | Vault list              | —                                                                        |
 | POST   | `/upload/image`                               | Image upload            | FormData: `{ image: File, wallet_address, type: 'profile'\|'strategy' }` |
 | GET    | `/upload/image/{key}`                         | Image retrieval (proxy) | —                                                                        |
 | POST   | `/analyze`                                    | AI strategy analysis    | `{ directive, tags: string[], customInput? }`                            |
 | POST   | `/art/generate`                               | Strategy art generation | `{ tokens: string[], strategyType, walletAddress }`                      |
-| POST   | `/claim`                                      | Faucet (get Devnet SOL) | `{ wallet_address }`                                                     |
+| POST   | `/claim`                                      | Faucet (admin-funded mainnet SOL) | `{ wallet_address }`                                           |
 
 > **Note**: Many response formats are marked "TBD" — verify exact types against the backend source.
 
 ---
 
-## On-Chain Interface (kagemusha.ts → Solana Program)
+## On-Chain Interface (Solana Mainnet)
 
-Program ID: `2kdDnjHHLmHex8v5pk8XgB7ddFeiuBW4Yp5Ykx8JmBLd`
+Two programs are in active use:
 
-### Strategy Creation Flow
+| Program     | ID                                              | Purpose                                                                  |
+| ----------- | ----------------------------------------------- | ------------------------------------------------------------------------ |
+| axis-vault  | `Agae3WetHx7J9CE7nP927ekzAeegSKE1KfkZDMYLDGHX`  | ETF program (IDL v1.1.0) — CreateEtf, Deposit, Withdraw via Jupiter      |
+| pfda-amm-3  | `3SBbfZgzAHyaijxbUbxBLt89aX6Z2d4ptL5PH6pzMazV`  | Pure-Fee Dynamic AMM pool program. Override via `VITE_PFDA_AMM3_PROGRAM_ID` |
 
-```mermaid
-sequenceDiagram
-    participant User as User Wallet
-    participant FE as kagemusha.ts
-    participant RPC as Solana Devnet
+The legacy `kagemusha` program (`2kdDnj…`) is removed — its module, IDL, and call sites have been deleted.
 
-    User->>FE: initializeStrategy(name, type, weights)
-    FE->>FE: Derive PDA ["strategy", owner, name]
-    FE->>FE: Build Anchor transaction
-    FE->>User: Request signature
-    User-->>FE: Signed transaction
-    FE->>RPC: sendRawTransaction
-    RPC-->>FE: Signature
-    FE->>RPC: confirmTransaction
-    RPC-->>FE: Confirmed
-    FE-->>User: { signature, strategyPubkey }
-```
+### IDL & client
 
-### Deposit Flow
-
-```mermaid
-sequenceDiagram
-    participant User as User Wallet
-    participant FE as kagemusha.ts
-    participant RPC as Solana Devnet
-
-    User->>FE: depositSol(strategyPubkey, amountSOL)
-    FE->>FE: Derive PDAs<br/>["position", strategy, user]<br/>["vault_sol", strategy]
-    FE->>FE: Convert SOL → lamports
-    FE->>User: Request signature
-    User-->>FE: Signed transaction
-    FE->>RPC: sendRawTransaction + confirm
-    RPC-->>FE: Signature
-```
-
-### Instructions
-
-#### `initializeStrategy`
-
-```
-Accounts:
-  strategy      (mut, PDA: ["strategy", owner, name])
-  owner         (mut, signer)
-  systemProgram
-
-Args:
-  name: string
-  strategyType: u8           // 0=AGGRESSIVE, 1=TBD, 2=BALANCED
-  targetWeights: Vec<u16>    // Fixed 10 elements, per-token weight (sum = 10000 = 100%)
-```
-
-#### `depositSol`
-
-```
-Accounts:
-  strategy      (mut)
-  position      (mut, PDA: ["position", strategy, user])
-  user          (mut, signer)
-  vaultSol      (mut, PDA: ["vault_sol", strategy])
-  systemProgram
-
-Args:
-  amount: u64    // lamports
-```
-
-#### `withdrawSol` (experimental — may not be implemented on-chain)
-
-```
-Accounts: Same as depositSol
-Args:
-  amount: u64    // lamports
-```
-
-### Account Structure
-
-#### Strategy
-
-```rust
-pub struct Strategy {
-    owner: Pubkey,
-    name: String,
-    strategy_type: u8,
-    target_weights: Vec<u16>,   // Fixed 10 elements
-    num_tokens: u8,
-    is_active: bool,
-    tvl: u64,                   // lamports
-    fees_collected: u64,
-    last_rebalance: i64,        // Unix timestamp
-}
-```
+- axis-vault IDL: `src/idl/axis_vault.json`
+- axis-vault client: `src/protocol/axis-vault/` (pda, ix, tx, queries, deposit/withdraw flows)
 
 ---
 

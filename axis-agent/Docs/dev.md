@@ -25,7 +25,7 @@ pnpm dev
 ```
 
 Starts the Vite dev server with HMR (Hot Module Replacement).
-Connecting a wallet extension in the browser will connect to Solana Devnet.
+Connecting a wallet extension in the browser will connect to Solana Mainnet.
 
 ## Build
 
@@ -104,9 +104,11 @@ If token data appears stale or incorrect:
 
 ### On-Chain
 
-- Network is hardcoded to Devnet in `Providers.tsx`
-- Transactions can be inspected on Solana Explorer (Devnet)
-- Program ID: `2kdDnjHHLmHex8v5pk8XgB7ddFeiuBW4Yp5Ykx8JmBLd`
+- Network is Solana Mainnet (configured in `Providers.tsx`)
+- Transactions can be inspected on Solana Explorer (mainnet-beta)
+- axis-vault program: `Agae3WetHx7J9CE7nP927ekzAeegSKE1KfkZDMYLDGHX`
+- pfda-amm-3 program: `3SBbfZgzAHyaijxbUbxBLt89aX6Z2d4ptL5PH6pzMazV`
+- Override program IDs via `VITE_AXIS_VAULT_PROGRAM_ID` / `VITE_PFDA_AMM3_PROGRAM_ID`
 
 ### Vite Configuration Notes
 
