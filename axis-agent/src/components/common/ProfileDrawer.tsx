@@ -344,7 +344,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: (
                     </div>
 
                     <div className="relative mb-6 overflow-hidden rounded-2xl border border-[#B8863F]/15 bg-[radial-gradient(circle_at_70%_20%,#221509,#0B0704_60%)] p-6 text-center shadow-lg">
-                      <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 mix-blend-overlay" />
+                      <div className="absolute inset-0 bg-[url('/noise.webp')] opacity-10 mix-blend-overlay" />
                       <div className="absolute -bottom-10 -right-10 h-32 w-32 rounded-full bg-[#B8863F]/8 blur-3xl" />
 
                       <Trophy className="absolute -right-4 -bottom-4 h-24 w-24 rotate-12 text-[#B8863F]/5 transition-transform duration-500 group-hover:rotate-6" />

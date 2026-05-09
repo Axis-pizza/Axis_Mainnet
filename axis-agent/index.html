@@ -35,6 +35,19 @@
     <meta name="twitter:title" content="Axis — Your Idea, Your ETF" />
     <meta name="twitter:description" content="Build and launch your own token ETF on Solana. Discover, create, and manage automated crypto strategies." />
     <meta name="twitter:image" content="https://axs.pizza/AxisOGP.jpg" />
+
+    <!-- Microsoft Clarity — only loads when VITE_CLARITY_PROJECT_ID is set at build time -->
+    <script type="text/javascript">
+      (function () {
+        var id = "%VITE_CLARITY_PROJECT_ID%";
+        if (!id || id.charAt(0) === "%") return;
+        (function (c, l, a, r, i, t, y) {
+          c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments); };
+          t = l.createElement(r); t.async = 1; t.src = "https://www.clarity.ms/tag/" + i;
+          y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+        })(window, document, "clarity", "script", id);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

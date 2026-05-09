@@ -328,7 +328,7 @@ export const ProfileView = ({ onStrategySelect }: ProfileViewProps) => {
       {/* Hero Section */}
       <div className="mb-6 relative overflow-hidden rounded-[24px] border border-[rgba(184,134,63,0.15)] bg-[#080503] shadow-2xl">
         <div className="absolute inset-0 z-0" style={FIXED_BG_STYLE} />
-        <div className="absolute inset-0 bg-[url('/noise.png')] opacity-10 mix-blend-overlay" />
+        <div className="absolute inset-0 bg-[url('/noise.webp')] opacity-10 mix-blend-overlay" />
         <div className="relative z-10 p-5">
 
           {/* Top row: Avatar + Info + Edit */}
