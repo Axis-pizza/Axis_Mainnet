@@ -37,21 +37,26 @@ import { CreatorConsole } from './CreatorConsole';
 import {
   buildJupiterSolSeedPlan,
   buildJupiterBasketSellPlan,
+  buildSwapRequest3,
   fetchEtfState,
   fetchVaultBalances,
   expectedWithdrawOutputs,
   findEtfState,
   humanizeJupiterError,
   AXIS_VAULT_PROGRAM_ID,
+  PFDA_AMM3_PROGRAM_ID,
   fetchPoolState3,
   getQuote,
   preflightDepositSol,
   runDepositSolFlow,
   runWithdrawSolFlow,
+  sendTx,
   sendVersionedTx,
   SOL_MINT,
   type EtfStateData,
+  type PoolState3Data,
 } from '../../protocol/axis-vault';
+import { usePendingTickets } from '../../hooks/usePendingTickets';
 
 // --- Types ---
 interface StrategyDetailViewProps {
@@ -193,6 +198,9 @@ interface InvestSheetProps {
   /// rather than reading the user's basket ATAs.
   etfStateData: EtfStateData | null;
   userEtfBalance: bigint;
+  /// Set when the strategy is a PFMM (pfda-amm-3) batch auction without an
+  /// axis-vault ETF wrapper. BUY will route through SwapRequest+ticket flow.
+  isPfmmAuction?: boolean;
 }
 
 const InvestSheet = ({
@@ -206,6 +214,7 @@ const InvestSheet = ({
   basketBalances,
   etfStateData,
   userEtfBalance,
+  isPfmmAuction = false,
 }: InvestSheetProps) => {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
@@ -469,7 +478,9 @@ const InvestSheet = ({
                   <span>
                     {isSell
                       ? `Sell ${amount}% of basket → SOL via Jupiter`
-                      : `Buy ${strategy.name} basket with ${amount} SOL via Jupiter`}
+                      : isPfmmAuction
+                        ? `Place ${amount} SOL into ${strategy.name} batch auction (~16s settle)`
+                        : `Buy ${strategy.name} basket with ${amount} SOL via Jupiter`}
                   </span>
                 </div>
                 {isSell && (
@@ -561,8 +572,12 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const [isCreatorConsoleOpen, setIsCreatorConsoleOpen] = useState(false);
   // PFMM pool runtime state — `paused` here is what the creator toggled via
   // ixSetPaused3. We block Trade when paused so the swap UI matches the
-  // strategy's intent.
+  // strategy's intent. Full pool data is needed for the SwapRequest flow
+  // (vaults + on-chain mint order + currentBatchId), so we keep the whole
+  // PoolState3Data alongside the paused flag.
   const [poolPaused, setPoolPaused] = useState(false);
+  const [poolState, setPoolState] = useState<PoolState3Data | null>(null);
+  const { addTicket } = usePendingTickets();
   // axis-vault ETF state. Present = strategy was created via axis-vault and
   // user deposit/withdraw mints/burns ETF tokens. Absent = legacy strategy,
   // fall back to Jupiter-only basket buy/sell (basket tokens stay in user wallet).
@@ -692,9 +707,15 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
       try {
         const pubkey = new PublicKey(strategyAddress);
         const data = await fetchPoolState3(connection, pubkey);
-        if (!cancelled) setPoolPaused(Boolean(data?.paused));
+        if (!cancelled) {
+          setPoolPaused(Boolean(data?.paused));
+          setPoolState(data);
+        }
       } catch {
-        if (!cancelled) setPoolPaused(false);
+        if (!cancelled) {
+          setPoolPaused(false);
+          setPoolState(null);
+        }
       }
     })();
     return () => {
@@ -725,7 +746,9 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   // PFMM keeps basket tokens in the user's wallet (no per-user vault account),
   // so getUserPosition always reports 0 — surface basket-token presence instead
   // so the bottom bar isn't permanently "0.0000 SOL" for active PFMM users.
-  const isPfmm = strategy?.config?.protocol === 'pfda-amm-3';
+  const isPfmm =
+    strategy?.config?.protocol === 'pfda-amm-3' ||
+    (strategy as Strategy & { protocol?: string })?.protocol === 'pfda-amm-3';
   const heldTokenCount = basketBalances.filter((b) => b > 0n).length;
   const basketSize = basketMints?.length ?? 0;
 
@@ -813,6 +836,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     if (!basketMints) return showToast('Strategy basket not loaded', 'error');
 
     const useAxisVault = etfStateData !== null && etfStatePda !== null;
+    const isPfmmStrategy = isPfmm;
     // axis-vault deposit/withdraw is independent of the PFMM pool — only block
     // when the relevant program's own pause flag is set.
     if (useAxisVault && etfStateData!.paused) {
@@ -820,6 +844,12 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     }
     if (!useAxisVault && poolPaused) {
       return showToast('Strategy is paused by the creator', 'error');
+    }
+    if (!useAxisVault && isPfmmStrategy && mode === 'SELL') {
+      return showToast(
+        'PFMM SELL flow ships next — for now, withdraw via the on-chain pool',
+        'info',
+      );
     }
     setInvestStatus('SIGNING');
     try {
@@ -875,7 +905,80 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
             },
           });
           sig = result.sigs[result.sigs.length - 1];
+        } else if (isPfmmStrategy) {
+          // PFMM batch-auction entry: buy mint[0] via Jupiter, then submit
+          // a SwapRequest 0→1 so the user's position settles via the
+          // protocol's auction. PendingTicketBanner picks up the ticket
+          // (saved below) and runs ClearBatch + Claim once the window
+          // closes.
+          if (!poolState) {
+            throw new Error('Pool data not loaded yet — try again in a moment');
+          }
+          const inMint = poolState.tokenMints[0];
+          const outIdx = 1;
+          const outMint = poolState.tokenMints[outIdx];
+
+          // Step 1: SOL → input mint via Jupiter (single leg).
+          setInvestStatus('CONFIRMING');
+          const seedPlan = await buildJupiterSolSeedPlan({
+            conn: connection,
+            user: wallet.publicKey,
+            outputMints: [inMint],
+            weights: [10_000],
+            solIn,
+            slippageBps: 50,
+            maxAccounts: 14,
+            closeWsolAtEnd: true,
+          });
+          const seedSig = await sendVersionedTx(connection, axisWallet, seedPlan.versionedTx);
+
+          // Step 2: read the freshly-funded input ATA balance, then submit
+          // the SwapRequest. We use confirmed commitment so the balance
+          // read reflects the just-sent Jupiter swap.
+          const userInAta = getAssociatedTokenAddressSync(inMint, wallet.publicKey);
+          let amountIn = 0n;
+          try {
+            const bal = await connection.getTokenAccountBalance(userInAta, 'confirmed');
+            amountIn = BigInt(bal.value.amount);
+          } catch {
+            // ATA may not yet show — fall back to the Jupiter expected out.
+            amountIn = seedPlan.legs[0].expectedOut;
+          }
+          if (amountIn === 0n) {
+            throw new Error('Jupiter swap settled but no input balance — try again');
+          }
+          const swap = buildSwapRequest3({
+            programId: PFDA_AMM3_PROGRAM_ID,
+            user: wallet.publicKey,
+            pool: poolState,
+            inIdx: 0,
+            outIdx,
+            amountIn,
+          });
+          setInvestStatus('PROCESSING');
+          sig = await sendTx(connection, axisWallet, swap.ixs);
+
+          // Persist ticket so the global banner can crank ClearBatch +
+          // Claim when the window closes — even if the user navigates away.
+          addTicket({
+            pool: poolState.pool.toBase58(),
+            strategyId: strategy.id,
+            strategyName: strategy.name || strategy.ticker || 'Strategy',
+            batchId: swap.batchId.toString(),
+            ticket: swap.ticket.toBase58(),
+            windowEndSlot: swap.windowEndSlot.toString(),
+            user: wallet.publicKey.toBase58(),
+            outMint: outMint.toBase58(),
+            outIdx,
+            inMint: inMint.toBase58(),
+            amountInUi: amountSol,
+            submittedAt: Date.now(),
+          });
+          if (import.meta.env.DEV) console.info('[pfmm] seed sig', seedSig);
         } else {
+          // Unknown legacy: buy basket via Jupiter, basket sits in the
+          // user's wallet. Used when the strategy predates both axis-vault
+          // and the PFMM pool routing.
           const plan = await buildJupiterSolSeedPlan({
             conn: connection,
             user: wallet.publicKey,
@@ -905,7 +1008,9 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         showToast(
           useAxisVault
             ? `Minted ETF for ${amountSol} SOL`
-            : `Bought basket for ${amountSol} SOL`,
+            : isPfmmStrategy
+              ? `Order placed — settlement in ~16s. The banner will claim it.`
+              : `Bought basket for ${amountSol} SOL`,
           'success',
         );
       } else {
@@ -1288,6 +1393,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         basketBalances={basketBalances}
         etfStateData={etfStateData}
         userEtfBalance={userEtfBalance}
+        isPfmmAuction={isPfmm && etfStateData === null && poolState !== null}
       />
 
       <CreatorConsole

@@ -44,6 +44,7 @@ interface DiscoveredStrategy {
   creatorPfpUrl?: string | null;
   mintAddress?: string;
   vaultAddress?: string;
+  config?: { protocol?: string };
 }
 
 interface ListDiscoverViewProps {
@@ -148,6 +149,14 @@ const TableRow = memo(({
           <span className="text-[13px] text-white/90 truncate">{strategy.name}</span>
           {strategy.ticker && (
             <span className={`text-[10px] shrink-0 ${tc.label}`}>${strategy.ticker}</span>
+          )}
+          {(strategy.config?.protocol === 'pfda-amm-3' || (strategy as DiscoveredStrategy & { protocol?: string }).protocol === 'pfda-amm-3') && (
+            <span
+              className="text-[9px] shrink-0 px-1.5 py-0.5 rounded-full uppercase tracking-wide bg-amber-900/30 text-amber-300 border border-amber-500/30"
+              title="Batch auction — orders settle every ~16s"
+            >
+              Auction
+            </span>
           )}
         </div>
         {/* Token icon stack + symbols */}
@@ -268,6 +277,7 @@ function enrichStrategy(
     creatorPfpUrl: userProfile?.avatar_url ? api.getProxyUrl(userProfile.avatar_url) : null,
     mintAddress: s.mintAddress || undefined,
     vaultAddress: s.vaultAddress || undefined,
+    config: s.config || (s.protocol ? { protocol: s.protocol } : undefined),
   };
 }
 

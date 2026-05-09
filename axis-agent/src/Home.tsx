@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useWallet, useConnection, useLoginModal } from './hooks/useWallet';
 import { FloatingNav, type ViewState } from './components/common/FloatingNav';
 import { TutorialOverlay } from './components/common/TutorialOverlay';
+import { PendingTicketBanner } from './components/common/PendingTicketBanner';
 import { DiscoverView } from './components/discover/DiscoverView';
 
 const KagemushaFlow = lazy(() =>
@@ -197,6 +198,8 @@ export default function Home() {
           />
         )}
       </AnimatePresence>
+
+      <PendingTicketBanner />
     </div>
   );
 }

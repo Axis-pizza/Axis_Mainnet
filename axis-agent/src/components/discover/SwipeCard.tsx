@@ -35,6 +35,9 @@ export interface StrategyCardData {
   vaultAddress?: string;
   // Performance data — populated by API once ready
   performanceData?: PerformancePoint[];
+  // Strategy config — surfaces protocol so we can show "Batch Auction"
+  // affordances on PFMM pools (no axis-vault ETF wrapper).
+  config?: { protocol?: string };
 }
 
 interface SwipeCardProps {
@@ -486,10 +489,20 @@ export const SwipeCardBody = ({
       <div className={`${c ? 'p-3 pb-1' : 'p-6 pb-2'} relative z-10`}>
         <div className={`flex justify-between items-start ${c ? 'mb-1.5' : 'mb-3'}`}>
           <div className="min-w-0 flex-1 pr-2">
-            <div
-              className={`inline-flex items-center rounded-full font-normal uppercase border ${c ? 'px-1.5 py-px text-[8px] mb-1' : 'px-2.5 py-0.5 text-[10px] mb-2'} ${typeColors[strategy.type] || typeColors.BALANCED}`}
-            >
-              {strategy.type}
+            <div className={`flex items-center gap-1.5 ${c ? 'mb-1' : 'mb-2'}`}>
+              <div
+                className={`inline-flex items-center rounded-full font-normal uppercase border ${c ? 'px-1.5 py-px text-[8px]' : 'px-2.5 py-0.5 text-[10px]'} ${typeColors[strategy.type] || typeColors.BALANCED}`}
+              >
+                {strategy.type}
+              </div>
+              {(strategy.config?.protocol === 'pfda-amm-3' || (strategy as StrategyCardData & { protocol?: string }).protocol === 'pfda-amm-3') && (
+                <div
+                  className={`inline-flex items-center rounded-full font-normal uppercase border border-amber-500/40 bg-amber-900/30 text-amber-300 ${c ? 'px-1.5 py-px text-[8px]' : 'px-2.5 py-0.5 text-[10px]'}`}
+                  title="Batch auction — orders settle every ~16s"
+                >
+                  Batch Auction
+                </div>
+              )}
             </div>
             <h2
               className={`font-normal text-white leading-tight tracking-tight truncate ${c ? 'text-sm' : 'text-[26px] leading-none drop-shadow-md'}`}

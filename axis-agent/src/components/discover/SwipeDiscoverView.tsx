@@ -1145,9 +1145,17 @@ export const SwipeDiscoverView = ({
     //    detail page (the swipe sheet has no %-of-basket UI).
     // Strategies that match neither are unsupported and surface a toast.
     const useAxisVault = investEtfState !== null && investEtfData !== null;
-    const isPfmm = investTarget?.config?.protocol === 'pfda-amm-3';
-    if (!useAxisVault && isPfmm && mode === 'SELL') {
-      showToast('Open the strategy page to manage your PFMM position', 'info');
+    const isPfmm =
+      investTarget?.config?.protocol === 'pfda-amm-3' ||
+      investTarget?.protocol === 'pfda-amm-3';
+    // PFMM (batch auction) strategies without an axis-vault ETF can't be
+    // bought from the swipe sheet — the basket trade settles asynchronously
+    // through a batch window, which the swipe quick-buy can't represent.
+    // Open the detail page where we run the full ticket → claim flow.
+    if (!useAxisVault && isPfmm) {
+      showToast('Batch auction strategy — open the detail page to trade', 'info');
+      setIsInvestOpen(false);
+      onStrategySelect(investTarget);
       return;
     }
 

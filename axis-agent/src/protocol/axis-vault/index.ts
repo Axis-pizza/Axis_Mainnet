@@ -167,3 +167,19 @@ export type {
   WithdrawFeesPlan,
   WithdrawFeesPlanArgs,
 } from './pfmmWithdrawFeesPlan';
+export {
+  buildSwapRequest3,
+  buildClearBatch3,
+  buildClaim3,
+  checkTicketStatus,
+} from './pfmmTicket';
+export type {
+  PfmmTicketRecord,
+  BuildSwapRequestArgs,
+  BuildSwapRequestResult,
+  TicketStatus,
+  TicketStatusArgs,
+  BuildClearBatchArgs,
+  BuildClaimArgs,
+  BuildClaimResult,
+} from './pfmmTicket';

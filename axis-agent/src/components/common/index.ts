@@ -5,3 +5,4 @@ export { PizzaChart } from './PizzaChart';
 export { FloatingNav } from './FloatingNav';
 export { ImageUpload } from './ImageUpload';
 export { TierBadge } from './TierBadge';
+export { PendingTicketBanner } from './PendingTicketBanner';

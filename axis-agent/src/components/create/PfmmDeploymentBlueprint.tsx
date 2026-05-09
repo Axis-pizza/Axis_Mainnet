@@ -52,6 +52,11 @@ import {
   truncatePubkey,
   type PoolState3Data,
 } from '../../protocol/axis-vault';
+import {
+  useDeploymentResume,
+  type DeployStepId,
+} from '../../hooks/useDeploymentResume';
+import { DeploymentStepList } from './DeploymentStepList';
 
 interface PfmmDeploymentBlueprintProps {
   strategyName: string;
@@ -162,9 +167,20 @@ export const PfmmDeploymentBlueprint = ({
   const [pool, setPool] = useState<PoolState3Data | null>(null);
   const [poolMissing, setPoolMissing] = useState<boolean>(false);
   const [log, setLog] = useState<string[]>([]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [pendingVaults, setPendingVaults] = useState<
     [PublicKey, PublicKey, PublicKey] | null
   >(null);
+  const [activeStep, setActiveStep] = useState<DeployStepId | null>(null);
+
+  // Persist per-strategy deploy progress so a refresh, signing rejection, or
+  // mid-flow error doesn't lose the user's place. The resume hook is keyed on
+  // (owner, strategyName) which is also the EtfState PDA seed — so reopening
+  // the same draft picks up exactly where it left off.
+  const resume = useDeploymentResume({
+    owner: wallet.publicKey?.toBase58(),
+    strategyName,
+  });
 
   const isBusy =
     stage === 'createEtf' ||
@@ -240,13 +256,18 @@ export const PfmmDeploymentBlueprint = ({
 
   async function openModal() {
     if (mintStrings.length !== 3) {
-      showToast('Exactly 3 tokens required for the PFMM batch auction', 'error');
+      showToast('Pick exactly 3 tokens to launch a batch-auction strategy', 'error');
       return;
     }
     setIsModalOpen(true);
     setLog([]);
-    setStage('idle');
-    setDeployStep('');
+    // Don't reset to 'idle' if a previous attempt errored — we want the
+    // step list to keep showing the failed step in red until the user
+    // clicks "Resume from here".
+    if (stage !== 'err') {
+      setStage('idle');
+      setDeployStep('');
+    }
     if (wallet.publicKey) {
       try {
         const lamports = await connection.getBalance(wallet.publicKey);
@@ -373,44 +394,64 @@ export const PfmmDeploymentBlueprint = ({
         strategyName,
       );
       try {
-        await fetchEtfState(connection, etfStatePda);
+        const data = await fetchEtfState(connection, etfStatePda);
         pushLog(`ETF already exists at ${truncatePubkey(etfStatePda.toBase58())} — skipping CreateEtf`);
+        resume.setAddresses({
+          etfStatePda: etfStatePda.toBase58(),
+          etfMint: data.etfMint.toBase58(),
+        });
+        resume.updateStep('createEtf', { status: 'done' });
       } catch {
+        setActiveStep('createEtf');
         setStage('createEtf');
         setDeployStep('Creating ETF on axis-vault…');
-        const etfMintBundle = await buildBareMintAccountIxs(connection, wallet.publicKey);
-        const vaultBundle = await buildBareTokenAccountIxs(
-          connection,
-          wallet.publicKey,
-          basketMintsForEtf.length,
-        );
-        const createIx = ixCreateEtf({
-          programId: AXIS_VAULT_PROGRAM_ID,
-          payer: wallet.publicKey,
-          etfState: etfStatePda,
-          etfMint: etfMintBundle.pubkey,
-          treasury: MAINNET_PROTOCOL_TREASURY,
-          basketMints: basketMintsForEtf,
-          vaults: vaultBundle.pubkeys,
-          weightsBps: basketWeightsBpsForEtf,
-          ticker: safeSymbol,
-          name: strategyName,
-          uri: '',
-        });
-        const createSig = await sendTx(
-          connection,
-          axisWallet,
-          [...etfMintBundle.ixs, ...vaultBundle.ixs, createIx],
-          [etfMintBundle.signer, ...vaultBundle.signers],
-        );
-        lastSig = createSig;
-        createdEtfMint = etfMintBundle.pubkey;
-        createdEtfVaults = vaultBundle.pubkeys;
-        pushLog(
-          `✓ create_etf "${strategyName}" (${basketMintsForEtf.length} legs): ${createSig.slice(0, 12)}…  → ${explorerTx(createSig, config.explorerCluster)}`,
-        );
-        pushLog(`  ETF state: ${etfStatePda.toBase58()}`);
-        pushLog(`  ETF mint:  ${etfMintBundle.pubkey.toBase58()}`);
+        resume.updateStep('createEtf', { status: 'running' });
+        try {
+          const etfMintBundle = await buildBareMintAccountIxs(connection, wallet.publicKey);
+          const vaultBundle = await buildBareTokenAccountIxs(
+            connection,
+            wallet.publicKey,
+            basketMintsForEtf.length,
+          );
+          const createIx = ixCreateEtf({
+            programId: AXIS_VAULT_PROGRAM_ID,
+            payer: wallet.publicKey,
+            etfState: etfStatePda,
+            etfMint: etfMintBundle.pubkey,
+            treasury: MAINNET_PROTOCOL_TREASURY,
+            basketMints: basketMintsForEtf,
+            vaults: vaultBundle.pubkeys,
+            weightsBps: basketWeightsBpsForEtf,
+            ticker: safeSymbol,
+            name: strategyName,
+            uri: '',
+          });
+          const createSig = await sendTx(
+            connection,
+            axisWallet,
+            [...etfMintBundle.ixs, ...vaultBundle.ixs, createIx],
+            [etfMintBundle.signer, ...vaultBundle.signers],
+          );
+          lastSig = createSig;
+          createdEtfMint = etfMintBundle.pubkey;
+          createdEtfVaults = vaultBundle.pubkeys;
+          pushLog(
+            `✓ create_etf "${strategyName}" (${basketMintsForEtf.length} legs): ${createSig.slice(0, 12)}…  → ${explorerTx(createSig, config.explorerCluster)}`,
+          );
+          pushLog(`  ETF state: ${etfStatePda.toBase58()}`);
+          pushLog(`  ETF mint:  ${etfMintBundle.pubkey.toBase58()}`);
+          resume.setAddresses({
+            etfStatePda: etfStatePda.toBase58(),
+            etfMint: etfMintBundle.pubkey.toBase58(),
+          });
+          resume.updateStep('createEtf', { status: 'done', sig: createSig });
+        } catch (e) {
+          resume.updateStep('createEtf', {
+            status: 'error',
+            error: e instanceof Error ? e.message : String(e),
+          });
+          throw e;
+        }
       }
 
       // Why: per-leg pre-flight inside buildJupiterSolSeedPlan reads
@@ -458,63 +499,79 @@ export const PfmmDeploymentBlueprint = ({
 
       // ── 1. InitPool (idempotent — skips if already exists) ───────────────
       if (!livePool) {
+        setActiveStep('initPool');
         setStage('init');
         setDeployStep('Initializing pool on-chain…');
-        const [queue0] = findQueue3(pfmmProgramId, poolPda, 0n);
-        const vaults = await buildBareTokenAccountIxs(connection, wallet.publicKey, 3);
-        setPendingVaults(vaults.pubkeys as [PublicKey, PublicKey, PublicKey]);
-        pushLog(`Pool: ${poolPda.toBase58()}`);
-        pushLog(`Queue0: ${queue0.toBase58()}`);
-        pushLog(
-          `Vaults: ${vaults.pubkeys.map((v) => truncatePubkey(v.toBase58())).join(', ')}`
-        );
+        resume.updateStep('initPool', { status: 'running' });
+        try {
+          const [queue0] = findQueue3(pfmmProgramId, poolPda, 0n);
+          const vaults = await buildBareTokenAccountIxs(connection, wallet.publicKey, 3);
+          setPendingVaults(vaults.pubkeys as [PublicKey, PublicKey, PublicKey]);
+          pushLog(`Pool: ${poolPda.toBase58()}`);
+          pushLog(`Queue0: ${queue0.toBase58()}`);
+          pushLog(
+            `Vaults: ${vaults.pubkeys.map((v) => truncatePubkey(v.toBase58())).join(', ')}`
+          );
 
-        const microWeights = percentToMicroWeights(safeTokens.map((t) => t.weight));
-        pushLog(`Weights (micro): ${microWeights.join('/')}`);
+          const microWeights = percentToMicroWeights(safeTokens.map((t) => t.weight));
+          pushLog(`Weights (micro): ${microWeights.join('/')}`);
 
-        const initIx = ixInitPool3({
-          programId: pfmmProgramId,
-          payer: wallet.publicKey,
-          pool: poolPda,
-          queue: queue0,
-          mints: m,
-          vaults: vaults.pubkeys as [PublicKey, PublicKey, PublicKey],
-          treasury: wallet.publicKey,
-          feeBps,
-          windowSlots: BigInt(windowSlots),
-          weights: microWeights,
-        });
-        const sig = await sendTx(connection, axisWallet, [...vaults.ixs, initIx], vaults.signers);
-        lastSig = sig;
-        pushLog(
-          `✓ init_pool: ${sig.slice(0, 12)}…  → ${explorerTx(sig, config.explorerCluster)}`
-        );
-        livePool = await refreshPool();
-        if (!livePool) {
-          // RPC didn't reflect yet — synthesise minimum state so AddLiquidity can run.
-          livePool = {
+          const initIx = ixInitPool3({
+            programId: pfmmProgramId,
+            payer: wallet.publicKey,
             pool: poolPda,
-            tokenMints: m,
+            queue: queue0,
+            mints: m,
             vaults: vaults.pubkeys as [PublicKey, PublicKey, PublicKey],
-            reserves: [0n, 0n, 0n],
-            weights: microWeights,
-            windowSlots: BigInt(windowSlots),
-            currentBatchId: 0n,
-            currentWindowEnd: 0n,
             treasury: wallet.publicKey,
-            authority: wallet.publicKey,
-            baseFeeBps: feeBps,
-            paused: false,
-          };
+            feeBps,
+            windowSlots: BigInt(windowSlots),
+            weights: microWeights,
+          });
+          const sig = await sendTx(connection, axisWallet, [...vaults.ixs, initIx], vaults.signers);
+          lastSig = sig;
+          pushLog(
+            `✓ init_pool: ${sig.slice(0, 12)}…  → ${explorerTx(sig, config.explorerCluster)}`
+          );
+          resume.setAddresses({ poolAddress: poolPda.toBase58() });
+          resume.updateStep('initPool', { status: 'done', sig });
+          livePool = await refreshPool();
+          if (!livePool) {
+            // RPC didn't reflect yet — synthesise minimum state so AddLiquidity can run.
+            livePool = {
+              pool: poolPda,
+              tokenMints: m,
+              vaults: vaults.pubkeys as [PublicKey, PublicKey, PublicKey],
+              reserves: [0n, 0n, 0n],
+              weights: microWeights,
+              windowSlots: BigInt(windowSlots),
+              currentBatchId: 0n,
+              currentWindowEnd: 0n,
+              treasury: wallet.publicKey,
+              authority: wallet.publicKey,
+              baseFeeBps: feeBps,
+              paused: false,
+            };
+          }
+        } catch (e) {
+          resume.updateStep('initPool', {
+            status: 'error',
+            error: e instanceof Error ? e.message : String(e),
+          });
+          throw e;
         }
       } else {
         pushLog(`Pool already initialized — skipping InitPool`);
+        resume.setAddresses({ poolAddress: poolPda.toBase58() });
+        resume.updateStep('initPool', { status: 'done' });
       }
 
       // ── 2. Optional Jupiter SOL → basket seed ────────────────────────────
       if (config.jupiterEnabled && seedLamports > 0n) {
+        setActiveStep('seed');
         setStage('seed');
         setDeployStep('Buying basket tokens via Jupiter…');
+        resume.updateStep('seed', { status: 'running' });
         const bpsWeights = percentToBpsWeights(safeTokens.map((t) => t.weight));
         pushLog(
           `Jupiter SOL → basket: ${seedSolNum} SOL split ${bpsWeights.join('/')} bps; slippage ${slippageBps} bps`
@@ -525,6 +582,7 @@ export const PfmmDeploymentBlueprint = ({
         // to per-leg sequential seeds — same accounting, just one signature
         // per output mint.
         let bundledFailed = false;
+        let seedSig: string | undefined;
         try {
           const plan = await buildJupiterSolSeedPlan({
             conn: connection,
@@ -544,6 +602,7 @@ export const PfmmDeploymentBlueprint = ({
           }
           const sig = await sendVersionedTx(connection, axisWallet, plan.versionedTx);
           lastSig = sig;
+          seedSig = sig;
           pushLog(
             `✓ jupiter_seed (basket): ${sig.slice(0, 12)}…  → ${explorerTx(sig, config.explorerCluster)}`
           );
@@ -553,48 +612,64 @@ export const PfmmDeploymentBlueprint = ({
             bundledFailed = true;
             pushLog(`⚠ bundled seed too large — splitting into per-leg txs`);
           } else {
+            resume.updateStep('seed', {
+              status: 'error',
+              error: msg,
+            });
             throw err;
           }
         }
 
         if (bundledFailed) {
-          // Per-leg seed: one tx per output mint. Lower maxAccounts on each
-          // so even crowded routes stay under the wire cap.
-          const legLamports = bpsWeights.map((w) =>
-            (seedLamports * BigInt(w)) / 10_000n
-          );
-          const legAssigned = legLamports.reduce((a, b) => a + b, 0n);
-          legLamports[legLamports.length - 1] += seedLamports - legAssigned;
+          try {
+            // Per-leg seed: one tx per output mint. Lower maxAccounts on each
+            // so even crowded routes stay under the wire cap.
+            const legLamports = bpsWeights.map((w) =>
+              (seedLamports * BigInt(w)) / 10_000n
+            );
+            const legAssigned = legLamports.reduce((a, b) => a + b, 0n);
+            legLamports[legLamports.length - 1] += seedLamports - legAssigned;
 
-          for (let i = 0; i < livePool.tokenMints.length; i++) {
-            const mint = livePool.tokenMints[i];
-            const lamports = legLamports[i];
-            if (lamports <= 0n) continue;
-            setDeployStep(
-              `Buying leg ${i + 1}/${livePool.tokenMints.length} via Jupiter (${truncatePubkey(mint.toBase58(), 4, 4)})…`
-            );
-            const legPlan = await buildJupiterSolSeedPlan({
-              conn: connection,
-              user: wallet.publicKey,
-              outputMints: [mint],
-              weights: [10_000],
-              solIn: lamports,
-              slippageBps,
-              maxAccounts: 14,
-              closeWsolAtEnd: i === livePool.tokenMints.length - 1,
+            for (let i = 0; i < livePool.tokenMints.length; i++) {
+              const mint = livePool.tokenMints[i];
+              const lamports = legLamports[i];
+              if (lamports <= 0n) continue;
+              setDeployStep(
+                `Buying leg ${i + 1}/${livePool.tokenMints.length} via Jupiter (${truncatePubkey(mint.toBase58(), 4, 4)})…`
+              );
+              const legPlan = await buildJupiterSolSeedPlan({
+                conn: connection,
+                user: wallet.publicKey,
+                outputMints: [mint],
+                weights: [10_000],
+                solIn: lamports,
+                slippageBps,
+                maxAccounts: 14,
+                closeWsolAtEnd: i === livePool.tokenMints.length - 1,
+              });
+              pushLog(
+                `  leg ${i}: ${(Number(lamports) / 1e9).toFixed(6)} SOL → ${truncatePubkey(mint.toBase58(), 4, 4)} · ${legPlan.legs[0].expectedOut.toString()} (min ${legPlan.legs[0].minOut.toString()}) · ${legPlan.legs[0].routeLabel}`
+              );
+              const sig = await sendVersionedTx(connection, axisWallet, legPlan.versionedTx);
+              lastSig = sig;
+              if (!seedSig) seedSig = sig;
+              pushLog(
+                `  ✓ leg ${i}: ${sig.slice(0, 12)}…  → ${explorerTx(sig, config.explorerCluster)}`
+              );
+            }
+          } catch (err) {
+            resume.updateStep('seed', {
+              status: 'error',
+              error: err instanceof Error ? err.message : String(err),
             });
-            pushLog(
-              `  leg ${i}: ${(Number(lamports) / 1e9).toFixed(6)} SOL → ${truncatePubkey(mint.toBase58(), 4, 4)} · ${legPlan.legs[0].expectedOut.toString()} (min ${legPlan.legs[0].minOut.toString()}) · ${legPlan.legs[0].routeLabel}`
-            );
-            const sig = await sendVersionedTx(connection, axisWallet, legPlan.versionedTx);
-            lastSig = sig;
-            pushLog(
-              `  ✓ leg ${i}: ${sig.slice(0, 12)}…  → ${explorerTx(sig, config.explorerCluster)}`
-            );
+            throw err;
           }
         }
+        resume.updateStep('seed', { status: 'done', sig: seedSig });
       } else if (!config.jupiterEnabled && seedLamports > 0n) {
         pushLog(`Jupiter disabled on this cluster — skipping SOL seed`);
+      } else {
+        resume.updateStep('seed', { status: 'done' });
       }
 
       // ── 3. AddLiquidity ──────────────────────────────────────────────────
@@ -604,40 +679,60 @@ export const PfmmDeploymentBlueprint = ({
       ) as [PublicKey, PublicKey, PublicKey];
 
       // Read fresh balances after the Jupiter seed (or use whatever's there).
+      setActiveStep('addLiquidity');
       setStage('addLiq');
       setDeployStep('Adding liquidity to the pool…');
-      const balances: bigint[] = [];
-      for (let i = 0; i < 3; i++) {
-        try {
-          const info2 = await connection.getTokenAccountBalance(userTokens[i], 'confirmed');
-          balances.push(BigInt(info2.value.amount));
-        } catch {
-          balances.push(0n);
+      resume.updateStep('addLiquidity', { status: 'running' });
+      try {
+        const balances: bigint[] = [];
+        for (let i = 0; i < 3; i++) {
+          try {
+            const info2 = await connection.getTokenAccountBalance(userTokens[i], 'confirmed');
+            balances.push(BigInt(info2.value.amount));
+          } catch {
+            balances.push(0n);
+          }
         }
-      }
-      pushLog(`Wallet balances (base units): ${balances.map((b) => b.toString()).join(' / ')}`);
+        pushLog(`Wallet balances (base units): ${balances.map((b) => b.toString()).join(' / ')}`);
 
-      const allZero = balances.every((b) => b === 0n);
-      if (allZero) {
-        pushLog(
-          'Skipping AddLiquidity — no basket balances yet. Buy basket tokens (Jupiter seed or transfer in) and re-run from this step.'
-        );
-      } else {
-        const amounts = balances as [bigint, bigint, bigint];
-        const ix = ixAddLiquidity3({
-          programId: pfmmProgramId,
-          payer: wallet.publicKey,
-          pool: poolPda,
-          vaults,
-          userTokens,
-          amounts,
-        });
-        const sig = await sendTx(connection, axisWallet, [ix]);
-        lastSig = sig;
-        pushLog(
-          `✓ add_liquidity: ${sig.slice(0, 12)}…  → ${explorerTx(sig, config.explorerCluster)}`
-        );
-        await refreshPool();
+        const allZero = balances.every((b) => b === 0n);
+        if (allZero) {
+          pushLog(
+            'Skipping AddLiquidity — no basket balances yet. Buy basket tokens (Jupiter seed or transfer in) and re-run from this step.'
+          );
+          resume.updateStep('addLiquidity', {
+            status: 'error',
+            error: 'No basket tokens to add. Increase the SOL seed amount or transfer tokens in.',
+          });
+          throw new Error('No basket balances to add as liquidity — increase the SOL seed amount.');
+        } else {
+          const amounts = balances as [bigint, bigint, bigint];
+          const ix = ixAddLiquidity3({
+            programId: pfmmProgramId,
+            payer: wallet.publicKey,
+            pool: poolPda,
+            vaults,
+            userTokens,
+            amounts,
+          });
+          const sig = await sendTx(connection, axisWallet, [ix]);
+          lastSig = sig;
+          pushLog(
+            `✓ add_liquidity: ${sig.slice(0, 12)}…  → ${explorerTx(sig, config.explorerCluster)}`
+          );
+          resume.updateStep('addLiquidity', { status: 'done', sig });
+          await refreshPool();
+        }
+      } catch (e) {
+        // updateStep already stamped error in the no-balance branch; only
+        // overwrite when it isn't already set so we keep the original cause.
+        if (resume.progress?.steps.addLiquidity.status !== 'error') {
+          resume.updateStep('addLiquidity', {
+            status: 'error',
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+        throw e;
       }
 
       // ── 4. Mint creator's first ETF position ─────────────────────────────
@@ -646,12 +741,15 @@ export const PfmmDeploymentBlueprint = ({
       // end. Resolve the etfMint + vaults from CreateEtf if it just ran, or
       // fall back to fetching the on-chain etfState if the ETF preexisted.
       if (config.jupiterEnabled && etfSeedLamports > 0n) {
+        setActiveStep('etfDeposit');
         setStage('etf-deposit');
         setDeployStep(`Step 4: depositing ${etfSeedSolNum} SOL to ETF for creator position…`);
+        resume.updateStep('etfDeposit', { status: 'running' });
         pushLog(
           `Step 4: depositing ${etfSeedSolNum} SOL to ETF for creator position`
         );
 
+        try {
         let etfMintForDeposit: PublicKey;
         let vaultsForDeposit: PublicKey[];
         if (createdEtfMint && createdEtfVaults) {
@@ -712,16 +810,32 @@ export const PfmmDeploymentBlueprint = ({
         pushLog(
           `✓ etf_deposit: ${etfSig.slice(0, 12)}…  → ${explorerTx(etfSig, config.explorerCluster)}`,
         );
+        resume.updateStep('etfDeposit', { status: 'done', sig: etfSig });
+        } catch (e) {
+          resume.updateStep('etfDeposit', {
+            status: 'error',
+            error: e instanceof Error ? e.message : String(e),
+          });
+          throw e;
+        }
       } else if (etfSeedLamports > 0n && !config.jupiterEnabled) {
         pushLog(`Jupiter disabled — skipping creator ETF deposit (no router available)`);
+        resume.updateStep('etfDeposit', { status: 'done' });
+      } else {
+        resume.updateStep('etfDeposit', { status: 'done' });
       }
 
       // ── 5. Persist backend metadata ──────────────────────────────────────
       const strategyId = await persistMetadata(poolPda.toBase58(), seedSolNum, lastSig);
       setStage('done');
+      setActiveStep(null);
       setDeployStep('Pool ready. Window auctions will clear automatically.');
       pushLog('DONE — pool live, metadata saved.');
-      showToast(`✅ ${safeSymbol} pool live`, 'success');
+      // The strategy is on-chain + indexed; we no longer need the local
+      // resume marker. Keep cached PDAs around briefly via the modal close
+      // handler so the user sees the green checks before we wipe state.
+      resume.clear();
+      showToast(`✅ ${safeSymbol} live`, 'success');
 
       if (onDeploySuccess) {
         onDeploySuccess(strategyId, seedSolNum, 'SOL');
@@ -730,11 +844,16 @@ export const PfmmDeploymentBlueprint = ({
       }
     } catch (e: unknown) {
       setStage('err');
+      setActiveStep(null);
       console.error('[PfmmDeploymentBlueprint] deploy failed:', e);
       const techMsg = e instanceof Error ? e.message : String(e);
       pushLog(`✗ ${techMsg}`);
       setDeployStep('');
       showToast(humanizeJupiterError(e), 'error');
+    } finally {
+      // The active highlight should disappear once the run finishes — the
+      // step list still shows the per-step status from the resume hook.
+      if (stage !== 'done') setActiveStep(null);
     }
   }
 
@@ -853,13 +972,25 @@ export const PfmmDeploymentBlueprint = ({
     <div className="max-w-2xl mx-auto animate-in slide-in-from-bottom-8 duration-500 text-white">
       <div className="text-center mb-6">
         <h2 className="text-2xl font-serif font-normal text-white/90 mb-1">
-          This is Your ETF
+          Review and launch
         </h2>
         <p className="text-white/40 text-sm">
-          Review your basket — deploys an axis-vault ETF (mint + vaults) and a PFMM
-          (pfda-amm-3) pool on Solana mainnet.
+          We'll create your ETF, set up the trading pool, and put your first
+          position in. Five quick steps — you sign each one in your wallet.
         </p>
       </div>
+
+      {resume.hasProgress && stage !== 'done' && (
+        <div className="mb-4 px-4 py-3 rounded-2xl bg-amber-900/15 border border-amber-700/30 text-[12px] text-amber-200 flex items-start gap-3">
+          <Sparkles className="w-4 h-4 text-amber-300 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <p className="font-normal">You have a draft for "{strategyName}".</p>
+            <p className="text-amber-200/70 mt-0.5">
+              Reopening the launcher will pick up where you left off. Already-done steps are skipped.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="backdrop-blur-sm bg-white/[0.04] border border-white/[0.08] rounded-2xl p-6 md:p-8 shadow-2xl relative overflow-hidden mb-6">
         <div className="relative border-b border-white/[0.08] pb-5 mb-6 flex justify-between items-start">
@@ -969,7 +1100,11 @@ export const PfmmDeploymentBlueprint = ({
           className="flex-1 py-4 bg-gradient-to-r from-[#6B4420] via-[#B8863F] to-[#E8C890] text-[#080503] font-normal rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-amber-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Wallet className="w-5 h-5" />
-          {safeTokens.length === 3 ? 'Deploy ETF + PFMM Pool' : `${safeTokens.length}/3 tokens required`}
+          {safeTokens.length === 3
+            ? resume.hasProgress
+              ? 'Resume launch'
+              : 'Launch your strategy'
+            : `${safeTokens.length}/3 tokens required`}
         </motion.button>
       </div>
 
@@ -994,32 +1129,30 @@ export const PfmmDeploymentBlueprint = ({
                 style={{ willChange: 'transform, opacity' }}
               >
                 <h3 className="text-xl font-normal text-[#F2E0C8] mb-1 flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-amber-400" /> ETF + PFMM Pool Deployment
+                  <Layers className="w-4 h-4 text-amber-400" /> Launch your strategy
                 </h3>
                 <p className="text-[11px] text-[#B89860] mb-4">
-                  axis-vault CreateEtf → PFMM init → Jupiter seed → AddLiquidity → creator
-                  ETF deposit. You receive ETF tokens at the end of the flow.
+                  Five wallet signatures. If something fails, your progress is saved —
+                  just reopen this and resume. You'll receive ETF tokens at the end.
                 </p>
 
-                {poolPda && (
+                <DeploymentStepList
+                  progress={resume.progress}
+                  activeStep={activeStep}
+                  explorerCluster={config.explorerCluster}
+                />
+
+                {poolPda && pool && (
                   <div className="mb-4 px-3 py-2.5 rounded-xl bg-amber-900/15 border border-amber-700/20 text-[11px]">
-                    <span className="text-[#B89860]">Pool PDA: </span>
+                    <span className="text-[#B89860]">Pool address: </span>
                     <a
                       href={explorerAddr(poolPda.toBase58(), config.explorerCluster)}
                       target="_blank"
                       rel="noreferrer"
                       className="font-mono text-amber-300 hover:text-amber-200 break-all"
                     >
-                      {poolPda.toBase58()}
+                      {truncatePubkey(poolPda.toBase58(), 6, 6)}
                     </a>
-                    <p className="mt-1 text-[#B89860]/70">
-                      Status:{' '}
-                      {pool
-                        ? `initialized · batch ${pool.currentBatchId.toString()} · weights ${pool.weights.join('/')}`
-                        : poolMissing
-                          ? 'will be created by InitPool'
-                          : 'checking…'}
-                    </p>
                   </div>
                 )}
 
@@ -1046,9 +1179,11 @@ export const PfmmDeploymentBlueprint = ({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-1 gap-3 mb-3">
                   <label className="flex flex-col text-xs">
-                    <span className="text-[#B89860] mb-1">SOL → basket (PFMM seed)</span>
+                    <span className="text-[#B89860] mb-1">
+                      How much SOL to put in the pool
+                    </span>
                     <input
                       type="number"
                       min="0"
@@ -1058,25 +1193,16 @@ export const PfmmDeploymentBlueprint = ({
                       disabled={isBusy}
                       className="w-full p-2.5 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-sm font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
                     />
-                  </label>
-                  <label className="flex flex-col text-xs">
-                    <span className="text-[#B89860] mb-1">Jupiter slippage (bps)</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="500"
-                      value={slippageBps}
-                      onChange={(e) => setSlippageBps(Number(e.target.value))}
-                      disabled={isBusy}
-                      className="w-full p-2.5 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-sm font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
-                    />
+                    <span className="text-[10px] text-[#B89860]/60 mt-1">
+                      We'll buy your basket tokens with this and seed the trading pool. Bigger seed = better trade pricing.
+                    </span>
                   </label>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 mb-3">
                   <label className="flex flex-col text-xs">
                     <span className="text-[#B89860] mb-1">
-                      Your ETF position (SOL) — mints ETF tokens to your wallet
+                      How much SOL for your own ETF position
                     </span>
                     <div className="flex gap-2">
                       <input
@@ -1097,13 +1223,11 @@ export const PfmmDeploymentBlueprint = ({
                         disabled={isBusy || computingEtfMin || safeTokens.length === 0}
                         className="px-3 py-2 bg-[#080503] border border-[rgba(184,134,63,0.3)] rounded-xl text-xs text-[#B89860] hover:border-[#B8863F] disabled:opacity-50 whitespace-nowrap"
                       >
-                        {computingEtfMin ? 'Computing…' : 'Compute min'}
+                        {computingEtfMin ? 'Checking…' : 'Auto'}
                       </button>
                     </div>
                     <span className="text-[10px] text-[#B89860]/60 mt-1">
-                      Step 4 deposits this on top of the PFMM seed so you receive ETF
-                      tokens immediately. The minimum depends on the basket — click
-                      "Compute min" to probe Jupiter and auto-fill.
+                      You'll receive ETF tokens for this amount. Tap "Auto" to use the smallest amount that works.
                     </span>
                     {etfMinHint && (
                       <span
@@ -1121,30 +1245,53 @@ export const PfmmDeploymentBlueprint = ({
                 </div>
 
                 {!pool && poolMissing && (
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <label className="flex flex-col text-xs">
-                      <span className="text-[#B89860] mb-1">Fee (bps)</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="10000"
-                        value={feeBps}
-                        onChange={(e) => setFeeBps(Number(e.target.value))}
-                        disabled={isBusy}
-                        className="w-full p-2.5 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-sm font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
-                      />
-                    </label>
-                    <label className="flex flex-col text-xs">
-                      <span className="text-[#B89860] mb-1">Window slots</span>
-                      <input
-                        type="number"
-                        min="1"
-                        value={windowSlots}
-                        onChange={(e) => setWindowSlots(Number(e.target.value))}
-                        disabled={isBusy}
-                        className="w-full p-2.5 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-sm font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
-                      />
-                    </label>
+                  <div className="mb-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvanced((v) => !v)}
+                      className="text-[10px] text-amber-400/70 hover:text-amber-300 underline"
+                    >
+                      {showAdvanced ? 'Hide advanced settings' : 'Show advanced settings'}
+                    </button>
+                    {showAdvanced && (
+                      <div className="grid grid-cols-3 gap-2 mt-2">
+                        <label className="flex flex-col text-[11px]">
+                          <span className="text-[#B89860] mb-1">Trade fee (bps)</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="10000"
+                            value={feeBps}
+                            onChange={(e) => setFeeBps(Number(e.target.value))}
+                            disabled={isBusy}
+                            className="w-full p-2 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg text-xs font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none"
+                          />
+                        </label>
+                        <label className="flex flex-col text-[11px]">
+                          <span className="text-[#B89860] mb-1">Auction window (slots)</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={windowSlots}
+                            onChange={(e) => setWindowSlots(Number(e.target.value))}
+                            disabled={isBusy}
+                            className="w-full p-2 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg text-xs font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none"
+                          />
+                        </label>
+                        <label className="flex flex-col text-[11px]">
+                          <span className="text-[#B89860] mb-1">Slippage (bps)</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="500"
+                            value={slippageBps}
+                            onChange={(e) => setSlippageBps(Number(e.target.value))}
+                            disabled={isBusy}
+                            className="w-full p-2 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg text-xs font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none"
+                          />
+                        </label>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1172,51 +1319,54 @@ export const PfmmDeploymentBlueprint = ({
                   ) : (
                     <Sparkles className="w-4 h-4" />
                   )}
-                  {pool
-                    ? 'Continue Flow (Seed + AddLiquidity + ETF Deposit)'
-                    : 'Run CreateEtf + InitPool + Seed + AddLiquidity + ETF Deposit'}
+                  {stage === 'err'
+                    ? 'Resume from here'
+                    : resume.hasProgress && pool
+                      ? 'Continue launch'
+                      : 'Launch strategy'}
                 </button>
 
-                {/* Manual stage controls — once the pool exists, surface clear/claim/swap. */}
+                {/* Manual + dev controls live behind "Advanced" so they
+                    don't distract creators during the normal flow. */}
                 {pool && (
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button
-                      onClick={clearBatch}
-                      disabled={isBusy}
-                      className="rounded-lg bg-rose-700/70 hover:bg-rose-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
-                    >
-                      {stage === 'clear' ? 'clearing…' : 'ClearBatch'}
-                    </button>
-                    <button
-                      onClick={claim}
-                      disabled={isBusy}
-                      className="rounded-lg bg-violet-700/70 hover:bg-violet-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
-                    >
-                      {stage === 'claim' ? 'claiming…' : 'Claim'}
-                    </button>
-                  </div>
-                )}
-
-                {pool && (
-                  <div className="mt-3 rounded-lg border border-amber-700/15 bg-amber-950/20 p-3 text-[11px]">
-                    <p className="font-medium text-amber-200 mb-1">Quick swap (test)</p>
-                    <p className="text-[#B89860] mb-2">
-                      Submit a 1-unit swap from idx 0 → idx 1 to verify the queue is wired up.
-                    </p>
-                    <button
-                      onClick={() => void swapInToOut(0, 1, 1)}
-                      disabled={isBusy}
-                      className="rounded bg-amber-600/80 hover:bg-amber-500 px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
-                    >
-                      {stage === 'swap' ? 'queueing…' : 'SwapRequest 0→1 (1 unit)'}
-                    </button>
-                  </div>
-                )}
-
-                {log.length > 0 && (
-                  <pre className="mt-4 max-h-48 overflow-auto rounded bg-black/60 p-3 text-[10px] text-amber-100/80 leading-relaxed">
-                    {log.join('\n')}
-                  </pre>
+                  <details className="mt-4 group">
+                    <summary className="text-[11px] text-amber-400/60 hover:text-amber-300 cursor-pointer select-none">
+                      Developer controls
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={clearBatch}
+                          disabled={isBusy}
+                          className="rounded-lg bg-rose-700/70 hover:bg-rose-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                        >
+                          {stage === 'clear' ? 'clearing…' : 'ClearBatch'}
+                        </button>
+                        <button
+                          onClick={claim}
+                          disabled={isBusy}
+                          className="rounded-lg bg-violet-700/70 hover:bg-violet-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                        >
+                          {stage === 'claim' ? 'claiming…' : 'Claim'}
+                        </button>
+                      </div>
+                      <div className="rounded-lg border border-amber-700/15 bg-amber-950/20 p-3 text-[11px]">
+                        <p className="font-medium text-amber-200 mb-1">Test swap</p>
+                        <button
+                          onClick={() => void swapInToOut(0, 1, 1)}
+                          disabled={isBusy}
+                          className="rounded bg-amber-600/80 hover:bg-amber-500 px-3 py-1.5 text-[11px] font-medium text-white disabled:opacity-50"
+                        >
+                          {stage === 'swap' ? 'queueing…' : 'SwapRequest 0→1 (1 unit)'}
+                        </button>
+                      </div>
+                      {log.length > 0 && (
+                        <pre className="max-h-48 overflow-auto rounded bg-black/60 p-3 text-[10px] text-amber-100/80 leading-relaxed">
+                          {log.join('\n')}
+                        </pre>
+                      )}
+                    </div>
+                  </details>
                 )}
 
                 {stage === 'done' && (
@@ -1227,7 +1377,7 @@ export const PfmmDeploymentBlueprint = ({
                     }}
                     className="mt-4 w-full py-3 rounded-xl bg-emerald-600/80 hover:bg-emerald-500 text-white text-sm font-medium"
                   >
-                    Close & continue
+                    Done — view your strategy
                   </button>
                 )}
               </motion.div>
