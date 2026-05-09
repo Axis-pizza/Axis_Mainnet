@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from '@tanstack/react-router';
 import ReactGA from 'react-ga4';
 
 export const AnalyticsTracker = () => {
@@ -9,7 +9,7 @@ export const AnalyticsTracker = () => {
     // URLが変わるたびにGA4へ通知
     ReactGA.send({
       hitType: 'pageview',
-      page: location.pathname + location.search,
+      page: location.pathname + location.searchStr,
     });
   }, [location]);
 

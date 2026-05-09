@@ -145,7 +145,7 @@ export const BugDrawer = ({ isOpen, onClose }: BugDrawerProps) => {
                       <div className="absolute inset-0 bg-orange-500 blur-md opacity-20 rounded-full" />
                       <div className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-orange-500/30">
                         <img
-                          src="/muse.png"
+                          src="/muse.webp"
                           alt="Founder"
                           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                         />

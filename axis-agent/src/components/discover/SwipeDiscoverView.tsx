@@ -1328,24 +1328,18 @@ export const SwipeDiscoverView = ({
           .catch(() => {});
       }
 
-      setTimeout(() => {
-        setInvestStatus('SUCCESS');
-        const targetName = investTarget?.name ? ` ${investTarget.name}` : ' vault';
-        showToast(
-          mode === 'BUY'
-            ? `Deposited ${parsedAmount} SOL into${targetName}`
-            : `Withdrew ${parsedAmount} SOL from vault`,
-          'success'
-        );
-        setTimeout(() => {
-          setIsInvestOpen(false);
-          setMatchedStrategy(null);
-          setTimeout(() => {
-            setInvestStatus('IDLE');
-            setInvestTarget(null);
-          }, 500);
-        }, 2000);
-      }, 1500);
+      setInvestStatus('SUCCESS');
+      const targetName = investTarget?.name ? ` ${investTarget.name}` : ' vault';
+      showToast(
+        mode === 'BUY'
+          ? `Deposited ${parsedAmount} SOL into${targetName}`
+          : `Withdrew ${parsedAmount} SOL from vault`,
+        'success'
+      );
+      setIsInvestOpen(false);
+      setMatchedStrategy(null);
+      setInvestStatus('IDLE');
+      setInvestTarget(null);
     } catch (e: unknown) {
       showToast(e instanceof Error ? e.message : 'Transaction Failed', 'error');
       setInvestStatus('ERROR');

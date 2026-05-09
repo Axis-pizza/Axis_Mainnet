@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Menu, X, BookOpen, FileText, Layers, LayoutGrid } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '@tanstack/react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SwipeDiscoverView } from './SwipeDiscoverView';
 import { ListDiscoverView } from './ListDiscoverView';
@@ -107,7 +107,7 @@ export const DiscoverView = ({ onStrategySelect, onOverlayChange, viewMode, onVi
                             className="flex items-center gap-3 px-4 py-3 text-sm text-white/80 hover:bg-white/5 hover:text-white transition-colors w-full text-left"
                             onClick={() => {
                               setIsMenuOpen(false);
-                              navigate(link.url);
+                              navigate({ to: '/terms' });
                             }}
                           >
                             <IconComponent size={16} />

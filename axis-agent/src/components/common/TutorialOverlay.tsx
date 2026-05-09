@@ -13,7 +13,8 @@ const SLIDES = [
     headline: 'The First\nOn-Chain\nIndex Fund.',
     sub: 'Built on Solana.',
     accentHex: '#E8883A',
-    videoSrc: '/1.mp4',
+    videoWebm: '/1.webm',
+    videoMp4: '/1.mp4',
     bgColor: '#3d1a00',
   },
   {
@@ -22,7 +23,8 @@ const SLIDES = [
     headline: 'Swipe to\nInvest.',
     sub: 'Browse community strategies like Tinder.',
     accentHex: '#3ABDE8',
-    videoSrc: '/2.mp4',
+    videoWebm: '/2.webm',
+    videoMp4: '/2.mp4',
     bgColor: '#00303d',
   },
   {
@@ -31,7 +33,8 @@ const SLIDES = [
     headline: 'Launch\nAny\nNarrative.',
     sub: 'Go live in seconds.',
     accentHex: '#A83AE8',
-    videoSrc: '/3.mp4',
+    videoWebm: '/3.webm',
+    videoMp4: '/3.mp4',
     bgColor: '#1f003d',
   },
   {
@@ -40,7 +43,8 @@ const SLIDES = [
     headline: 'MEV\nLosses →\nYour Yield.',
     sub: '350 users. 1,700 ETFs live.',
     accentHex: '#3AE88A',
-    videoSrc: '/4.mp4',
+    videoWebm: '/4.webm',
+    videoMp4: '/4.mp4',
     bgColor: '#003d1a',
   },
 ] as const;
@@ -51,6 +55,7 @@ export const TutorialOverlay = ({ onComplete, onConnectWallet }: TutorialOverlay
   const [current, setCurrent] = useState(0);
   const [videoReady, setVideoReady] = useState<boolean[]>(SLIDES.map(() => false));
   const touchStartX = useRef<number | null>(null);
+  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
   const slide = SLIDES[current];
   const isLast = current === SLIDES.length - 1;
@@ -72,6 +77,20 @@ export const TutorialOverlay = ({ onComplete, onConnectWallet }: TutorialOverlay
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goNext, goPrev, onComplete]);
+
+  // Only buffer/play the active slide; pause + bandwidth-free others.
+  useEffect(() => {
+    videoRefs.current.forEach((vid, i) => {
+      if (!vid) return;
+      if (i === current) {
+        vid.load();
+        const p = vid.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } else {
+        vid.pause();
+      }
+    });
+  }, [current]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -105,18 +124,19 @@ export const TutorialOverlay = ({ onComplete, onConnectWallet }: TutorialOverlay
         fontFamily: "'DM Serif Display', Georgia, serif",
       }}
     >
-      {/* Videos — all in DOM, opacity switch only */}
+      {/* Videos — all in DOM, opacity switch only. preload="none" so only the active slide spends bandwidth. */}
       {SLIDES.map((s, i) => (
         <video
           key={i}
-          src={s.videoSrc}
+          ref={(el) => { videoRefs.current[i] = el; }}
           muted
           loop
           playsInline
-          autoPlay
-          preload="auto"
+          preload={i === current ? 'auto' : 'none'}
+          autoPlay={i === current}
           onPlaying={() =>
             setVideoReady((prev) => {
+              if (prev[i]) return prev;
               const next = [...prev];
               next[i] = true;
               return next;
@@ -131,7 +151,10 @@ export const TutorialOverlay = ({ onComplete, onConnectWallet }: TutorialOverlay
             opacity: i === current && videoReady[i] ? 1 : 0,
             transition: 'opacity 0.6s ease',
           }}
-        />
+        >
+          <source src={s.videoWebm} type="video/webm" />
+          <source src={s.videoMp4} type="video/mp4" />
+        </video>
       ))}
 
       {/* Gradient overlay — テキスト可読性のため下部のみ暗く */}

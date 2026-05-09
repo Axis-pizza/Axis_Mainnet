@@ -994,10 +994,8 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         showToast(`Sold ${pct.toFixed(0)}% — ~${expectedSol.toFixed(4)} SOL out`, 'success');
       }
 
-      setTimeout(() => {
-        setIsInvestOpen(false);
-        setInvestStatus('IDLE');
-      }, 1500);
+      setIsInvestOpen(false);
+      setInvestStatus('IDLE');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Transaction Failed';
       showToast(msg.slice(0, 160), 'error');

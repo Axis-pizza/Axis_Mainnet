@@ -1,8 +1,8 @@
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from '@tanstack/react-router';
 import { ArrowLeft, ShieldAlert } from 'lucide-react';
 
 export const TermsPage = () => {
-  const navigate = useNavigate();
+  const router = useRouter();
 
   return (
     <div className="min-h-screen bg-[#030303] text-white font-sans selection:bg-amber-500/30">
@@ -10,7 +10,7 @@ export const TermsPage = () => {
       <div className="sticky top-0 z-50 bg-[#030303]/90 backdrop-blur-xl border-b border-white/5">
         <div className="max-w-3xl mx-auto px-6 py-4 flex items-center gap-4">
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => router.history.back()}
             className="p-2 rounded-full hover:bg-white/10 transition-colors"
           >
             <ArrowLeft size={20} className="text-white/70" />

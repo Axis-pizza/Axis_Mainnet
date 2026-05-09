@@ -205,7 +205,7 @@ export const InviteGate = ({ onGranted }: InviteGateProps) => {
         transition={{ delay: 0.15 }}
         className="absolute top-12 left-6 flex items-center gap-3"
       >
-        <img src="/logo.svg" alt="Axis" className="h-7 w-auto" />
+        <img src="/logo.webp" alt="Axis" className="h-7 w-auto" />
         <span
           className="text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 rounded-full"
           style={{

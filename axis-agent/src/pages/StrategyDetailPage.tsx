@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useRouter } from '@tanstack/react-router';
 import { useState, useEffect } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { useConnection } from '../hooks/useWallet';
@@ -8,8 +8,8 @@ import { api } from '../services/api'; // Fallback API
 import { Loader2 } from 'lucide-react';
 
 export const StrategyDetailPage = () => {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const { id } = useParams({ from: '/strategy/$id' });
+  const router = useRouter();
   const { connection } = useConnection();
 
   const [strategy, setStrategy] = useState<any>(null);
@@ -89,12 +89,12 @@ export const StrategyDetailPage = () => {
     return (
       <div className="w-full h-screen bg-[#080503] flex flex-col items-center justify-center text-white">
         <h2 className="text-xl font-normal mb-2">Strategy Not Found</h2>
-        <button onClick={() => navigate(-1)} className="text-[#B8863F] underline">
+        <button onClick={() => router.history.back()} className="text-[#B8863F] underline">
           Go Back
         </button>
       </div>
     );
   }
 
-  return <StrategyDetailView initialData={strategy} onBack={() => navigate(-1)} />;
+  return <StrategyDetailView initialData={strategy} onBack={() => router.history.back()} />;
 };

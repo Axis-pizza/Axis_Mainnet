@@ -1,4 +1,4 @@
-import { RouterProvider } from 'react-router-dom';
+import { RouterProvider } from '@tanstack/react-router';
 import router from './router';
 import { useEffect, useState } from 'react';
 import { ToastProvider } from './context/ToastContext';

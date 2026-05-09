@@ -29,7 +29,7 @@ export const Providers: FC<{ children: ReactNode }> = ({ children }) => {
           walletList: [...PRIVY_WALLET_LIST],
           theme: 'dark',
           accentColor: '#D97706',
-          logo: '/AxisLogoo.png',
+          logo: '/AxisLogoo.webp',
         },
         loginMethods: ['wallet'],
         embeddedWallets: {
