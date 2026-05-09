@@ -101,7 +101,10 @@ export async function createRegisteredUser(
     bio: bio ?? null,
     total_xp: 500,
     rank_tier: 'Novice',
+    pnl_percent: 0,
     last_checkin: 0,
+    total_invested_usd: 0,
+    created_at: Math.floor(Date.now() / 1000),
   } as any);
 }
 
