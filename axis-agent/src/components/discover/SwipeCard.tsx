@@ -403,9 +403,11 @@ export const PerformanceChart = ({
 export const SwipeCardBody = ({
   strategy,
   compact = false,
+  isTop = true,
 }: {
   strategy: StrategyCardData;
   compact?: boolean;
+  isTop?: boolean;
 }) => {
   const c = compact;
   const maxLogos = c ? 6 : 8;
@@ -425,6 +427,7 @@ export const SwipeCardBody = ({
   const isNewStrategy = ageSeconds < 86400;
 
   useEffect(() => {
+    if (!isTop) return;
     let cancelled = false;
     const apiBase = import.meta.env.VITE_API_URL || 'https://axis-api-mainnet.yusukekikuta-05.workers.dev';
 
@@ -464,7 +467,7 @@ export const SwipeCardBody = ({
     };
     loadAll();
     return () => { cancelled = true; };
-  }, [strategy.id]);
+  }, [strategy.id, isTop]);
 
   return (
     <div
@@ -844,7 +847,7 @@ export const SwipeCard = ({
       transition={{ type: 'spring', stiffness: 280, damping: 24 }}
     >
       {/* Card Body */}
-      <SwipeCardBody strategy={strategy} />
+      <SwipeCardBody strategy={strategy} isTop={isTop} />
 
       {/* Swipe Indicators (top card only) */}
       {isTop && (
