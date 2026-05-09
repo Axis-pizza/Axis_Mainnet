@@ -27,17 +27,11 @@ import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { JupiterService } from '../../services/jupiter';
 import {
-  depositSol,
-  withdrawSol,
-  solToLamports,
-  getUserPosition,
-  lamportsToSol,
-} from '../../protocol/kagemusha';
-import {
   AXIS_VAULT_PROGRAM_ID,
   buildJupiterSolSeedPlan,
   fetchEtfState,
   findEtfState,
+  humanizeJupiterError,
   preflightDepositSol,
   runDepositSolFlow,
   runWithdrawSolFlow,
@@ -370,8 +364,7 @@ interface InvestSheetProps {
   onConfirm: (amount: string, mode: 'BUY' | 'SELL') => Promise<void>;
   status: TransactionStatus;
   /// When true the strategy resolves to an axis-vault ETF and SELL is treated
-  /// as a percentage (0..100) of the user's ETF balance. When false the legacy
-  /// kagemusha vaultBalance lamports path is used.
+  /// as a percentage (0..100) of the user's ETF balance.
   useAxisVault: boolean;
   userEtfBalance: bigint;
 }
@@ -396,15 +389,6 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, useAxisVaul
       } catch {
         // non-fatal
       }
-      try {
-        const addr = strategy.address || strategy.vaultAddress;
-        if (addr) {
-          const pos = await getUserPosition(connection, new PublicKey(addr), publicKey);
-          if (pos) setVaultBalance(lamportsToSol(pos.lpShares));
-        }
-      } catch {
-        // no position
-      }
     };
     fetchBalances();
   }, [isOpen, publicKey, connection, strategy]);
@@ -416,8 +400,7 @@ const InvestSheet = ({ isOpen, onClose, strategy, onConfirm, status, useAxisVaul
     }
   }, [isOpen]);
 
-  // axis-vault SELL is a percentage of the user's ETF balance (0..100); legacy
-  // SELL is a SOL amount drawn from the user's kagemusha vault position.
+  // axis-vault SELL is a percentage of the user's ETF balance (0..100).
   const isSellAxis = mode === 'SELL' && useAxisVault;
   const sellMaxPercent = isSellAxis && userEtfBalance > 0n ? 100 : 0;
   const currentBalance = mode === 'BUY'
@@ -779,8 +762,7 @@ export const SwipeDiscoverView = ({
   const [investStatus, setInvestStatus] = useState<TransactionStatus>('IDLE');
   const [investTarget, setInvestTarget] = useState<any | null>(null);
   // axis-vault probe for the active investTarget. When non-null deposit/withdraw
-  // routes through axis-vault (Deposit/Withdraw) instead of the legacy Jupiter/
-  // kagemusha paths.
+  // routes through axis-vault; otherwise the PFMM Jupiter path handles it.
   const [investEtfState, setInvestEtfState] = useState<PublicKey | null>(null);
   const [investEtfData, setInvestEtfData] = useState<EtfStateData | null>(null);
   const [investUserEtfBalance, setInvestUserEtfBalance] = useState<bigint>(0n);
@@ -831,7 +813,7 @@ export const SwipeDiscoverView = ({
     return () => {
       cancelled = true;
     };
-  }, [investTarget, connection, wallet.publicKey, investStatus]);
+  }, [investTarget, connection, wallet.publicKey]);
 
   const dataFetched = useRef(false);
   const appliedFocusRef = useRef<string | null>(null);
@@ -1159,10 +1141,9 @@ export const SwipeDiscoverView = ({
     // Routing precedence:
     // 1. axis-vault ETF (real per-strategy mint + program-owned vaults) — preferred
     //    once the strategy has an etfState account on-chain.
-    // 2. PFMM (legacy "ETF" deploys that are really just a PFMM pool) — Jupiter
-    //    SOL→basket on BUY; SELL bounces to detail page (the swipe sheet has no
-    //    %-of-basket UI).
-    // 3. Kagemusha legacy `depositSol`/`withdrawSol` — last resort.
+    // 2. PFMM (pfda-amm-3 pool) — Jupiter SOL→basket on BUY; SELL bounces to the
+    //    detail page (the swipe sheet has no %-of-basket UI).
+    // Strategies that match neither are unsupported and surface a toast.
     const useAxisVault = investEtfState !== null && investEtfData !== null;
     const isPfmm = investTarget?.config?.protocol === 'pfda-amm-3';
     if (!useAxisVault && isPfmm && mode === 'SELL') {
@@ -1215,6 +1196,11 @@ export const SwipeDiscoverView = ({
                 if (step === 'single' || step === 'swap') setInvestStatus('CONFIRMING');
                 else if (step === 'deposit') setInvestStatus('PROCESSING');
               },
+              onRetry: ({ nextMaxAccounts }) =>
+                showToast(
+                  `Routes too dense — retrying with simpler routes (maxAccounts=${nextMaxAccounts})…`,
+                  'info',
+                ),
             },
           });
           const sig = result.sigs[result.sigs.length - 1];
@@ -1254,6 +1240,11 @@ export const SwipeDiscoverView = ({
                 if (step === 'single' || step === 'withdraw') setInvestStatus('CONFIRMING');
                 else if (step === 'swap') setInvestStatus('PROCESSING');
               },
+              onRetry: ({ nextMaxAccounts }) =>
+                showToast(
+                  `Routes too dense — retrying with simpler routes (maxAccounts=${nextMaxAccounts})…`,
+                  'info',
+                ),
             },
           });
           const sig = result.sigs[result.sigs.length - 1];
@@ -1315,17 +1306,7 @@ export const SwipeDiscoverView = ({
           }),
         }).catch(() => {});
       } else {
-        const strategyPubkey = new PublicKey(targetAddressStr.trim());
-        const amountLamports = solToLamports(parsedAmount);
-        if (mode === 'BUY') {
-          await depositSol(connection, wallet, strategyPubkey, amountLamports);
-        } else {
-          await withdrawSol(connection, wallet, strategyPubkey, amountLamports);
-        }
-        setInvestStatus('PROCESSING');
-        void api
-          .syncUserStats(wallet.publicKey!.toBase58(), 0, parsedAmount, investTarget.id)
-          .catch(() => {});
+        throw new Error('Strategy uses an unsupported protocol — open the detail page for manual actions');
       }
 
       setInvestStatus('SUCCESS');
@@ -1341,7 +1322,8 @@ export const SwipeDiscoverView = ({
       setInvestStatus('IDLE');
       setInvestTarget(null);
     } catch (e: unknown) {
-      showToast(e instanceof Error ? e.message : 'Transaction Failed', 'error');
+      console.error('[SwipeDiscoverView] tx failed:', e);
+      showToast(humanizeJupiterError(e), 'error');
       setInvestStatus('ERROR');
       setTimeout(() => setInvestStatus('IDLE'), 2000);
     }

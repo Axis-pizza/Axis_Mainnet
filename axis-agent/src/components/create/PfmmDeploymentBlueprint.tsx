@@ -35,6 +35,7 @@ import {
   findQueue3,
   findTicket3,
   getClusterConfig,
+  humanizeJupiterError,
   ixAddLiquidity3,
   ixClaim3,
   ixClearBatch3,
@@ -729,10 +730,11 @@ export const PfmmDeploymentBlueprint = ({
       }
     } catch (e: unknown) {
       setStage('err');
-      const msg = e instanceof Error ? e.message : String(e);
-      pushLog(`✗ ${msg}`);
+      console.error('[PfmmDeploymentBlueprint] deploy failed:', e);
+      const techMsg = e instanceof Error ? e.message : String(e);
+      pushLog(`✗ ${techMsg}`);
       setDeployStep('');
-      showToast(`Failed: ${msg}`, 'error');
+      showToast(humanizeJupiterError(e), 'error');
     }
   }
 

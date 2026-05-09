@@ -4,10 +4,11 @@ import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { useConnection, useWallet } from '../../hooks/useWallet';
 import { useAxisVaultWallet } from '../../hooks/useAxisVaultWallet';
 import {
-  buildWithdrawSolPlan,
+  buildWithdrawSolPlanWithRetry,
   explorerAddr,
   explorerTx,
   fetchEtfState,
+  humanizeJupiterError,
   sendVersionedTx,
   truncatePubkey,
   type ClusterConfig,
@@ -108,19 +109,27 @@ export function WithdrawSolPanel({
     setLog([]);
     setPlan(null);
     try {
-      const next = await buildWithdrawSolPlan({
-        conn: connection,
-        user: publicKey,
-        programId: axisVault,
-        etfState: new PublicKey(etfStateAddr),
-        etfStateData: etf,
-        burnAmount: burnAmountBase,
-        slippageBps,
-        safetyShrinkBps,
-      });
+      const built = await buildWithdrawSolPlanWithRetry(
+        {
+          conn: connection,
+          user: publicKey,
+          programId: axisVault,
+          etfState: new PublicKey(etfStateAddr),
+          etfStateData: etf,
+          burnAmount: burnAmountBase,
+          slippageBps,
+          safetyShrinkBps,
+        },
+        undefined,
+        ({ previousMaxAccounts, nextMaxAccounts }) =>
+          pushLog(
+            `↻ tx blew 1232 b at maxAccounts=${previousMaxAccounts}; retrying at ${nextMaxAccounts}…`
+          )
+      );
+      const next = built.plan;
       setPlan(next);
       pushLog(
-        `preview: ${next.legs.length} legs, expected ${(Number(next.expectedSolOut) / 1e9).toFixed(6)} SOL, min ${(Number(next.minSolOut) / 1e9).toFixed(6)} SOL`
+        `preview: ${next.legs.length} legs, expected ${(Number(next.expectedSolOut) / 1e9).toFixed(6)} SOL, min ${(Number(next.minSolOut) / 1e9).toFixed(6)} SOL · maxAccounts=${built.chosen.maxAccounts}`
       );
       pushLog(
         `mode=${next.mode}; tx ${next.txBytes}/1232 bytes; CU ${next.computeUnitLimit}; priority ${next.computeUnitPrice} μL/CU`
@@ -140,7 +149,7 @@ export function WithdrawSolPanel({
       setStage('idle');
     } catch (e) {
       setStage('err');
-      pushLog(`✗ preview: ${e instanceof Error ? e.message : String(e)}`);
+      pushLog(`✗ preview: ${humanizeJupiterError(e)}`);
     }
   }
 
@@ -175,7 +184,7 @@ export function WithdrawSolPanel({
       setPlan(null);
     } catch (e) {
       setStage('err');
-      pushLog(`✗ withdraw_sol: ${e instanceof Error ? e.message : String(e)}`);
+      pushLog(`✗ withdraw_sol: ${humanizeJupiterError(e)}`);
     }
   }
 

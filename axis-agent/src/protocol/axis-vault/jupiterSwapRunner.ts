@@ -307,3 +307,59 @@ export function preflightDepositSol(args: PreflightDepositSolArgs): JupiterDepos
   }
   return { ok: errors.length === 0, errors, warnings };
 }
+
+/// Translate a raw plan/runner error into something a non-technical user can
+/// act on. Toasts call this before display; the original message still reaches
+/// the dev console / log panel via the underlying error chain. Keep ordering
+/// specific → generic so the wrapper "exceeded ... at every maxAccounts" wins
+/// against the inner "blew the 1232-byte cap".
+export function humanizeJupiterError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+
+  // Ladder-exhausted: every maxAccounts step still blew the wire cap. Even
+  // at the smallest ladder value the basket is too dense for a single bundle.
+  if (/exceeded\s+\d+-byte\s+cap\s+at\s+every\s+maxAccounts/i.test(raw)) {
+    return 'This basket has too many complex Jupiter routes to fit in one transaction. Try a smaller basket (2–3 mints) or pick tokens with simpler routes.';
+  }
+
+  // Single-attempt size overflow (legacy paths without retry, or split-mode
+  // overflow before the ladder escalates).
+  if (/blew the \d+-byte wire cap|encoding overruns|serialized\s+\d+\s+bytes\s*>\s*\d+\s*cap/i.test(raw)) {
+    return 'Jupiter routes for this basket are too dense for a single transaction. Try a smaller basket or simpler tokens.';
+  }
+
+  // Wallet ran out of SOL — already user-friendly, surface as-is.
+  if (/^Insufficient SOL:/i.test(raw)) return raw;
+
+  // First-deposit floor — already actionable, surface as-is.
+  if (/First deposit must yield/i.test(raw)) return raw;
+
+  // Preflight already speaks the user's language.
+  if (/^preflight failed:/i.test(raw)) return raw;
+
+  // Jupiter API hiccups: trim the noisy prefix.
+  if (/Jupiter quote failed/i.test(raw)) {
+    return `Jupiter routing unavailable — ${raw.replace(/^Jupiter quote failed:\s*/, '').slice(0, 180)}`;
+  }
+  if (/Jupiter swap-instructions failed/i.test(raw)) {
+    return 'Jupiter route returned an error mid-swap. Retry in a moment or try a smaller basket.';
+  }
+
+  // ETF paused / no supply / basket-shape errors — these are short and clear.
+  if (/(ETF is paused|ETF has no supply|basket size must be|weights must sum|burn(?:Amount)?)/i.test(raw)) {
+    return raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
+  }
+
+  // Wallet-rejected signing
+  if (/User rejected|user rejected|cancelled by user/i.test(raw)) {
+    return 'Transaction cancelled in wallet.';
+  }
+
+  // Network / RPC noise
+  if (/blockhash not found|block height exceeded|Network request failed|fetch failed/i.test(raw)) {
+    return 'Network glitch — retry in a moment.';
+  }
+
+  // Default: trim ellipsis, keep enough context to debug from a screenshot.
+  return raw.length > 200 ? raw.slice(0, 200) + '…' : raw;
+}

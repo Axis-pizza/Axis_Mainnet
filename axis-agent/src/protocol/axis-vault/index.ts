@@ -125,6 +125,7 @@ export {
   runDepositSolFlow,
   runWithdrawSolFlow,
   preflightDepositSol,
+  humanizeJupiterError,
 } from './jupiterSwapRunner';
 export type {
   JupiterSwapCallbacks,

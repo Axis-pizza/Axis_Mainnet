@@ -33,9 +33,7 @@ import { TradingChart } from '../common/TradingChart';
 import { api } from '../../services/api';
 import type { Strategy } from '../../types';
 import { useToast } from '../../context/ToastContext';
-import { RedeemModal } from '../profile/RedeemModal';
 import { CreatorConsole } from './CreatorConsole';
-import { getUserPosition, lamportsToSol } from '../../protocol/kagemusha';
 import {
   buildJupiterSolSeedPlan,
   buildJupiterBasketSellPlan,
@@ -43,6 +41,7 @@ import {
   fetchVaultBalances,
   expectedWithdrawOutputs,
   findEtfState,
+  humanizeJupiterError,
   AXIS_VAULT_PROGRAM_ID,
   fetchPoolState3,
   getQuote,
@@ -557,9 +556,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   const [txHistory, setTxHistory] = useState<any[]>([]);
   const [isWatchlisted, setIsWatchlisted] = useState(false);
   const [isInvestOpen, setIsInvestOpen] = useState(false);
-  const [isRedeemOpen, setIsRedeemOpen] = useState(false);
   const [investStatus, setInvestStatus] = useState<TransactionStatus>('IDLE');
-  const [userSolPosition, setUserSolPosition] = useState(0);
   const [basketBalances, setBasketBalances] = useState<bigint[]>([]);
   const [isCreatorConsoleOpen, setIsCreatorConsoleOpen] = useState(false);
   // PFMM pool runtime state — `paused` here is what the creator toggled via
@@ -683,21 +680,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     };
   }, [wallet.publicKey, connection, basketMints, investStatus]);
 
-  // --- On-chain SOL Position ---
   const strategyAddress = strategy.address;
-  useEffect(() => {
-    if (!wallet.publicKey || !strategyAddress) return;
-    const fetchSolPosition = async () => {
-      try {
-        const strategyPubkey = new PublicKey(strategyAddress);
-        const pos = await getUserPosition(connection, strategyPubkey, wallet.publicKey!);
-        if (pos) setUserSolPosition(lamportsToSol(pos.lpShares));
-      } catch {
-        // no position on-chain
-      }
-    };
-    fetchSolPosition();
-  }, [wallet.publicKey, connection, strategyAddress, investStatus, isRedeemOpen]);
 
   // --- PFMM pool runtime state (paused flag) ---
   // Re-read whenever the Creator Console closes so toggling pause inside the
@@ -884,6 +867,11 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
                 if (step === 'single' || step === 'swap') setInvestStatus('CONFIRMING');
                 else if (step === 'deposit') setInvestStatus('PROCESSING');
               },
+              onRetry: ({ nextMaxAccounts }) =>
+                showToast(
+                  `Routes too dense — retrying with simpler routes (maxAccounts=${nextMaxAccounts})…`,
+                  'info',
+                ),
             },
           });
           sig = result.sigs[result.sigs.length - 1];
@@ -951,6 +939,11 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
                 if (step === 'single' || step === 'withdraw') setInvestStatus('CONFIRMING');
                 else if (step === 'swap') setInvestStatus('PROCESSING');
               },
+              onRetry: ({ nextMaxAccounts }) =>
+                showToast(
+                  `Routes too dense — retrying with simpler routes (maxAccounts=${nextMaxAccounts})…`,
+                  'info',
+                ),
             },
           });
           sig = result.sigs[result.sigs.length - 1];
@@ -997,8 +990,8 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
       setIsInvestOpen(false);
       setInvestStatus('IDLE');
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Transaction Failed';
-      showToast(msg.slice(0, 160), 'error');
+      console.error('[StrategyDetailView] tx failed:', e);
+      showToast(humanizeJupiterError(e), 'error');
       setInvestStatus('ERROR');
       setTimeout(() => setInvestStatus('IDLE'), 2000);
     }
@@ -1249,10 +1242,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
                   <span className="text-[#78716C]">—</span>
                 )
               ) : (
-                <>
-                  {userSolPosition.toFixed(4)}{' '}
-                  <span className="text-xs text-[#78716C]">SOL</span>
-                </>
+                <span className="text-[#78716C]">—</span>
               )}
             </span>
           </div>
@@ -1265,14 +1255,6 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
                 title="Creator Console (authority only)"
               >
                 <Layers className="w-4 h-4" /> Manage
-              </button>
-            )}
-            {!isPfmm && userSolPosition > 0 && (
-              <button
-                onClick={() => setIsRedeemOpen(true)}
-                className="bg-white/10 text-white/70 font-normal px-4 py-3 rounded-full border border-white/10 active:scale-95 transition-all flex items-center gap-1.5 text-sm"
-              >
-                <ArrowDown className="w-4 h-4" /> Redeem
               </button>
             )}
             <button
@@ -1314,16 +1296,6 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         strategy={strategy}
       />
 
-      <RedeemModal
-        isOpen={isRedeemOpen}
-        onClose={() => setIsRedeemOpen(false)}
-        strategyAddress={strategy.address || ''}
-        strategyName={strategy.name}
-        onSuccess={() => {
-          setIsRedeemOpen(false);
-          setUserSolPosition(0);
-        }}
-      />
     </div>
   );
 };

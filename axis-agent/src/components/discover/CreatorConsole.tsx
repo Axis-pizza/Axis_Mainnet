@@ -6,6 +6,7 @@ import {
   buildJupiterBasketSellPlan,
   buildPfmmWithdrawFeesPlan,
   fetchPoolState3,
+  humanizeJupiterError,
   ixSetPaused3,
   PFDA_AMM3_PROGRAM_ID,
   sendTx,
@@ -127,8 +128,8 @@ export const CreatorConsole = ({ isOpen, onClose, strategy }: CreatorConsoleProp
       setStage('ok');
       setTimeout(() => setStage('idle'), 1200);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      showToast(msg.slice(0, 200), 'error');
+      console.error('[CreatorConsole] recover-all failed:', e);
+      showToast(humanizeJupiterError(e), 'error');
       setStage('err');
       setTimeout(() => setStage('idle'), 2000);
     }
