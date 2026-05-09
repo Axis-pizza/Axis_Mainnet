@@ -20,16 +20,22 @@ import bs58 from 'bs58';
 const app = new Hono<{ Bindings: Bindings }>();
 const priceService = new PriceService();
 
-// ★★★ あなたのAxis ETF Token (在庫) ★★★
-const MASTER_MINT_ADDRESS = new PublicKey("2JiisncKr8DhvA68MpszFDjGAVu2oFtqJJC837LLiKdT");
-
-// 優先手数料
 const PRIORITY_FEE = 500000;
 
-// Helper to create Jito service
+// AXIS reward token — set env.AXIS_MINT (mainnet-deployed SPL mint) to re-enable
+// the post-deploy airdrop. While unset, /deploy is bookkeeping-only.
+const REWARD_RATE_PER_SOL = 1000;
+
 const createJitoService = (env: Bindings) => {
-  return new JitoBundleService('devnet', 'tokyo', env.SOLANA_RPC_URL);
+  return new JitoBundleService('mainnet', 'tokyo', env.SOLANA_RPC_URL);
 };
+
+function validateWeights(tokens: any): { ok: true } | { ok: false; sum: number } {
+  if (!Array.isArray(tokens) || tokens.length === 0) return { ok: true };
+  const sum = tokens.reduce((acc: number, t: any) => acc + Number(t?.weight ?? t?.percentage ?? 0), 0);
+  if (Math.abs(sum - 100) > 0.5) return { ok: false, sum };
+  return { ok: true };
+}
 
 // -----------------------------------------------------------
 // 🧠 AI Analysis & Token Data (復活)
@@ -187,10 +193,16 @@ app.get('/strategies/:pubkey', async (c) => {
 app.post('/strategies', async (c) => {
   try {
     const body = await c.req.json();
-    const { owner_pubkey, name, ticker, description, type, tokens, address, config } = body;
+    const { owner_pubkey, name, ticker, description, type, tokens, address, config, mint_address, mintAddress } = body;
+    const resolvedMint = mint_address ?? mintAddress ?? null;
 
     if (!owner_pubkey || !name) {
       return c.json({ success: false, error: 'owner_pubkey and name are required' }, 400);
+    }
+
+    const weightCheck = validateWeights(tokens);
+    if (!weightCheck.ok) {
+      return c.json({ success: false, error: `token weights must sum to 100 (got ${weightCheck.sum})` }, 400);
     }
 
     await ensureUserExists(c.env.axis_main_db, owner_pubkey);
@@ -203,10 +215,15 @@ app.post('/strategies', async (c) => {
 
     if (existing) {
       await c.env.axis_main_db.prepare(
-        `UPDATE strategies SET ticker = ?, description = ?, composition = ?, config = ? WHERE id = ?`
+        `UPDATE strategies
+            SET ticker = ?, description = ?, composition = ?, config = ?,
+                mint_address = COALESCE(?, mint_address),
+                vault_address = COALESCE(?, vault_address)
+          WHERE id = ?`
       ).bind(
         ticker || '', description || '',
         JSON.stringify(tokens || []), JSON.stringify(config || {}),
+        resolvedMint, address ?? null,
         existing.id
       ).run();
       return c.json({ success: true, strategyId: existing.id, updated: true });
@@ -216,11 +233,13 @@ app.post('/strategies', async (c) => {
     await c.env.axis_main_db.prepare(`
       INSERT INTO strategies (
         id, owner_pubkey, name, ticker, description, type,
-        composition, config, status, created_at, tvl, total_deposited, roi
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, 0, 0)
+        composition, config, status, created_at, tvl, total_deposited, roi,
+        mint_address, vault_address
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, 0, 0, ?, ?)
     `).bind(
       id, owner_pubkey, name, ticker || '', description || '', type || 'MANUAL',
-      JSON.stringify(tokens || []), JSON.stringify(config || {}), now
+      JSON.stringify(tokens || []), JSON.stringify(config || {}), now,
+      resolvedMint, address ?? null
     ).run();
 
     return c.json({ success: true, strategyId: id });
@@ -271,10 +290,12 @@ app.get('/discover', async (c) => {
 app.post('/deploy', async (c) => {
   try {
     const body = await c.req.json();
-
-    // フロントエンドから送られてきた情報
-    const { signature } = body;
-    const { ownerPubkey, name, ticker, description, type, tokens, config, tvl, address, protocol } = body.metadata || body;
+    const meta = body.metadata || body;
+    const {
+      ownerPubkey, name, ticker, description, type, tokens, config, tvl, address, protocol,
+      mintAddress: bodyMintAddress, mint_address: bodyMintAddressSnake,
+    } = meta;
+    const mintAddress = bodyMintAddress ?? bodyMintAddressSnake ?? null;
     const depositAmountSOL = tvl || 0;
     const now = Math.floor(Date.now() / 1000);
     const id = body.strategyId || crypto.randomUUID();
@@ -282,63 +303,61 @@ app.post('/deploy', async (c) => {
     if (!ownerPubkey) {
       return c.json({ success: false, error: 'ownerPubkey is required' }, 400);
     }
-    await ensureUserExists(c.env.axis_main_db, ownerPubkey);
 
-    // 1. 環境設定
-    if (!c.env.SERVER_PRIVATE_KEY) throw new Error("Missing SERVER_PRIVATE_KEY");
-    // Helius RPC
-    const rpcUrl = c.env.HELIUS_RPC_URL || 'https://api.devnet.solana.com';
-    const connection = new Connection(rpcUrl, 'confirmed');
-    const adminWallet = Keypair.fromSecretKey(bs58.decode(c.env.SERVER_PRIVATE_KEY));
-    const adminPubkeyStr = adminWallet.publicKey.toString();
-
-    let transferTxId = "";
-
-    // 2. トークン配給ロジック (Admin在庫 -> User)
-    if (depositAmountSOL > 0 && ownerPubkey) {
-        try {
-            const userPubkey = new PublicKey(ownerPubkey);
-            const RATE = 1000;
-            const amount = BigInt(Math.floor(depositAmountSOL * RATE * 1_000_000_000)); // 9 decimals
-
-            const adminATA = await getAssociatedTokenAddress(MASTER_MINT_ADDRESS, adminWallet.publicKey);
-            const userATA = await getAssociatedTokenAddress(MASTER_MINT_ADDRESS, userPubkey);
-
-            const tx = new Transaction();
-            tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: PRIORITY_FEE }));
-
-            const info = await connection.getAccountInfo(userATA);
-            if (!info) {
-                tx.add(createAssociatedTokenAccountInstruction(
-                    adminWallet.publicKey, userATA, userPubkey, MASTER_MINT_ADDRESS
-                ));
-            }
-
-            tx.add(createTransferInstruction(
-                adminATA, userATA, adminWallet.publicKey, amount
-            ));
-
-            const latest = await connection.getLatestBlockhash('confirmed');
-            tx.recentBlockhash = latest.blockhash;
-            tx.feePayer = adminWallet.publicKey;
-            tx.sign(adminWallet);
-
-            // シミュレーションをスキップして即座に投げる
-            transferTxId = await connection.sendRawTransaction(tx.serialize(), {
-                skipPreflight: true,
-                maxRetries: 5
-            });
-
-        } catch (e: any) {
-            console.error("⚠️ Token Transfer Failed (Non-critical for DB):", e);
-        }
+    const weightCheck = validateWeights(tokens);
+    if (!weightCheck.ok) {
+      return c.json({ success: false, error: `token weights must sum to 100 (got ${weightCheck.sum})` }, 400);
     }
 
-    // 3. DB保存
-    // PFMM (pfda-amm-3) deploys send the pool PDA as `address`; persist that as
-    // vault_address so /discover and Buy/Sell can read it back. Legacy hybrid
-    // deploys without `address` fall back to the admin pubkey for compatibility.
-    const vaultAddress = address || adminPubkeyStr;
+    await ensureUserExists(c.env.axis_main_db, ownerPubkey);
+
+    // Optional AXIS reward airdrop. Gated on (a) env.AXIS_MINT pointing at a real
+    // mainnet mint and (b) admin keypair having a funded ATA. While the env var
+    // is unset (current state) /deploy is bookkeeping-only and never touches chain.
+    let rewardTxId = "";
+    const axisMintEnv = (c.env as any).AXIS_MINT as string | undefined;
+    if (axisMintEnv && c.env.SERVER_PRIVATE_KEY && depositAmountSOL > 0) {
+      try {
+        const rpcUrl = c.env.HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const connection = new Connection(rpcUrl, 'confirmed');
+        const adminWallet = Keypair.fromSecretKey(bs58.decode(c.env.SERVER_PRIVATE_KEY));
+        const axisMint = new PublicKey(axisMintEnv);
+        const userPubkey = new PublicKey(ownerPubkey);
+        const amount = BigInt(Math.floor(depositAmountSOL * REWARD_RATE_PER_SOL * 1_000_000_000));
+
+        const adminATA = await getAssociatedTokenAddress(axisMint, adminWallet.publicKey);
+        const userATA = await getAssociatedTokenAddress(axisMint, userPubkey);
+
+        const tx = new Transaction();
+        tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: PRIORITY_FEE }));
+
+        const info = await connection.getAccountInfo(userATA);
+        if (!info) {
+          tx.add(createAssociatedTokenAccountInstruction(
+            adminWallet.publicKey, userATA, userPubkey, axisMint
+          ));
+        }
+        tx.add(createTransferInstruction(adminATA, userATA, adminWallet.publicKey, amount));
+
+        const latest = await connection.getLatestBlockhash('confirmed');
+        tx.recentBlockhash = latest.blockhash;
+        tx.feePayer = adminWallet.publicKey;
+        tx.sign(adminWallet);
+
+        rewardTxId = await connection.sendRawTransaction(tx.serialize(), {
+          skipPreflight: true,
+          maxRetries: 5,
+        });
+      } catch (e: any) {
+        console.error("[Deploy] AXIS reward airdrop failed (non-critical):", e);
+      }
+    }
+
+    // PFMM (pfda-amm-3) and axis-vault deploys both supply the pool/state PDA as
+    // `address`; persist as vault_address. mint_address comes from the FE's
+    // Metaplex/SPL mint that backs this specific ETF — null is acceptable for
+    // strategies that don't issue a per-ETF token.
+    const vaultAddress = address ?? null;
     const mergedConfig = protocol ? { ...(config || {}), protocol } : (config || {});
     await c.env.axis_main_db.prepare(`
         INSERT INTO strategies (
@@ -351,19 +370,16 @@ app.post('/deploy', async (c) => {
         id, ownerPubkey, name, ticker, description || '', type || 'MANUAL',
         JSON.stringify(tokens), JSON.stringify(mergedConfig),
         now, depositAmountSOL, depositAmountSOL,
-        MASTER_MINT_ADDRESS.toString(),
-        vaultAddress
+        mintAddress, vaultAddress
     ).run();
 
-    // XP付与 (Phase 2: 50 XP per deploy)
     await addXP(c.env.axis_main_db, ownerPubkey, 50, 'STRATEGY_DEPLOY', 'Deployed Strategy');
 
     return c.json({
         success: true,
         strategyId: id,
-        mintAddress: MASTER_MINT_ADDRESS.toString(),
-        transferTxId,
-        message: `Strategy Deployed! Sent ${depositAmountSOL * 1000} AXIS tokens.` 
+        mintAddress,
+        rewardTxId: rewardTxId || null,
     });
 
   } catch (error: any) {
@@ -628,9 +644,15 @@ app.get('/strategies/:id/transactions', async (c) => {
     const signatures = await connection.getSignaturesForAddress(vaultPubkey, { limit });
     if (!signatures.length) return c.json({ success: true, data: [] });
 
-    const txs = await connection.getParsedTransactions(
-      signatures.map(s => s.signature),
-      { maxSupportedTransactionVersion: 0 }
+    // Public Solana RPCs reject JSON-RPC batches with 403 (paid-plan only),
+    // so fan out as single getParsedTransaction calls. With HELIUS_RPC_URL set
+    // these run in parallel comfortably; without it we'd be on api.mainnet-beta
+    // and the parallelism still keeps us under the per-IP rate limit for limit≤50.
+    const txs = await Promise.all(
+      signatures.map(s =>
+        connection.getParsedTransaction(s.signature, { maxSupportedTransactionVersion: 0 })
+          .catch(err => { console.error('[Transactions] getParsedTransaction failed:', s.signature, err); return null; })
+      )
     );
 
     const results: any[] = [];

@@ -5,7 +5,6 @@ import { Bindings } from './config/env';
 import jupiterRouter from './routes/jupiter';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/user';
-import vaultRoutes from './routes/vault';
 import miscRoutes from './routes/misc';
 import kagemushaRoutes from './routes/kagemusha';
 import uploadRoutes from './routes/upload';
@@ -77,7 +76,6 @@ app.get('/strategies/:id/token-prices', getTokenPriceChart);
 // --- Mount Routes ---
 app.route('/auth', authRoutes);
 app.route('/', userRoutes);
-app.route('/', vaultRoutes);
 app.route('/', miscRoutes);
 app.route('/', kagemushaRoutes);
 app.route('/upload', uploadRoutes);
