@@ -373,6 +373,7 @@ export const api = {
     type: string;
     tokens: { symbol: string; mint: string; weight: number; logoURI?: string }[];
     address: string;
+    mint_address?: string;
     protocol?: string;
     tvl?: number;
     config?: any;

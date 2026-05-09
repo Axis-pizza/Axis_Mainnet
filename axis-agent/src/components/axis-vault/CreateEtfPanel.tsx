@@ -141,7 +141,7 @@ export function CreateEtfPanel({
       // Register the ETF with the axis-api backend so it shows up in Discover
       // and Profile → Created. The on-chain CreateEtf is the source of truth;
       // an API failure here must not roll back the strategy, so the call is
-      // wrapped in a swallow-all try/catch (mirrors DepositFlow.tsx).
+      // wrapped in a swallow-all try/catch.
       const initialTvlSol =
         doDepositAfter && config.jupiterEnabled && solSeed > 0 ? solSeed : 0;
       try {
@@ -157,6 +157,7 @@ export function CreateEtfPanel({
             weight: Math.floor(r.weight / 100),
           })),
           address: etfState.toBase58(),
+          mint_address: etfMint.pubkey.toBase58(),
           protocol: 'axis-vault',
           tvl: initialTvlSol,
           config: {
