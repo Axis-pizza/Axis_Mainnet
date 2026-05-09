@@ -1,16 +1,12 @@
 import { useParams, useRouter } from '@tanstack/react-router';
 import { useState, useEffect } from 'react';
-import { PublicKey } from '@solana/web3.js';
-import { useConnection } from '../hooks/useWallet';
 import { StrategyDetailView } from '../components/discover/StrategyDetailView';
-import { getStrategyVault } from '../protocol/kagemusha';
-import { api } from '../services/api'; // Fallback API
+import { api } from '../services/api';
 import { Loader2 } from 'lucide-react';
 
 export const StrategyDetailPage = () => {
   const { id } = useParams({ from: '/strategy/$id' });
   const router = useRouter();
-  const { connection } = useConnection();
 
   const [strategy, setStrategy] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -23,47 +19,17 @@ export const StrategyDetailPage = () => {
       setError(null);
 
       try {
-        // 1. Try fetching from On-Chain directly (if valid Pubkey)
-        let fetchedData = null;
-
-        try {
-          const pubkey = new PublicKey(id);
-          const vault = await getStrategyVault(connection, pubkey);
-          if (vault) {
-            fetchedData = {
-              id,
-              name: vault.name || 'Unknown Vault',
-              type: 'BALANCED',
-              description: 'A decentralized vault strategy on Solana.',
-              tokens: [],
-              tvl: Number(vault.tvlLamports) / 1e9,
-              roi: 0,
-              creatorAddress: vault.owner,
-              createdAt: vault.lastRebalance,
-            };
-          }
-        } catch (chainErr) {
-          // Not a valid pubkey or not found on chain, ignore and try API
-        }
-
-        // 2. If not found on chain, fetch directly by UUID
-        if (!fetchedData) {
-          const res = await api.getStrategyById(id);
-          if (res.success && res.strategy) {
-            // Backend returns `vaultAddress` (camelCased from vault_address);
-            // every downstream consumer (StrategyDetailView, CreatorConsole)
-            // reads `strategy.address`. Normalise here so PFMM pool readbacks
-            // (Manage / pool reserves / position) actually find the PDA.
-            const s = res.strategy;
-            fetchedData = {
-              ...s,
-              address: s.address ?? s.vaultAddress ?? s.vault_address ?? null,
-            };
-          }
-        }
-
-        if (fetchedData) {
-          setStrategy(fetchedData);
+        const res = await api.getStrategyById(id);
+        // Backend returns `vaultAddress` (camelCased from vault_address);
+        // every downstream consumer (StrategyDetailView, CreatorConsole)
+        // reads `strategy.address`. Normalise here so PFMM pool readbacks
+        // (Manage / pool reserves / position) actually find the PDA.
+        if (res.success && res.strategy) {
+          const s = res.strategy;
+          setStrategy({
+            ...s,
+            address: s.address ?? s.vaultAddress ?? s.vault_address ?? null,
+          });
         } else {
           setError('Strategy not found.');
         }
@@ -75,7 +41,7 @@ export const StrategyDetailPage = () => {
     };
 
     fetchStrategy();
-  }, [id, connection]);
+  }, [id]);
 
   if (loading) {
     return (
