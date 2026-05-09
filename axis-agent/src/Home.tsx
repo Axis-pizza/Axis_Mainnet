@@ -2,13 +2,16 @@
  * Home - Kagemusha AI Strategy Factory
  * Main entry with floating navigation and tactical interface
  */
-import { useState, useEffect, useLayoutEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useWallet, useConnection, useLoginModal } from './hooks/useWallet';
 import { FloatingNav, type ViewState } from './components/common/FloatingNav';
 import { TutorialOverlay } from './components/common/TutorialOverlay';
-import { KagemushaFlow } from './components/create';
 import { DiscoverView } from './components/discover/DiscoverView';
+
+const KagemushaFlow = lazy(() =>
+  import('./components/create').then((m) => ({ default: m.KagemushaFlow }))
+);
 import { ProfileView } from './components/profile/ProfileView';
 import { StrategyDetailView } from './components/discover/StrategyDetailView';
 import type { Strategy } from './types';
@@ -139,16 +142,18 @@ export default function Home() {
       )}
       {view === 'CREATE' && (
         <div className="relative z-20 pb-32">
-          <KagemushaFlow
-            onStepChange={(step, strategyId) => {
-              setHideNavInCreate(step !== 'LANDING' && step !== 'DASHBOARD');
-              if (step === 'DASHBOARD') {
-                setNewStrategyId(strategyId || publicKey?.toBase58() || 'my-newest');
-                navigateTo('DISCOVER');
-                setHideNavInCreate(false);
-              }
-            }}
-          />
+          <Suspense fallback={<div className="min-h-screen" />}>
+            <KagemushaFlow
+              onStepChange={(step, strategyId) => {
+                setHideNavInCreate(step !== 'LANDING' && step !== 'DASHBOARD');
+                if (step === 'DASHBOARD') {
+                  setNewStrategyId(strategyId || publicKey?.toBase58() || 'my-newest');
+                  navigateTo('DISCOVER');
+                  setHideNavInCreate(false);
+                }
+              }}
+            />
+          </Suspense>
         </div>
       )}
       {view === 'PROFILE' && (
