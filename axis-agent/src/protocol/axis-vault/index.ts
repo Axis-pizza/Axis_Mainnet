@@ -102,7 +102,9 @@ export {
   SOLANA_MAX_TX_CU,
   SOLANA_MAX_TX_BYTES,
   MIN_FIRST_DEPOSIT_BASE,
+  PER_LEG_MAX_ACCOUNTS_LADDER,
   buildDepositSolPlan,
+  buildDepositSolMultiTxPlan,
   tryCompileV0,
 } from './depositSolPlan';
 export type {
@@ -110,7 +112,10 @@ export type {
   DepositSolPlanArgs,
   CompileAttempt,
 } from './depositSolPlan';
-export { buildWithdrawSolPlan } from './withdrawSolPlan';
+export {
+  buildWithdrawSolPlan,
+  buildWithdrawSolMultiTxPlan,
+} from './withdrawSolPlan';
 export type {
   WithdrawSolPlan,
   WithdrawSolPlanArgs,
@@ -126,6 +131,7 @@ export {
   runWithdrawSolFlow,
   preflightDepositSol,
   humanizeJupiterError,
+  isMultiTxRecoverable,
 } from './jupiterSwapRunner';
 export type {
   JupiterSwapCallbacks,
@@ -135,6 +141,8 @@ export type {
   JupiterPlanReadyInfo,
   JupiterSwapRetryInfo,
   JupiterSwapStep,
+  JupiterLegStepContext,
+  MultiTxFallbackInfo,
   PlanAttempt,
   PlanRetryResult,
   RunDepositSolArgs,
@@ -149,7 +157,10 @@ export {
   fetchPoolState3,
 } from './pfmmState';
 export type { PoolState3Data } from './pfmmState';
-export { buildJupiterSolSeedPlan } from './pfmmSeedPlan';
+export {
+  buildJupiterSolSeedPlan,
+  buildJupiterSolSeedSingleLegWithLadder,
+} from './pfmmSeedPlan';
 export type {
   JupiterSolSeedArgs,
   JupiterSolSeedLeg,

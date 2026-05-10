@@ -1,11 +1,13 @@
 import { Connection } from '@solana/web3.js';
 import {
+  buildDepositSolMultiTxPlan,
   buildDepositSolPlan,
   SOLANA_MAX_TX_BYTES,
   type DepositSolPlan,
   type DepositSolPlanArgs,
 } from './depositSolPlan';
 import {
+  buildWithdrawSolMultiTxPlan,
   buildWithdrawSolPlan,
   type WithdrawSolPlan,
   type WithdrawSolPlanArgs,
@@ -14,10 +16,13 @@ import { sendVersionedTx, type AxisVaultWallet } from './tx';
 
 /// Default ladder of `maxAccounts` values to try when a Jupiter-backed plan
 /// blows the 1232-byte wire cap. Starts at the Jupiter default (16, dense
-/// routing, best price) and steps down to ever-tighter routes. Stops at 8 —
-/// anything tighter usually means Jupiter cannot find a viable direct route.
+/// routing, best price) and steps down to ever-tighter routes. Stops at 10 —
+/// at 8 most mid/small-cap mints fall off Jupiter's route graph entirely
+/// (`NO_ROUTES_FOUND`). When the ladder is exhausted the runner falls back
+/// to per-leg multi-tx mode, which gets full maxAccounts per leg without
+/// sharing the 1232-byte budget.
 export const DEFAULT_MAX_ACCOUNTS_LADDER: readonly number[] = Object.freeze([
-  16, 14, 12, 10, 8,
+  16, 14, 12, 10,
 ]);
 
 export interface PlanAttempt {
@@ -32,7 +37,24 @@ export interface PlanRetryResult<TPlan> {
   chosen: { maxAccounts: number; retryAttempt: number };
 }
 
-export type JupiterSwapStep = 'single' | 'swap' | 'deposit' | 'withdraw';
+export type JupiterSwapStep =
+  | 'single'
+  | 'swap'
+  | 'deposit'
+  | 'withdraw'
+  | 'setup'
+  | 'leg'
+  | 'cleanup';
+
+/// Optional per-leg context for the `leg` step in multi-tx mode.
+export interface JupiterLegStepContext {
+  /// Index into the plan's `legTxs` (zero-based).
+  legIndex: number;
+  /// Total number of leg txs in the plan.
+  legCount: number;
+  /// `maxAccounts` Jupiter used for this leg's quote.
+  maxAccounts: number;
+}
 
 export interface JupiterPlanReadyInfo<TPlan> {
   plan: TPlan;
@@ -52,14 +74,18 @@ export interface JupiterSwapCallbacksFor<TPlan> {
   /// climb. `retryAttempt` is the zero-based index into the ladder.
   onPlanReady?: (info: JupiterPlanReadyInfo<TPlan>) => void;
   /// Called before each tx is sent for signing. `single` fires when the plan
-  /// fits in one tx; `swap`/`deposit`/`withdraw` fire in split mode.
-  onStepStart?: (step: JupiterSwapStep) => void;
+  /// fits in one tx; `swap`/`deposit`/`withdraw` fire in split mode;
+  /// `setup`/`leg`/`cleanup` + `deposit`/`withdraw` fire in multi mode.
+  onStepStart?: (step: JupiterSwapStep, leg?: JupiterLegStepContext) => void;
   /// Called after each tx is confirmed.
-  onStepDone?: (step: JupiterSwapStep, sig: string) => void;
+  onStepDone?: (step: JupiterSwapStep, sig: string, leg?: JupiterLegStepContext) => void;
   /// Called once before each retry attempt at a smaller `maxAccounts`. Useful
   /// for surfacing "Jupiter routes too dense, retrying with simpler routes…"
   /// to the user.
   onRetry?: (info: JupiterSwapRetryInfo) => void;
+  /// Fires once if the bundled plan exhausted the ladder and the runner
+  /// fell back to per-leg multi-tx mode. Use for telemetry / breadcrumbs.
+  onMultiTxFallback?: (info: MultiTxFallbackInfo) => void;
 }
 
 export type DepositSwapCallbacks = JupiterSwapCallbacksFor<DepositSolPlan>;
@@ -67,10 +93,43 @@ export type WithdrawSwapCallbacks = JupiterSwapCallbacksFor<WithdrawSolPlan>;
 /// Back-compat alias kept for any caller importing the old union name.
 export type JupiterSwapCallbacks = JupiterSwapCallbacksFor<DepositSolPlan | WithdrawSolPlan>;
 
-const TX_SIZE_RX = /1232|exceeds?.*size|too\s+large|bytes\s*>\s*\d+\s*cap/i;
+const TX_SIZE_RX = /1232|exceeds?.*size|too\s+large|bytes\s*>\s*\d+\s*cap|encoding overruns/i;
 function isTxSizeError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return TX_SIZE_RX.test(msg);
+}
+
+const NO_ROUTES_RX = /NO_ROUTES_FOUND|No\s+routes\s+found/i;
+function isNoRoutesError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return NO_ROUTES_RX.test(msg);
+}
+
+/// Returns true when the failure is one we can recover from by falling
+/// back to multi-tx (per-leg) mode. Both 1232-byte overflow and Jupiter
+/// NO_ROUTES_FOUND share the same root cause: the bundled plan is too
+/// constrained. Splitting per-leg gives each swap the full 1232 budget
+/// and full maxAccounts headroom.
+export function isMultiTxRecoverable(err: unknown): boolean {
+  return isTxSizeError(err) || isNoRoutesError(err);
+}
+
+/// Attached to the throw when the ladder runs out so callers (the deposit
+/// + withdraw runners) can recognise the signal and fall back to multi-tx
+/// mode. The wrapper text stays the same so existing log scrapers keep
+/// matching, but `cause` carries the structured marker.
+class LadderExhaustedError extends Error {
+  readonly ladderExhausted = true;
+  readonly attempts: PlanAttempt[];
+  constructor(message: string, attempts: PlanAttempt[]) {
+    super(message);
+    this.name = 'LadderExhaustedError';
+    this.attempts = attempts;
+  }
+}
+
+function isLadderExhausted(err: unknown): err is LadderExhaustedError {
+  return err instanceof LadderExhaustedError;
 }
 
 async function buildWithLadder<TArgs extends { maxAccounts?: number }, TPlan>(
@@ -102,45 +161,110 @@ async function buildWithLadder<TArgs extends { maxAccounts?: number }, TPlan>(
       const msg = e instanceof Error ? e.message : String(e);
       attempts.push({ maxAccounts, error: msg });
       lastErr = e;
-      if (!isTxSizeError(e)) {
+      // Only retry for failures that come from too-tight bundling. For
+      // tx-size: shrinking maxAccounts simplifies the route. For NO_ROUTES:
+      // we want the runner to escalate to multi-tx mode, but only AFTER the
+      // ladder has had a chance to size down — at low maxAccounts Jupiter
+      // sometimes 400s, at higher ones the tx is too big. So treat both as
+      // recoverable here and keep climbing the ladder; the final throw will
+      // trigger the multi-tx fallback above.
+      if (!isMultiTxRecoverable(e)) {
         throw e;
       }
     }
   }
-  throw new Error(
+  throw new LadderExhaustedError(
     `Jupiter swap plan exceeded ${SOLANA_MAX_TX_BYTES}-byte cap at every maxAccounts ` +
       `in ladder [${ladder.join(', ')}]. Last error: ${
         lastErr instanceof Error ? lastErr.message : String(lastErr)
-      }. Try a smaller basket (≤3 mints) or pick tokens with simpler Jupiter routes.`
+      }. Falling back to per-leg multi-tx mode.`,
+    attempts
   );
+}
+
+/// Called by the deposit/withdraw retries when the bundled ladder exhausts.
+/// Surfaces both the ladder attempts AND the per-leg fallback's outcome
+/// to telemetry callers.
+export interface MultiTxFallbackInfo {
+  reason: 'ladder-exhausted' | 'no-routes';
+  previousAttempts: PlanAttempt[];
+  triggerError: string;
 }
 
 export async function buildDepositSolPlanWithRetry(
   args: Omit<DepositSolPlanArgs, 'maxAccounts'>,
   ladder: readonly number[] = DEFAULT_MAX_ACCOUNTS_LADDER,
-  onRetry?: (info: JupiterSwapRetryInfo) => void
+  onRetry?: (info: JupiterSwapRetryInfo) => void,
+  onMultiTxFallback?: (info: MultiTxFallbackInfo) => void
 ): Promise<PlanRetryResult<DepositSolPlan>> {
-  return buildWithLadder<DepositSolPlanArgs, DepositSolPlan>(
-    buildDepositSolPlan,
-    args,
-    ladder,
-    (p) => p.txBytes,
-    onRetry
-  );
+  try {
+    return await buildWithLadder<DepositSolPlanArgs, DepositSolPlan>(
+      buildDepositSolPlan,
+      args,
+      ladder,
+      (p) => p.txBytes,
+      onRetry
+    );
+  } catch (e) {
+    if (!isLadderExhausted(e) && !isMultiTxRecoverable(e)) {
+      throw e;
+    }
+    const previousAttempts = isLadderExhausted(e)
+      ? e.attempts
+      : [{ maxAccounts: ladder[0], error: e instanceof Error ? e.message : String(e) }];
+    onMultiTxFallback?.({
+      reason: isNoRoutesError(e) ? 'no-routes' : 'ladder-exhausted',
+      previousAttempts,
+      triggerError: e instanceof Error ? e.message : String(e),
+    });
+    const plan = await buildDepositSolMultiTxPlan({ ...args, maxAccounts: ladder[0] });
+    return {
+      plan,
+      attempts: [
+        ...previousAttempts,
+        { maxAccounts: ladder[0], bytes: plan.txBytes },
+      ],
+      chosen: { maxAccounts: ladder[0], retryAttempt: previousAttempts.length },
+    };
+  }
 }
 
 export async function buildWithdrawSolPlanWithRetry(
   args: Omit<WithdrawSolPlanArgs, 'maxAccounts'>,
   ladder: readonly number[] = DEFAULT_MAX_ACCOUNTS_LADDER,
-  onRetry?: (info: JupiterSwapRetryInfo) => void
+  onRetry?: (info: JupiterSwapRetryInfo) => void,
+  onMultiTxFallback?: (info: MultiTxFallbackInfo) => void
 ): Promise<PlanRetryResult<WithdrawSolPlan>> {
-  return buildWithLadder<WithdrawSolPlanArgs, WithdrawSolPlan>(
-    buildWithdrawSolPlan,
-    args,
-    ladder,
-    (p) => p.txBytes,
-    onRetry
-  );
+  try {
+    return await buildWithLadder<WithdrawSolPlanArgs, WithdrawSolPlan>(
+      buildWithdrawSolPlan,
+      args,
+      ladder,
+      (p) => p.txBytes,
+      onRetry
+    );
+  } catch (e) {
+    if (!isLadderExhausted(e) && !isMultiTxRecoverable(e)) {
+      throw e;
+    }
+    const previousAttempts = isLadderExhausted(e)
+      ? e.attempts
+      : [{ maxAccounts: ladder[0], error: e instanceof Error ? e.message : String(e) }];
+    onMultiTxFallback?.({
+      reason: isNoRoutesError(e) ? 'no-routes' : 'ladder-exhausted',
+      previousAttempts,
+      triggerError: e instanceof Error ? e.message : String(e),
+    });
+    const plan = await buildWithdrawSolMultiTxPlan({ ...args, maxAccounts: ladder[0] });
+    return {
+      plan,
+      attempts: [
+        ...previousAttempts,
+        { maxAccounts: ladder[0], bytes: plan.txBytes },
+      ],
+      chosen: { maxAccounts: ladder[0], retryAttempt: previousAttempts.length },
+    };
+  }
 }
 
 export async function signDepositSolPlan(
@@ -157,13 +281,39 @@ export async function signDepositSolPlan(
     callbacks?.onStepDone?.('single', sig);
     return sigs;
   }
-  if (!plan.depositTx) {
-    throw new Error('split deposit plan missing depositTx — internal bug');
+  if (plan.mode === 'split') {
+    if (!plan.depositTx) {
+      throw new Error('split deposit plan missing depositTx — internal bug');
+    }
+    callbacks?.onStepStart?.('swap');
+    const swapSig = await sendVersionedTx(conn, wallet, plan.versionedTx);
+    sigs.push(swapSig);
+    callbacks?.onStepDone?.('swap', swapSig);
+    callbacks?.onStepStart?.('deposit');
+    const depositSig = await sendVersionedTx(conn, wallet, plan.depositTx);
+    sigs.push(depositSig);
+    callbacks?.onStepDone?.('deposit', depositSig);
+    return sigs;
   }
-  callbacks?.onStepStart?.('swap');
-  const swapSig = await sendVersionedTx(conn, wallet, plan.versionedTx);
-  sigs.push(swapSig);
-  callbacks?.onStepDone?.('swap', swapSig);
+  // multi mode: setup → per-leg swaps → deposit
+  if (!plan.depositTx || !plan.legTxs || !plan.legMaxAccounts) {
+    throw new Error('multi deposit plan missing legTxs/depositTx — internal bug');
+  }
+  callbacks?.onStepStart?.('setup');
+  const setupSig = await sendVersionedTx(conn, wallet, plan.versionedTx);
+  sigs.push(setupSig);
+  callbacks?.onStepDone?.('setup', setupSig);
+  for (let i = 0; i < plan.legTxs.length; i++) {
+    const ctx: JupiterLegStepContext = {
+      legIndex: i,
+      legCount: plan.legTxs.length,
+      maxAccounts: plan.legMaxAccounts[i] ?? 0,
+    };
+    callbacks?.onStepStart?.('leg', ctx);
+    const legSig = await sendVersionedTx(conn, wallet, plan.legTxs[i]);
+    sigs.push(legSig);
+    callbacks?.onStepDone?.('leg', legSig, ctx);
+  }
   callbacks?.onStepStart?.('deposit');
   const depositSig = await sendVersionedTx(conn, wallet, plan.depositTx);
   sigs.push(depositSig);
@@ -185,17 +335,45 @@ export async function signWithdrawSolPlan(
     callbacks?.onStepDone?.('single', sig);
     return sigs;
   }
-  if (!plan.swapTx) {
-    throw new Error('split withdraw plan missing swapTx — internal bug');
+  if (plan.mode === 'split') {
+    if (!plan.swapTx) {
+      throw new Error('split withdraw plan missing swapTx — internal bug');
+    }
+    callbacks?.onStepStart?.('withdraw');
+    const withdrawSig = await sendVersionedTx(conn, wallet, plan.versionedTx);
+    sigs.push(withdrawSig);
+    callbacks?.onStepDone?.('withdraw', withdrawSig);
+    callbacks?.onStepStart?.('swap');
+    const swapSig = await sendVersionedTx(conn, wallet, plan.swapTx);
+    sigs.push(swapSig);
+    callbacks?.onStepDone?.('swap', swapSig);
+    return sigs;
+  }
+  // multi mode: withdraw → per-leg swaps → cleanup (close wSOL, if owed)
+  if (!plan.legTxs || !plan.legMaxAccounts) {
+    throw new Error('multi withdraw plan missing legTxs — internal bug');
   }
   callbacks?.onStepStart?.('withdraw');
   const withdrawSig = await sendVersionedTx(conn, wallet, plan.versionedTx);
   sigs.push(withdrawSig);
   callbacks?.onStepDone?.('withdraw', withdrawSig);
-  callbacks?.onStepStart?.('swap');
-  const swapSig = await sendVersionedTx(conn, wallet, plan.swapTx);
-  sigs.push(swapSig);
-  callbacks?.onStepDone?.('swap', swapSig);
+  for (let i = 0; i < plan.legTxs.length; i++) {
+    const ctx: JupiterLegStepContext = {
+      legIndex: i,
+      legCount: plan.legTxs.length,
+      maxAccounts: plan.legMaxAccounts[i] ?? 0,
+    };
+    callbacks?.onStepStart?.('leg', ctx);
+    const legSig = await sendVersionedTx(conn, wallet, plan.legTxs[i]);
+    sigs.push(legSig);
+    callbacks?.onStepDone?.('leg', legSig, ctx);
+  }
+  if (plan.cleanupTx) {
+    callbacks?.onStepStart?.('cleanup');
+    const cleanupSig = await sendVersionedTx(conn, wallet, plan.cleanupTx);
+    sigs.push(cleanupSig);
+    callbacks?.onStepDone?.('cleanup', cleanupSig);
+  }
   return sigs;
 }
 
@@ -215,7 +393,8 @@ export async function runDepositSolFlow(args: RunDepositSolArgs): Promise<RunDep
   const built = await buildDepositSolPlanWithRetry(
     args.planArgs,
     args.maxAccountsLadder,
-    args.callbacks?.onRetry
+    args.callbacks?.onRetry,
+    args.callbacks?.onMultiTxFallback
   );
   args.callbacks?.onPlanReady?.({
     plan: built.plan,
@@ -243,7 +422,8 @@ export async function runWithdrawSolFlow(args: RunWithdrawSolArgs): Promise<RunW
   const built = await buildWithdrawSolPlanWithRetry(
     args.planArgs,
     args.maxAccountsLadder,
-    args.callbacks?.onRetry
+    args.callbacks?.onRetry,
+    args.callbacks?.onMultiTxFallback
   );
   args.callbacks?.onPlanReady?.({
     plan: built.plan,
@@ -316,10 +496,18 @@ export function preflightDepositSol(args: PreflightDepositSolArgs): JupiterDepos
 export function humanizeJupiterError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
 
-  // Ladder-exhausted: every maxAccounts step still blew the wire cap. Even
-  // at the smallest ladder value the basket is too dense for a single bundle.
-  if (/exceeded\s+\d+-byte\s+cap\s+at\s+every\s+maxAccounts/i.test(raw)) {
-    return 'This basket has too many complex Jupiter routes to fit in one transaction. Try a smaller basket (2–3 mints) or pick tokens with simpler routes.';
+  // Per-leg fallback also failed — usually means a single mint has an
+  // exotic route (Token-2022 + transfer-fee + complex DEX path) that even a
+  // standalone tx can't fit. Far rarer than the bundled-cap case.
+  if (/Per-leg.*failed across ladder/i.test(raw)) {
+    return 'One of this basket\'s tokens has Jupiter routes too complex for a standalone transaction. Pick a simpler mint and retry.';
+  }
+
+  // Ladder-exhausted: every bundled maxAccounts step blew the wire cap.
+  // The runner now auto-falls back to per-leg multi-tx — if the user sees
+  // this it means they hit a non-fallback path (legacy caller).
+  if (/exceeded\s+\d+-byte\s+cap\s+at\s+every\s+maxAccounts|Falling back to per-leg/i.test(raw)) {
+    return 'Jupiter routes for this basket are dense — switching to per-leg signing (you\'ll sign a few more transactions).';
   }
 
   // Single-attempt size overflow (legacy paths without retry, or split-mode

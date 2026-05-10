@@ -25,6 +25,7 @@ import {
   buildBareTokenAccountIxs,
   buildJupiterSeedPreview,
   buildJupiterSolSeedPlan,
+  buildJupiterSolSeedSingleLegWithLadder,
   explorerAddr,
   explorerTx,
   fetchEtfState,
@@ -622,8 +623,9 @@ export const PfmmDeploymentBlueprint = ({
 
         if (bundledFailed) {
           try {
-            // Per-leg seed: one tx per output mint. Lower maxAccounts on each
-            // so even crowded routes stay under the wire cap.
+            // Per-leg seed: one tx per output mint. Each leg gets its own
+            // maxAccounts ladder retry inside the helper so a single dense
+            // route doesn't fail the whole launch.
             const legLamports = bpsWeights.map((w) =>
               (seedLamports * BigInt(w)) / 10_000n
             );
@@ -637,14 +639,12 @@ export const PfmmDeploymentBlueprint = ({
               setDeployStep(
                 `Buying leg ${i + 1}/${livePool.tokenMints.length} via Jupiter (${truncatePubkey(mint.toBase58(), 4, 4)})…`
               );
-              const legPlan = await buildJupiterSolSeedPlan({
+              const legPlan = await buildJupiterSolSeedSingleLegWithLadder({
                 conn: connection,
                 user: wallet.publicKey,
-                outputMints: [mint],
-                weights: [10_000],
+                outputMint: mint,
                 solIn: lamports,
                 slippageBps,
-                maxAccounts: 14,
                 closeWsolAtEnd: i === livePool.tokenMints.length - 1,
               });
               pushLog(
@@ -799,10 +799,34 @@ export const PfmmDeploymentBlueprint = ({
               pushLog(
                 `  ↻ tx blew 1232 b at maxAccounts=${previousMaxAccounts}; retrying at ${nextMaxAccounts}…`
               ),
-            onPlanReady: ({ plan, maxAccounts }) =>
+            onMultiTxFallback: ({ reason }) =>
               pushLog(
-                `  etf deposit plan: ${plan.mode} · ${plan.txBytes}/1232 b · ${plan.ixCount} ix · maxAccounts=${maxAccounts} · expected ETF ${plan.depositAmount.toString()} (min ${MIN_FIRST_DEPOSIT_BASE.toString()})`
+                `  ⇉ bundled deposit too dense (${reason}) — switching to per-leg signing`
               ),
+            onPlanReady: ({ plan, maxAccounts }) => {
+              if (plan.mode === 'multi') {
+                const legCount = plan.legTxs?.length ?? 0;
+                const legMaxes = (plan.legMaxAccounts ?? []).join('/');
+                pushLog(
+                  `  etf deposit plan: multi · setup+${legCount} legs+deposit · longest tx ${plan.txBytes}/1232 b · per-leg maxAccounts=[${legMaxes}] · expected ETF ${plan.depositAmount.toString()} (min ${MIN_FIRST_DEPOSIT_BASE.toString()})`
+                );
+              } else {
+                pushLog(
+                  `  etf deposit plan: ${plan.mode} · ${plan.txBytes}/1232 b · ${plan.ixCount} ix · maxAccounts=${maxAccounts} · expected ETF ${plan.depositAmount.toString()} (min ${MIN_FIRST_DEPOSIT_BASE.toString()})`
+                );
+              }
+            },
+            onStepDone: (step, sig, leg) => {
+              if (step === 'setup') {
+                pushLog(
+                  `  ✓ setup (ATAs + wrap): ${sig.slice(0, 12)}…  → ${explorerTx(sig, config.explorerCluster)}`
+                );
+              } else if (step === 'leg' && leg) {
+                pushLog(
+                  `  ✓ leg ${leg.legIndex + 1}/${leg.legCount} (maxAccounts=${leg.maxAccounts}): ${sig.slice(0, 12)}…  → ${explorerTx(sig, config.explorerCluster)}`
+                );
+              }
+            },
           },
         });
         const etfSig = depositResult.sigs[depositResult.sigs.length - 1];

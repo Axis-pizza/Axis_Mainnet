@@ -22,7 +22,7 @@ import {
   getSwapInstructions,
   type JupiterQuoteResponse,
 } from './jupiter';
-import { tryCompileV0 } from './depositSolPlan';
+import { PER_LEG_MAX_ACCOUNTS_LADDER, tryCompileV0 } from './depositSolPlan';
 
 /// Plans a single v0 transaction that takes `solIn` lamports and lands
 /// proportional amounts of `outputMints[i]` in the user's basket ATAs
@@ -344,4 +344,48 @@ export async function buildJupiterSolSeedPlan(
     computeUnitLimit: cuLimit,
     computeUnitPrice: cuPrice,
   };
+}
+
+/// Build a single-leg seed plan with the per-leg `maxAccounts` ladder.
+/// Used by callers that have already detected the bundled seed is too
+/// large and need to fall back to per-leg signing without coupling to a
+/// hard-coded `maxAccounts=14`. Steps down only on tx-size or
+/// NO_ROUTES_FOUND errors — anything else surfaces as-is.
+export async function buildJupiterSolSeedSingleLegWithLadder(args: {
+  conn: import('@solana/web3.js').Connection;
+  user: PublicKey;
+  outputMint: PublicKey;
+  solIn: bigint;
+  slippageBps?: number;
+  closeWsolAtEnd?: boolean;
+  ladder?: readonly number[];
+}): Promise<JupiterSolSeedPlan> {
+  const ladder = args.ladder ?? PER_LEG_MAX_ACCOUNTS_LADDER;
+  const errors: string[] = [];
+  for (let i = 0; i < ladder.length; i++) {
+    const maxAccounts = ladder[i];
+    try {
+      return await buildJupiterSolSeedPlan({
+        conn: args.conn,
+        user: args.user,
+        outputMints: [args.outputMint],
+        weights: [10_000],
+        solIn: args.solIn,
+        slippageBps: args.slippageBps,
+        maxAccounts,
+        closeWsolAtEnd: args.closeWsolAtEnd,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(`maxAccounts=${maxAccounts}: ${msg.slice(0, 160)}`);
+      const isSize = /1232|exceeds?.*size|too\s+large|bytes\s*>\s*\d+\s*cap|encoding overruns/i.test(msg);
+      const isNoRoutes = /NO_ROUTES_FOUND|No\s+routes\s+found/i.test(msg);
+      if (!isSize && !isNoRoutes) throw e;
+      // Otherwise keep walking the ladder.
+    }
+  }
+  throw new Error(
+    `Per-leg seed for ${args.outputMint.toBase58().slice(0, 8)}… failed across ladder ` +
+      `[${ladder.join(', ')}]. Last attempts: ${errors.slice(-3).join(' | ')}.`
+  );
 }
