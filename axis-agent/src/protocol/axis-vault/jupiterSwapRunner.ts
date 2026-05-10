@@ -454,6 +454,11 @@ export interface PreflightDepositSolArgs {
   maxAccounts?: number;
 }
 
+/// Minimum SOL allocated to a single non-SOL leg before Jupiter starts
+/// returning NO_ROUTES_FOUND for mid/small-cap mints. Empirically ~$0.30
+/// of SOL is the floor where short routes drop off the graph.
+export const MIN_LEG_LAMPORTS = 3_000_000n; // 0.003 SOL
+
 export function preflightDepositSol(args: PreflightDepositSolArgs): JupiterDepositPreflight {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -472,6 +477,34 @@ export function preflightDepositSol(args: PreflightDepositSolArgs): JupiterDepos
   }
   if (args.solIn <= 0n) {
     errors.push('SOL input must be > 0');
+  }
+  // Per-leg dust check: any leg below MIN_LEG_LAMPORTS will almost certainly
+  // hit NO_ROUTES_FOUND on Jupiter for mid/small-cap mints. Fail upfront with
+  // an actionable message instead of burning the deploy flow.
+  if (errors.length === 0 && args.solIn > 0n) {
+    const minLegSol = Number(MIN_LEG_LAMPORTS) / 1e9;
+    const dustLegs: { index: number; weightBps: number; lamports: bigint }[] = [];
+    for (let i = 0; i < args.weights.length; i++) {
+      const lamports = (args.solIn * BigInt(args.weights[i])) / 10_000n;
+      if (lamports < MIN_LEG_LAMPORTS) {
+        dustLegs.push({ index: i, weightBps: args.weights[i], lamports });
+      }
+    }
+    if (dustLegs.length > 0) {
+      const minTotalSol = (Number(MIN_LEG_LAMPORTS) * 10_000) / Math.min(...args.weights) / 1e9;
+      const detail = dustLegs
+        .map(
+          (d) =>
+            `leg ${d.index + 1} (${(d.weightBps / 100).toFixed(2)}% → ${(Number(d.lamports) / 1e9).toFixed(6)} SOL)`
+        )
+        .join(', ');
+      errors.push(
+        `Seed too small for this basket shape: ${detail}. ` +
+          `Each leg needs at least ${minLegSol} SOL for Jupiter to route reliably. ` +
+          `Increase SOL input to ≥ ${minTotalSol.toFixed(4)} SOL or rebalance weights so no token is below ` +
+          `${((Number(MIN_LEG_LAMPORTS) / Number(args.solIn)) * 100).toFixed(2)}%.`
+      );
+    }
   }
   const startMaxAccounts = args.maxAccounts ?? DEFAULT_MAX_ACCOUNTS_LADDER[0];
   if (args.basketSize >= 5 && startMaxAccounts >= 14) {

@@ -58,6 +58,7 @@ import {
   type DeployStepId,
 } from '../../hooks/useDeploymentResume';
 import { DeploymentStepList } from './DeploymentStepList';
+import { LaunchProgressBar } from './LaunchProgressBar';
 
 interface PfmmDeploymentBlueprintProps {
   strategyName: string;
@@ -73,6 +74,37 @@ interface PfmmDeploymentBlueprintProps {
   onBack: () => void;
   onComplete: () => void;
   onDeploySuccess?: (address: string, amount: number, asset: 'SOL' | 'USDC') => void;
+}
+
+// Session-cached SOL/USD price. Fetched once per page load via Jupiter (the
+// FE already talks to Jupiter heavily, so we piggyback on warm connections).
+// Falls back to $200 if the quote fails. Used for the launch modal's USD
+// display — accuracy here is cosmetic, not transactional.
+let _solUsdPriceCache: number | null = null;
+let _solUsdPricePromise: Promise<number> | null = null;
+const SOL_USD_FALLBACK = 200;
+async function fetchSolUsdPrice(): Promise<number> {
+  if (_solUsdPriceCache !== null) return _solUsdPriceCache;
+  if (_solUsdPricePromise) return _solUsdPricePromise;
+  _solUsdPricePromise = (async () => {
+    try {
+      // 1 SOL → USDC quote. USDC has 6 decimals, so outAmount / 1e6 = USD value.
+      const url =
+        'https://lite-api.jup.ag/swap/v1/quote' +
+        '?inputMint=So11111111111111111111111111111111111111112' +
+        '&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v' +
+        '&amount=1000000000&slippageBps=50&swapMode=ExactIn';
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`SOL price HTTP ${res.status}`);
+      const data = (await res.json()) as { outAmount?: string };
+      const usd = data.outAmount ? Number(data.outAmount) / 1e6 : 0;
+      _solUsdPriceCache = usd > 0 ? usd : SOL_USD_FALLBACK;
+    } catch {
+      _solUsdPriceCache = SOL_USD_FALLBACK;
+    }
+    return _solUsdPriceCache;
+  })();
+  return _solUsdPricePromise;
 }
 
 // PFMM micro-weights sum to 1_000_000. Convert each token's percentage weight
@@ -153,11 +185,19 @@ export const PfmmDeploymentBlueprint = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [solBalance, setSolBalance] = useState<number | null>(null);
   const [seedSol, setSeedSol] = useState<string>('0.05');
+  // Track whether the user typed in the input — if so, stop auto-overwriting
+  // from the weight-driven default below. Initial "0.05" is treated as the
+  // unedited default, not user intent.
+  const [seedSolUserEdited, setSeedSolUserEdited] = useState(false);
   // Separate seed for the creator's first ETF position. The actual minimum
   // depends on basket liquidity (the bottleneck leg's SOL→token rate must
   // produce ≥ MIN_FIRST_DEPOSIT_BASE = 1_000_000 base = 1.0 ETF at 6 decimals).
-  // 0.005 SOL is a placeholder; real minimum is computed via "Compute min".
+  // Initial 0.005 is auto-overwritten by the weight-driven default below.
   const [etfSeedSol, setEtfSeedSol] = useState<string>('0.005');
+  const [etfSeedSolUserEdited, setEtfSeedSolUserEdited] = useState(false);
+  // Live SOL/USD for the launch-amount slider. Refreshes on modal open; if the
+  // fetch fails we fall back to $200 (transactional values still use SOL).
+  const [solUsdPrice, setSolUsdPrice] = useState<number>(SOL_USD_FALLBACK);
   const [computingEtfMin, setComputingEtfMin] = useState(false);
   const [etfMinHint, setEtfMinHint] = useState<string>('');
   const [feeBps, setFeeBps] = useState<number>(30);
@@ -168,7 +208,6 @@ export const PfmmDeploymentBlueprint = ({
   const [pool, setPool] = useState<PoolState3Data | null>(null);
   const [poolMissing, setPoolMissing] = useState<boolean>(false);
   const [log, setLog] = useState<string[]>([]);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [pendingVaults, setPendingVaults] = useState<
     [PublicKey, PublicKey, PublicKey] | null
   >(null);
@@ -212,6 +251,116 @@ export const PfmmDeploymentBlueprint = ({
   }, [seedSol, etfSeedSol, pool, config.jupiterEnabled, safeTokens.length]);
   const insufficientFunds =
     solBalance !== null && solBalance > 0 && solBalance < estimatedMinSol;
+
+  // Real-time dust-leg warning: surfaces under each SOL input the moment any
+  // token weight × seed < MIN_LEG_LAMPORTS (Jupiter route floor). Mirrors
+  // preflightDepositSol logic but inline so users see it before clicking Deploy.
+  // Two inputs need the same check: `seedSol` (pool seed) and `etfSeedSol`
+  // (creator's own ETF position). Both go through Jupiter splits by weight.
+  const computeDustWarning = (
+    inputSol: string,
+    /** What to call this input in the warning so the user knows which field to bump. */
+    inputLabel: 'pool SOL' | 'your ETF position SOL',
+  ): string | null => {
+    if (!config.jupiterEnabled) return null;
+    const num = Math.max(0, parseFloat(inputSol) || 0);
+    if (num <= 0 || safeTokens.length === 0) return null;
+    const lamports = BigInt(Math.floor(num * 1_000_000_000));
+    const bpsWeights = percentToBpsWeights(safeTokens.map((t) => t.weight));
+    const MIN_LEG = 3_000_000n; // keep in sync with MIN_LEG_LAMPORTS
+    const dust: { i: number; weightBps: number; lamports: bigint }[] = [];
+    for (let i = 0; i < bpsWeights.length; i++) {
+      const l = (lamports * BigInt(bpsWeights[i])) / 10_000n;
+      if (l < MIN_LEG) dust.push({ i, weightBps: bpsWeights[i], lamports: l });
+    }
+    if (dust.length === 0) return null;
+    const minW = Math.min(...bpsWeights);
+    const requiredSol = (Number(MIN_LEG) * 10_000) / minW / 1e9;
+    const which = dust
+      .map((d) => `${safeTokens[d.i]?.symbol ?? `#${d.i + 1}`} (${(d.weightBps / 100).toFixed(2)}%)`)
+      .join(', ');
+    return `Seed too small for ${which}. Increase ${inputLabel} to ≥ ${requiredSol.toFixed(4)} SOL or raise the smallest token's weight.`;
+  };
+
+  const seedDustWarning = useMemo<string | null>(
+    () => computeDustWarning(seedSol, 'pool SOL'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [seedSol, safeTokens, config.jupiterEnabled],
+  );
+  const etfSeedDustWarning = useMemo<string | null>(
+    () => computeDustWarning(etfSeedSol, 'your ETF position SOL'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [etfSeedSol, safeTokens, config.jupiterEnabled],
+  );
+
+  // Weight-driven defaults: as soon as the user picks tokens (and their
+  // weights are known), bump seedSol / etfSeedSol so the smallest leg clears
+  // the MIN_LEG_LAMPORTS floor with headroom. Pool seed gets 5× the floor for
+  // healthier pool depth; ETF position gets 1.5× — it's the creator's own
+  // stake, doesn't need to be huge. Skips if the user typed a value manually,
+  // and never lowers below the hard-coded baseline defaults.
+  useEffect(() => {
+    if (!config.jupiterEnabled || safeTokens.length === 0) return;
+    const bpsWeights = percentToBpsWeights(safeTokens.map((t) => t.weight));
+    if (bpsWeights.length === 0) return;
+    const minWeightBps = Math.min(...bpsWeights);
+    if (minWeightBps <= 0) return;
+    const MIN_LEG_LAMPORTS_NUM = 3_000_000;
+    const minSafeInputSol = (MIN_LEG_LAMPORTS_NUM * 10_000) / minWeightBps / 1e9;
+    const roundUp = (sol: number, step: number) => Math.ceil(sol / step) * step;
+    const nextSeedSol = roundUp(Math.max(0.05, minSafeInputSol * 5), 0.01);
+    const nextEtfSeedSol = roundUp(Math.max(0.005, minSafeInputSol * 1.5), 0.005);
+    if (!seedSolUserEdited) setSeedSol(nextSeedSol.toFixed(3));
+    if (!etfSeedSolUserEdited) setEtfSeedSol(nextEtfSeedSol.toFixed(4));
+  }, [safeTokens, config.jupiterEnabled, seedSolUserEdited, etfSeedSolUserEdited]);
+
+  // Fetch live SOL/USD once when the launch modal opens. Cached at the module
+  // level so re-opening within the session reuses the value instantly.
+  useEffect(() => {
+    if (!isModalOpen) return;
+    let cancelled = false;
+    void fetchSolUsdPrice().then((p) => {
+      if (!cancelled) setSolUsdPrice(p);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isModalOpen]);
+
+  // ── Slider derived values ──────────────────────────────────────────────
+  // The slider drives a single "total launch SOL" number; we split 80/20
+  // into the existing seedSol (pool depth) and etfSeedSol (creator position)
+  // states so the deploy flow downstream doesn't need to change.
+  const totalLaunchSol = useMemo(() => {
+    const seed = parseFloat(seedSol) || 0;
+    const etf = parseFloat(etfSeedSol) || 0;
+    return seed + etf;
+  }, [seedSol, etfSeedSol]);
+
+  // Slider min: smallest amount where every leg of the 80% pool-seed split
+  // clears MIN_LEG_LAMPORTS. Slider max: 10× that, capped at $500 worth.
+  const sliderBounds = useMemo(() => {
+    const bpsWeights =
+      safeTokens.length > 0 ? percentToBpsWeights(safeTokens.map((t) => t.weight)) : [10_000];
+    const minWeightBps = Math.max(1, Math.min(...bpsWeights));
+    const MIN_LEG_LAMPORTS_NUM = 3_000_000;
+    // 80% of total goes to pool seed; that 80% × minWeight must clear MIN_LEG.
+    const minPoolSeed = (MIN_LEG_LAMPORTS_NUM * 10_000) / minWeightBps / 1e9;
+    const minTotal = Math.ceil((minPoolSeed / 0.8) * 100) / 100; // round to 0.01 SOL
+    const usdCap = 500;
+    const maxTotal = Math.max(minTotal * 10, usdCap / solUsdPrice);
+    return { min: minTotal, max: maxTotal };
+  }, [safeTokens, solUsdPrice]);
+
+  function handleSliderChange(nextTotalSol: number) {
+    const clamped = Math.max(sliderBounds.min, Math.min(sliderBounds.max, nextTotalSol));
+    const nextSeed = clamped * 0.8;
+    const nextEtf = clamped * 0.2;
+    setSeedSol(nextSeed.toFixed(4));
+    setEtfSeedSol(nextEtf.toFixed(4));
+    setSeedSolUserEdited(true);
+    setEtfSeedSolUserEdited(true);
+  }
 
   function pushLog(s: string) {
     setLog((l) => [...l, s]);
@@ -310,6 +459,9 @@ export const PfmmDeploymentBlueprint = ({
       // Round up to 4 decimals so the displayed value is what we set.
       const rounded = Math.ceil(suggestedSol * 10000) / 10000;
       setEtfSeedSol(rounded.toFixed(4));
+      // Auto-button is an explicit user intent — lock the weight-driven default
+      // out from then on so we don't ping-pong the value.
+      setEtfSeedSolUserEdited(true);
       setEtfMinHint(
         `min ≈ ${rounded.toFixed(4)} SOL · bottleneck ${truncatePubkey(
           preview.legs[preview.bottleneckIndex].mint.toBase58(),
@@ -574,6 +726,25 @@ export const PfmmDeploymentBlueprint = ({
         setDeployStep('Buying basket tokens via Jupiter…');
         resume.updateStep('seed', { status: 'running' });
         const bpsWeights = percentToBpsWeights(safeTokens.map((t) => t.weight));
+        // Reject dust legs upfront — same per-leg lamports check the ETF
+        // deposit step already runs. Saves us from burning the InitPool tx
+        // only to die at the first Jupiter quote with NO_ROUTES_FOUND.
+        const seedPre = preflightDepositSol({
+          basketSize: livePool.tokenMints.length,
+          weights: bpsWeights,
+          solIn: seedLamports,
+        });
+        if (!seedPre.ok) {
+          // Same localization trick as the ETF deposit preflight — point the
+          // user at the right input field instead of a generic "SOL input".
+          const localizedErrors = seedPre.errors.map((m) =>
+            m.replace(/Increase SOL input to /g, 'Increase "How much SOL to put in the pool" to ')
+          );
+          const msg = `Pool seed preflight failed: ${localizedErrors.join('; ')}`;
+          resume.updateStep('seed', { status: 'error', error: msg });
+          throw new Error(msg);
+        }
+        for (const w of seedPre.warnings) pushLog(`  ⚠ ${w}`);
         pushLog(
           `Jupiter SOL → basket: ${seedSolNum} SOL split ${bpsWeights.join('/')} bps; slippage ${slippageBps} bps`
         );
@@ -750,15 +921,30 @@ export const PfmmDeploymentBlueprint = ({
         );
 
         try {
+        // Resolve the basket from on-chain when the ETF already exists. The
+        // user-supplied `basketMintsForEtf` / `basketWeightsBpsForEtf` from
+        // the current UI selection can drift from the locked-in ETF state if
+        // the user re-opens this modal with different tokens — the deposit ix
+        // then transfers from ATA(newMint) → vault(oldMint), and the token
+        // program rejects with 0x3 "Account not associated with this Mint".
         let etfMintForDeposit: PublicKey;
         let vaultsForDeposit: PublicKey[];
+        let basketMintsForDeposit: PublicKey[];
+        let basketWeightsForDeposit: number[];
         if (createdEtfMint && createdEtfVaults) {
           etfMintForDeposit = createdEtfMint;
           vaultsForDeposit = createdEtfVaults;
+          basketMintsForDeposit = basketMintsForEtf;
+          basketWeightsForDeposit = basketWeightsBpsForEtf;
         } else {
           const etfStateData = await fetchEtfState(connection, etfStatePda);
           etfMintForDeposit = etfStateData.etfMint;
           vaultsForDeposit = etfStateData.tokenVaults;
+          // Trust chain over UI state — the ix args must agree with whatever
+          // the program wrote when CreateEtf ran, regardless of what the user
+          // has selected in the wizard right now.
+          basketMintsForDeposit = etfStateData.tokenMints;
+          basketWeightsForDeposit = etfStateData.weightsBps;
         }
 
         const treasuryEtfAta = getAssociatedTokenAddressSync(
@@ -768,12 +954,18 @@ export const PfmmDeploymentBlueprint = ({
         );
 
         const pre = preflightDepositSol({
-          basketSize: basketMintsForEtf.length,
-          weights: basketWeightsBpsForEtf,
+          basketSize: basketMintsForDeposit.length,
+          weights: basketWeightsForDeposit,
           solIn: etfSeedLamports,
         });
+        // Rewrite the generic "Increase SOL input ..." prose so the user knows
+        // which input field to bump — there are two SOL inputs in this modal
+        // (pool seed vs ETF position seed) and the preflight is shared.
+        const localizedErrors = pre.errors.map((m) =>
+          m.replace(/Increase SOL input to /g, 'Increase "How much SOL for your own ETF position" to ')
+        );
         if (!pre.ok) {
-          throw new Error(`ETF deposit preflight failed: ${pre.errors.join('; ')}`);
+          throw new Error(`ETF position seed preflight failed: ${localizedErrors.join('; ')}`);
         }
         for (const w of pre.warnings) pushLog(`  ⚠ ${w}`);
         const depositResult = await runDepositSolFlow({
@@ -788,8 +980,8 @@ export const PfmmDeploymentBlueprint = ({
             etfMint: etfMintForDeposit,
             treasury: MAINNET_PROTOCOL_TREASURY,
             treasuryEtfAta,
-            basketMints: basketMintsForEtf,
-            weights: basketWeightsBpsForEtf,
+            basketMints: basketMintsForDeposit,
+            weights: basketWeightsForDeposit,
             vaults: vaultsForDeposit,
             solIn: etfSeedLamports,
             minEtfOut: 0n,
@@ -1153,189 +1345,217 @@ export const PfmmDeploymentBlueprint = ({
                 style={{ willChange: 'transform, opacity' }}
               >
                 <h3 className="text-xl font-normal text-[#F2E0C8] mb-1 flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-amber-400" /> Launch your strategy
+                  <Layers className="w-4 h-4 text-amber-400" />{' '}
+                  {isBusy || resume.hasProgress ? `Launching ${safeSymbol}` : `Launch ${safeSymbol}`}
                 </h3>
-                <p className="text-[11px] text-[#B89860] mb-4">
-                  Five wallet signatures. If something fails, your progress is saved —
-                  just reopen this and resume. You'll receive ETF tokens at the end.
-                </p>
-
-                <DeploymentStepList
-                  progress={resume.progress}
-                  activeStep={activeStep}
-                  explorerCluster={config.explorerCluster}
-                />
-
-                {poolPda && pool && (
-                  <div className="mb-4 px-3 py-2.5 rounded-xl bg-amber-900/15 border border-amber-700/20 text-[11px]">
-                    <span className="text-[#B89860]">Pool address: </span>
-                    <a
-                      href={explorerAddr(poolPda.toBase58(), config.explorerCluster)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-mono text-amber-300 hover:text-amber-200 break-all"
-                    >
-                      {truncatePubkey(poolPda.toBase58(), 6, 6)}
-                    </a>
-                  </div>
+                {!isBusy && !resume.hasProgress && (
+                  <p className="text-[11px] text-[#B89860] mb-5">
+                    Pick how much you want to start with. We'll handle the rest.
+                  </p>
                 )}
 
-                <div className="flex items-center justify-between mb-1 px-1">
-                  <span className="text-xs text-[#B89860]">Your SOL Balance</span>
-                  <span
-                    className={`text-xs font-mono font-normal ${
-                      solBalance === 0 || insufficientFunds ? 'text-red-400' : 'text-[#F2E0C8]'
-                    }`}
-                  >
-                    {solBalance === null ? '...' : `${solBalance.toFixed(4)} SOL`}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between mb-3 px-1">
-                  <span className="text-[11px] text-[#B89860]/70">
-                    Est. minimum needed (seed + rents + fees)
-                  </span>
-                  <span
-                    className={`text-[11px] font-mono ${
-                      insufficientFunds ? 'text-red-400' : 'text-[#B89860]/70'
-                    }`}
-                  >
-                    ~{estimatedMinSol.toFixed(4)} SOL
-                  </span>
-                </div>
+                {/* ── DURING LAUNCH: just the animated progress bar ─── */}
+                {(isBusy || resume.hasProgress) && (
+                  <LaunchProgressBar
+                    progress={resume.progress}
+                    activeStep={activeStep}
+                    explorerCluster={config.explorerCluster}
+                    title={isBusy ? `Launching ${safeSymbol}` : 'Paused — tap Continue to resume'}
+                  />
+                )}
 
-                <div className="grid grid-cols-1 gap-3 mb-3">
-                  <label className="flex flex-col text-xs">
-                    <span className="text-[#B89860] mb-1">
-                      How much SOL to put in the pool
-                    </span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={seedSol}
-                      onChange={(e) => setSeedSol(e.target.value)}
-                      disabled={isBusy}
-                      className="w-full p-2.5 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-sm font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
-                    />
-                    <span className="text-[10px] text-[#B89860]/60 mt-1">
-                      We'll buy your basket tokens with this and seed the trading pool. Bigger seed = better trade pricing.
-                    </span>
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 mb-3">
-                  <label className="flex flex-col text-xs">
-                    <span className="text-[#B89860] mb-1">
-                      How much SOL for your own ETF position
-                    </span>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.001"
-                        value={etfSeedSol}
-                        onChange={(e) => {
-                          setEtfSeedSol(e.target.value);
-                          setEtfMinHint('');
-                        }}
-                        disabled={isBusy}
-                        className="flex-1 p-2.5 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-xl text-sm font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none transition-colors"
-                      />
-                      <button
-                        type="button"
-                        onClick={computeEtfSeedMin}
-                        disabled={isBusy || computingEtfMin || safeTokens.length === 0}
-                        className="px-3 py-2 bg-[#080503] border border-[rgba(184,134,63,0.3)] rounded-xl text-xs text-[#B89860] hover:border-[#B8863F] disabled:opacity-50 whitespace-nowrap"
-                      >
-                        {computingEtfMin ? 'Checking…' : 'Auto'}
-                      </button>
+                {/* ── PRE-LAUNCH: amount picker + lightweight preview ── */}
+                {!isBusy && !resume.hasProgress && (
+                  <>
+                    <div className="text-center mb-4">
+                      <div className="text-[10px] uppercase tracking-widest text-[#B89860]/60 mb-1">
+                        Start with
+                      </div>
+                      <div className="text-4xl font-light text-[#F2E0C8] tabular-nums">
+                        ${(totalLaunchSol * solUsdPrice).toFixed(0)}
+                      </div>
+                      <div className="text-xs text-[#B89860]/70 font-mono tabular-nums mt-1">
+                        {totalLaunchSol.toFixed(4)} SOL
+                      </div>
                     </div>
-                    <span className="text-[10px] text-[#B89860]/60 mt-1">
-                      You'll receive ETF tokens for this amount. Tap "Auto" to use the smallest amount that works.
-                    </span>
+
+                    <div className="mb-5 px-1">
+                      <input
+                        type="range"
+                        min={sliderBounds.min}
+                        max={sliderBounds.max}
+                        step={(sliderBounds.max - sliderBounds.min) / 200}
+                        value={Math.max(sliderBounds.min, Math.min(sliderBounds.max, totalLaunchSol))}
+                        onChange={(e) => handleSliderChange(parseFloat(e.target.value))}
+                        disabled={isBusy}
+                        className="w-full h-2 accent-amber-400 cursor-pointer disabled:opacity-50"
+                      />
+                      <div className="flex justify-between text-[10px] text-[#B89860]/60 mt-1.5 font-mono tabular-nums">
+                        <span>min ${(sliderBounds.min * solUsdPrice).toFixed(0)}</span>
+                        <span>max ${(sliderBounds.max * solUsdPrice).toFixed(0)}</span>
+                      </div>
+                    </div>
+
+                    {/* Slim one-line preview. The richer 4-line breakdown
+                        was redundant for beginners — they care about "what
+                        do I get" + "what's the cost". */}
+                    <div className="mb-5 text-center text-[11px] text-[#B89860]">
+                      You'll receive ~{safeSymbol} tokens worth{' '}
+                      <span className="text-[#F2E0C8]">${(totalLaunchSol * 0.2 * solUsdPrice).toFixed(2)}</span>{' '}
+                      · fees ~$2
+                    </div>
+                  </>
+                )}
+
+                {/* ── ADVANCED (collapsed, pre-launch only) ──────────── */}
+                {!isBusy && !resume.hasProgress && (
+                <details className="mb-4 group">
+                  <summary className="text-[11px] text-[#B89860]/70 hover:text-[#F2E0C8] cursor-pointer select-none flex items-center gap-1.5 py-1">
+                    <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                    Advanced settings
+                  </summary>
+                  <div className="mt-3 space-y-3 pl-1">
+                    {poolPda && pool && (
+                      <div className="text-[11px]">
+                        <span className="text-[#B89860]">Pool address: </span>
+                        <a
+                          href={explorerAddr(poolPda.toBase58(), config.explorerCluster)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-mono text-amber-300 hover:text-amber-200 break-all"
+                        >
+                          {truncatePubkey(poolPda.toBase58(), 6, 6)}
+                        </a>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="flex flex-col text-[10px]">
+                        <span className="text-[#B89860]/70 mb-1">Pool seed (SOL)</span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="0.01"
+                          value={seedSol}
+                          onChange={(e) => {
+                            setSeedSol(e.target.value);
+                            setSeedSolUserEdited(true);
+                          }}
+                          disabled={isBusy}
+                          className="w-full p-2 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg text-xs font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none"
+                        />
+                      </label>
+                      <label className="flex flex-col text-[10px]">
+                        <span className="text-[#B89860]/70 mb-1">Your position (SOL)</span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0"
+                          step="0.001"
+                          value={etfSeedSol}
+                          onChange={(e) => {
+                            setEtfSeedSol(e.target.value);
+                            setEtfSeedSolUserEdited(true);
+                            setEtfMinHint('');
+                          }}
+                          disabled={isBusy}
+                          className="w-full p-2 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg text-xs font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none"
+                        />
+                      </label>
+                    </div>
+                    {(seedDustWarning || etfSeedDustWarning) && (
+                      <div className="text-[10px] text-rose-400">
+                        ⚠ {seedDustWarning || etfSeedDustWarning}
+                      </div>
+                    )}
                     {etfMinHint && (
-                      <span
+                      <div
                         className={
-                          'text-[10px] mt-1 ' +
-                          (etfMinHint.startsWith('✗')
-                            ? 'text-rose-400'
-                            : 'text-emerald-400/80')
+                          'text-[10px] ' +
+                          (etfMinHint.startsWith('✗') ? 'text-rose-400' : 'text-emerald-400/80')
                         }
                       >
                         {etfMinHint}
-                      </span>
-                    )}
-                  </label>
-                </div>
-
-                {!pool && poolMissing && (
-                  <div className="mb-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvanced((v) => !v)}
-                      className="text-[10px] text-amber-400/70 hover:text-amber-300 underline"
-                    >
-                      {showAdvanced ? 'Hide advanced settings' : 'Show advanced settings'}
-                    </button>
-                    {showAdvanced && (
-                      <div className="grid grid-cols-3 gap-2 mt-2">
-                        <label className="flex flex-col text-[11px]">
-                          <span className="text-[#B89860] mb-1">Trade fee (bps)</span>
-                          <input
-                            type="number"
-                            min="0"
-                            max="10000"
-                            value={feeBps}
-                            onChange={(e) => setFeeBps(Number(e.target.value))}
-                            disabled={isBusy}
-                            className="w-full p-2 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg text-xs font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none"
-                          />
-                        </label>
-                        <label className="flex flex-col text-[11px]">
-                          <span className="text-[#B89860] mb-1">Auction window (slots)</span>
-                          <input
-                            type="number"
-                            min="1"
-                            value={windowSlots}
-                            onChange={(e) => setWindowSlots(Number(e.target.value))}
-                            disabled={isBusy}
-                            className="w-full p-2 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg text-xs font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none"
-                          />
-                        </label>
-                        <label className="flex flex-col text-[11px]">
-                          <span className="text-[#B89860] mb-1">Slippage (bps)</span>
-                          <input
-                            type="number"
-                            min="1"
-                            max="500"
-                            value={slippageBps}
-                            onChange={(e) => setSlippageBps(Number(e.target.value))}
-                            disabled={isBusy}
-                            className="w-full p-2 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg text-xs font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none"
-                          />
-                        </label>
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={computeEtfSeedMin}
+                      disabled={isBusy || computingEtfMin || safeTokens.length === 0}
+                      className="w-full px-3 py-2 bg-[#080503] border border-[rgba(184,134,63,0.3)] rounded-lg text-[11px] text-[#B89860] hover:border-[#B8863F] disabled:opacity-50"
+                    >
+                      {computingEtfMin ? 'Computing…' : 'Auto-compute minimum position'}
+                    </button>
                   </div>
+                </details>
                 )}
 
-                {solBalance !== null && solBalance < 0.02 && (
+                {/* Pool-init only knobs (fee/window/slippage) — show only when
+                    we're about to create a fresh pool. Default values are sane
+                    so beginners never see this; surfaces inside an extra-nested
+                    details so it stays hidden by default. */}
+                {!pool && poolMissing && !isBusy && !resume.hasProgress && (
+                  <details className="mb-4 group">
+                    <summary className="text-[11px] text-[#B89860]/70 hover:text-[#F2E0C8] cursor-pointer select-none flex items-center gap-1.5 py-1">
+                      <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                      Pool parameters (for nerds)
+                    </summary>
+                    <div className="grid grid-cols-3 gap-2 mt-2">
+                      <label className="flex flex-col text-[10px]">
+                        <span className="text-[#B89860]/70 mb-1">Trade fee bps</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min="0"
+                          max="10000"
+                          value={feeBps}
+                          onChange={(e) => setFeeBps(Number(e.target.value))}
+                          disabled={isBusy}
+                          className="w-full p-2 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg text-xs font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none"
+                        />
+                      </label>
+                      <label className="flex flex-col text-[10px]">
+                        <span className="text-[#B89860]/70 mb-1">Window slots</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min="1"
+                          value={windowSlots}
+                          onChange={(e) => setWindowSlots(Number(e.target.value))}
+                          disabled={isBusy}
+                          className="w-full p-2 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg text-xs font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none"
+                        />
+                      </label>
+                      <label className="flex flex-col text-[10px]">
+                        <span className="text-[#B89860]/70 mb-1">Slippage bps</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min="1"
+                          max="500"
+                          value={slippageBps}
+                          onChange={(e) => setSlippageBps(Number(e.target.value))}
+                          disabled={isBusy}
+                          className="w-full p-2 bg-[#080503] border border-[rgba(184,134,63,0.15)] rounded-lg text-xs font-mono text-[#F2E0C8] focus:border-[#B8863F] outline-none"
+                        />
+                      </label>
+                    </div>
+                  </details>
+                )}
+
+                {/* Single, plain-English wallet warning. Only shown
+                    pre-launch — once running, the progress bar carries
+                    the user's attention and warnings would just add noise. */}
+                {!isBusy && !resume.hasProgress &&
+                  (insufficientFunds || (solBalance !== null && solBalance < 0.02)) && (
                   <div className="mb-4 px-3 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400">
-                    Low SOL balance. Keep at least ≈ 0.02 SOL for tx fees + rent on the bare vault
-                    accounts created by InitPool.
-                  </div>
-                )}
-
-                {isBusy && deployStep && (
-                  <div className="mb-4 px-3 py-3 rounded-xl bg-amber-900/20 border border-amber-600/20 flex items-center gap-2">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 flex-shrink-0" />
-                    <span className="text-xs text-amber-300">{deployStep}</span>
+                    Not enough SOL in your wallet. Add some SOL and try again.
                   </div>
                 )}
 
                 <button
                   onClick={runFullFlow}
-                  disabled={isBusy}
+                  disabled={isBusy || insufficientFunds}
                   className="w-full py-4 bg-gradient-to-b from-[#F2E0C8] to-[#D4A261] text-[#080503] font-normal rounded-xl flex justify-center items-center gap-2 hover:brightness-110 transition-all disabled:opacity-50"
                 >
                   {isBusy ? (
@@ -1343,11 +1563,13 @@ export const PfmmDeploymentBlueprint = ({
                   ) : (
                     <Sparkles className="w-4 h-4" />
                   )}
-                  {stage === 'err'
-                    ? 'Resume from here'
-                    : resume.hasProgress && pool
-                      ? 'Continue launch'
-                      : 'Launch strategy'}
+                  {isBusy
+                    ? 'Working…'
+                    : stage === 'err'
+                      ? 'Resume from here'
+                      : resume.hasProgress && pool
+                        ? 'Continue launch'
+                        : `Launch ${safeSymbol}`}
                 </button>
 
                 {/* Manual + dev controls live behind "Advanced" so they

@@ -74,7 +74,10 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
     <ToastContext.Provider value={{ showToast }}>
       {children}
 
-      <div className="fixed top-0 left-0 right-0 z-[10000] flex justify-center pt-6 px-4 pointer-events-none">
+      {/* Toasts must always sit above any modal in the app. Highest modal
+          stack seen so far is ProfileEditModal at z-[100000], so we use
+          z-[999999] to leave headroom for future stacking without clashing. */}
+      <div className="fixed top-0 left-0 right-0 z-[999999] flex justify-center pt-6 px-4 pointer-events-none">
         <AnimatePresence mode="wait">
           {toast && (
             <Toast
