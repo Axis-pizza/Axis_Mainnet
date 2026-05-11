@@ -8,12 +8,19 @@ import { InviteGate, INVITE_GRANTED_KEY } from './components/common/InviteGate';
 const GA_MEASUREMENT_ID = 'G-523HYF8JTN';
 const CLARITY_PROJECT_ID = 't0od4wxooa';
 
+// Pages that must stay reachable without an invite — these are static legal
+// or info pages that the gate itself links to, so blocking them creates a
+// click-loop ("agree to terms" → opens /terms in new tab → gate appears →
+// can't read terms unless already granted).
+const PUBLIC_PATHS = ['/terms'];
+
 function InviteGateWrapper() {
   const [granted, setGranted] = useState(() =>
     !!localStorage.getItem(INVITE_GRANTED_KEY)
   );
 
   if (granted) return null;
+  if (PUBLIC_PATHS.includes(window.location.pathname)) return null;
 
   return (
     <InviteGate
