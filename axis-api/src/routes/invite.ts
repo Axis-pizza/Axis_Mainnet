@@ -31,6 +31,14 @@ app.post('/verify', async (c) => {
     if (body.code) {
       const code = body.code.trim().toUpperCase();
 
+      // Reusable judge / demo bypass. Set via `wrangler secret put
+      // JUDGE_INVITE_CODE`. Skips the DB so the same code can be used by
+      // every reviewer without burning the row's used_at slot.
+      const judgeCode = c.env.JUDGE_INVITE_CODE?.trim().toUpperCase();
+      if (judgeCode && code === judgeCode) {
+        return c.json({ valid: true });
+      }
+
       const row = await db
         .prepare(`
           SELECT code, used_at, expires_at
@@ -76,6 +84,14 @@ app.post('/use', async (c) => {
     const code   = body.code.trim().toUpperCase();
     const wallet = body.wallet.trim();
     const db     = c.env.DB_INVITE;
+
+    // Judge / demo bypass — same as /invite/verify. Don't touch the DB so
+    // the code stays usable for the next reviewer.
+    const judgeCode = c.env.JUDGE_INVITE_CODE?.trim().toUpperCase();
+    if (judgeCode && code === judgeCode) {
+      console.log(`[invite/use] judge bypass for wallet ${wallet}`);
+      return c.json({ success: true });
+    }
 
     const row = await db
       .prepare(`

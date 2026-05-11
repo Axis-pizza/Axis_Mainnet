@@ -38,5 +38,9 @@ export type Bindings = {
   HELIUS_RPC_URL: string     // トランザクション配信用
   WEBHOOK_AUTH_SECRET?: string // (任意) Webhookのセキュリティ用
 
-  
+  // Reusable invite code for hackathon judges / demo access. When set, this
+  // code bypasses the single-use invite_codes table entirely: /invite/verify
+  // and /invite/use return success without touching the DB. Rotate with
+  // `wrangler secret put JUDGE_INVITE_CODE`, kill with `wrangler secret delete`.
+  JUDGE_INVITE_CODE?: string
 }
