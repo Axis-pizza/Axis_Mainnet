@@ -4,6 +4,8 @@ export interface StrategyConfig {
   name: string;
   ticker: string;
   description: string;
+  /** Creator-uploaded ETF logo (R2 URL from api.uploadImage). Optional. */
+  logoUrl?: string;
 }
 
 export interface AssetItem {

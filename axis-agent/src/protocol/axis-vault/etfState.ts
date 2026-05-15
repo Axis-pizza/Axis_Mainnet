@@ -95,6 +95,45 @@ export async function fetchEtfState(
   return decodeEtfState(info.data);
 }
 
+/// Tri-state resolution of an EtfState PDA. The buy/sell routers MUST treat
+/// these three outcomes differently:
+///
+/// - `present`: real axis-vault ETF — mint/burn a single ETF token.
+/// - `absent`: the account genuinely does not exist on-chain — this is a
+///   legitimate pre-axis-vault / PFMM-only strategy, so the Jupiter/PFMM
+///   path is correct.
+/// - `error`: the RPC call failed, or the account exists but failed to
+///   decode (wrong layout / discriminator). We do NOT know whether this is
+///   an ETF, so callers must surface the error and let the user retry —
+///   never silently fall back to spot-swapping basket tokens into the
+///   user's wallet, which would mis-route a real ETF deposit.
+///
+/// `fetchEtfState` collapses `absent` and `error` into one throw, which is
+/// exactly the ambiguity that caused real ETFs to silently degrade to a
+/// wallet spot-swap on a transient RPC hiccup or a name-derived PDA miss.
+export type EtfStateResolution =
+  | { kind: 'present'; data: EtfStateData }
+  | { kind: 'absent' }
+  | { kind: 'error'; error: Error };
+
+export async function classifyEtfState(
+  conn: Connection,
+  etfState: PublicKey
+): Promise<EtfStateResolution> {
+  let info;
+  try {
+    info = await conn.getAccountInfo(etfState, 'confirmed');
+  } catch (e) {
+    return { kind: 'error', error: e instanceof Error ? e : new Error(String(e)) };
+  }
+  if (!info) return { kind: 'absent' };
+  try {
+    return { kind: 'present', data: decodeEtfState(info.data) };
+  } catch (e) {
+    return { kind: 'error', error: e instanceof Error ? e : new Error(String(e)) };
+  }
+}
+
 export function decodeTokenAccountAmount(raw: Uint8Array): bigint {
   if (raw.length < 72) {
     throw new Error(`SPL token account too small: ${raw.length}`);

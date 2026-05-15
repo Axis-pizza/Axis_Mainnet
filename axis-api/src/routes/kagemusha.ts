@@ -294,8 +294,10 @@ app.post('/deploy', async (c) => {
     const {
       ownerPubkey, name, ticker, description, type, tokens, config, tvl, address, protocol,
       mintAddress: bodyMintAddress, mint_address: bodyMintAddressSnake,
+      logoUrl: bodyLogoUrl, logo_url: bodyLogoUrlSnake,
     } = meta;
     const mintAddress = bodyMintAddress ?? bodyMintAddressSnake ?? null;
+    const logoUrl = bodyLogoUrl ?? bodyLogoUrlSnake ?? null;
     const depositAmountSOL = tvl || 0;
     const now = Math.floor(Date.now() / 1000);
     const id = body.strategyId || crypto.randomUUID();
@@ -358,7 +360,14 @@ app.post('/deploy', async (c) => {
     // Metaplex/SPL mint that backs this specific ETF — null is acceptable for
     // strategies that don't issue a per-ETF token.
     const vaultAddress = address ?? null;
-    const mergedConfig = protocol ? { ...(config || {}), protocol } : (config || {});
+    // logoUrl rides inside `config` JSON so no schema migration is needed;
+    // the /metadata/mint endpoint reads it back to build the token's
+    // Metaplex JSON image.
+    const mergedConfig = {
+      ...(config || {}),
+      ...(protocol ? { protocol } : {}),
+      ...(logoUrl ? { logoUrl } : {}),
+    };
     await c.env.axis_main_db.prepare(`
         INSERT INTO strategies (
           id, owner_pubkey, name, ticker, description, type,

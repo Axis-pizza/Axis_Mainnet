@@ -4,6 +4,18 @@
 
 const API_BASE = import.meta.env.VITE_API_URL || 'https://axis-api-mainnet.yusukekikuta-05.workers.dev';
 
+/**
+ * On-chain Metaplex `uri` for an ETF token. Must resolve to a JSON metadata
+ * document (name/symbol/description/image) — wallets and explorers parse the
+ * JSON, not a raw image — so this points at the axis-api metadata endpoint
+ * keyed by the ETF mint (unique, deterministic, well under Metaplex's
+ * 200-byte MAX_URI_LENGTH). The endpoint serves the creator-uploaded logo
+ * once the strategy is persisted, falling back to the default Axis logo.
+ */
+export function etfMetadataUri(etfMint: string): string {
+  return `${API_BASE.replace(/\/$/, '')}/metadata/mint/${etfMint}`;
+}
+
 // Leaderboard だけ別バックエンド（旧 axis-api）を参照する。VITE_LEADERBOARD_API_URL で上書き可。
 const LEADERBOARD_API_BASE =
   import.meta.env.VITE_LEADERBOARD_API_URL || 'https://axis-api.yusukekikuta-05.workers.dev';

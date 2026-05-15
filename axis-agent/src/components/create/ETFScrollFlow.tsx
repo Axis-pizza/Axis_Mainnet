@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Sparkles,
   Check,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useWallet, useLoginModal } from '../../hooks/useWallet';
 import { useManualDashboard } from '../../hooks/useManualDashboard';
@@ -17,6 +18,7 @@ import { useTokenPreferences } from '../../hooks/useTokenPreferences';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { MobileBuilder, DesktopBuilder } from './manual/Builder';
 import { PfmmDeploymentBlueprint } from './PfmmDeploymentBlueprint';
+import { ImageUpload } from '../common/ImageUpload';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 3D Background (reused from CreateLanding)
@@ -173,9 +175,12 @@ function InlineIdentityStep({
   onConnectDirect,
   isDirectAvailable,
   isDirectConnecting,
+  walletAddress,
 }: {
-  config: { name: string; ticker: string; description: string };
-  setConfig: React.Dispatch<React.SetStateAction<{ name: string; ticker: string; description: string }>>;
+  config: { name: string; ticker: string; description: string; logoUrl?: string };
+  setConfig: React.Dispatch<
+    React.SetStateAction<{ name: string; ticker: string; description: string; logoUrl?: string }>
+  >;
   focusedField: 'ticker' | 'name' | 'desc' | null;
   setFocusedField: (f: 'ticker' | 'name' | 'desc' | null) => void;
   portfolioCount: number;
@@ -185,6 +190,7 @@ function InlineIdentityStep({
   onConnectDirect?: () => void;
   isDirectAvailable?: boolean;
   isDirectConnecting?: boolean;
+  walletAddress?: string;
 }) {
   return (
     <div className="max-w-md mx-auto px-5 py-10 space-y-6">
@@ -291,6 +297,26 @@ function InlineIdentityStep({
           placeholder="Investment thesis..."
           className="w-full bg-transparent text-base text-white/90 placeholder:text-white/10 focus:outline-none resize-none leading-relaxed"
         />
+      </div>
+
+      {/* ETF Logo (optional) — used as the on-chain token image via Metaplex */}
+      <div className="rounded-3xl border border-white/5 bg-white/[0.02] p-5">
+        <div className="flex items-center gap-2 mb-3 text-xs font-normal uppercase tracking-wider text-white/30">
+          <ImageIcon size={14} /> Logo
+          <span className="text-white/15 normal-case tracking-normal">· optional</span>
+        </div>
+        {walletAddress ? (
+          <ImageUpload
+            walletAddress={walletAddress}
+            type="strategy"
+            currentImage={config.logoUrl}
+            onUploadComplete={(url) => setConfig((prev) => ({ ...prev, logoUrl: url }))}
+          />
+        ) : (
+          <p className="text-sm text-white/30">
+            Connect your wallet to upload a logo for your ETF token.
+          </p>
+        )}
       </div>
 
       {/* Stats */}
@@ -545,6 +571,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
             }}
             isDirectAvailable={isDirectAvailable}
             isDirectConnecting={isDirectConnecting}
+            walletAddress={publicKey?.toBase58()}
           />
         </GlassSection>
       </div>
@@ -557,7 +584,7 @@ export const ETFScrollFlow = ({ onDeployComplete }: ETFScrollFlowProps) => {
             strategyType="BALANCED"
             tokens={reviewTokens}
             description={dashboard.config.description || ''}
-            info={{ symbol: dashboard.config.ticker || 'ETF' }}
+            info={{ symbol: dashboard.config.ticker || 'ETF', logoUrl: dashboard.config.logoUrl }}
             initialTvl={1.0}
             onBack={() => scrollTo(identityRef)}
             onComplete={handleDeployComplete}

@@ -76,11 +76,12 @@ export {
   ETF_STATE_SIZE,
   decodeEtfState,
   fetchEtfState,
+  classifyEtfState,
   decodeTokenAccountAmount,
   fetchVaultBalances,
   expectedWithdrawOutputs,
 } from './etfState';
-export type { EtfStateData } from './etfState';
+export type { EtfStateData, EtfStateResolution } from './etfState';
 export {
   buildCreateMintWithSupplyIxs,
   buildBareTokenAccountIxs,
