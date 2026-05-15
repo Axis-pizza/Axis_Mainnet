@@ -29,7 +29,7 @@ import { JupiterService } from '../../services/jupiter';
 import {
   AXIS_VAULT_PROGRAM_ID,
   buildJupiterSolSeedPlan,
-  fetchEtfState,
+  classifyEtfState,
   findEtfState,
   humanizeJupiterError,
   preflightDepositSol,
@@ -766,12 +766,18 @@ export const SwipeDiscoverView = ({
   const [investEtfState, setInvestEtfState] = useState<PublicKey | null>(null);
   const [investEtfData, setInvestEtfData] = useState<EtfStateData | null>(null);
   const [investUserEtfBalance, setInvestUserEtfBalance] = useState<bigint>(0n);
+  // null = resolved cleanly (present or genuinely absent). non-null = the
+  // EtfState PDA could not be resolved (RPC failure or decode error), so we
+  // must NOT silently route a potential ETF buy through the wallet spot-swap
+  // path. handleDeposit reads this before taking any non-axis-vault branch.
+  const [investEtfResolveError, setInvestEtfResolveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!investTarget) {
       setInvestEtfState(null);
       setInvestEtfData(null);
       setInvestUserEtfBalance(0n);
+      setInvestEtfResolveError(null);
       return;
     }
     const owner = investTarget.ownerPubkey ?? investTarget.owner;
@@ -784,29 +790,38 @@ export const SwipeDiscoverView = ({
         const [pda] = findEtfState(AXIS_VAULT_PROGRAM_ID, ownerPk, name);
         if (cancelled) return;
         setInvestEtfState(pda);
-        try {
-          const data = await fetchEtfState(connection, pda);
-          if (cancelled) return;
-          setInvestEtfData(data);
+        const res = await classifyEtfState(connection, pda);
+        if (cancelled) return;
+        if (res.kind === 'present') {
+          setInvestEtfData(res.data);
+          setInvestEtfResolveError(null);
           if (wallet.publicKey) {
             try {
-              const ata = getAssociatedTokenAddressSync(data.etfMint, wallet.publicKey, false);
+              const ata = getAssociatedTokenAddressSync(res.data.etfMint, wallet.publicKey, false);
               const bal = await connection.getTokenAccountBalance(ata, 'confirmed');
               if (!cancelled) setInvestUserEtfBalance(BigInt(bal.value.amount));
             } catch {
               if (!cancelled) setInvestUserEtfBalance(0n);
             }
           }
-        } catch {
-          if (!cancelled) {
-            setInvestEtfData(null);
-            setInvestUserEtfBalance(0n);
-          }
+        } else if (res.kind === 'absent') {
+          // Genuine pre-axis-vault / PFMM-only strategy — spot/PFMM path is
+          // legitimate here.
+          setInvestEtfData(null);
+          setInvestUserEtfBalance(0n);
+          setInvestEtfResolveError(null);
+        } else {
+          // Could not determine — keep ETF data null but flag the ambiguity
+          // so handleDeposit refuses to spot-swap a possible ETF.
+          setInvestEtfData(null);
+          setInvestUserEtfBalance(0n);
+          setInvestEtfResolveError(res.error.message);
         }
       } catch {
         if (!cancelled) {
           setInvestEtfState(null);
           setInvestEtfData(null);
+          setInvestEtfResolveError(null);
         }
       }
     })();
@@ -1145,6 +1160,17 @@ export const SwipeDiscoverView = ({
     //    detail page (the swipe sheet has no %-of-basket UI).
     // Strategies that match neither are unsupported and surface a toast.
     const useAxisVault = investEtfState !== null && investEtfData !== null;
+    // If the EtfState PDA could not be resolved (RPC blip / decode error),
+    // this strategy MIGHT be a real ETF. Refuse to route it down any
+    // non-axis-vault path — bouncing to PFMM or spot-swapping basket tokens
+    // into the wallet here would silently mis-handle a real ETF deposit.
+    if (!useAxisVault && investEtfResolveError) {
+      showToast(
+        "Couldn't verify this strategy's ETF state — check your connection and try again",
+        'error',
+      );
+      return;
+    }
     const isPfmm =
       investTarget?.config?.protocol === 'pfda-amm-3' ||
       investTarget?.protocol === 'pfda-amm-3';

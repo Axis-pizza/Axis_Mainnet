@@ -18,7 +18,7 @@ import {
 import { useConnection, useWallet } from '../../hooks/useWallet';
 import { useAxisVaultWallet } from '../../hooks/useAxisVaultWallet';
 import { useToast } from '../../context/ToastContext';
-import { api, clearStrategyCache } from '../../services/api';
+import { api, clearStrategyCache, etfMetadataUri } from '../../services/api';
 import {
   AXIS_VAULT_PROGRAM_ID,
   buildBareMintAccountIxs,
@@ -68,6 +68,9 @@ interface PfmmDeploymentBlueprintProps {
   info?: {
     symbol: string;
     imagePreview?: string;
+    /** Creator-uploaded ETF logo (R2 URL). Stored off-chain and served as
+     *  the token's Metaplex image via the metadata `uri`. */
+    logoUrl?: string;
   };
   initialTvl?: number;
 
@@ -476,7 +479,12 @@ export const PfmmDeploymentBlueprint = ({
     }
   }
 
-  async function persistMetadata(poolAddress: string, depositSol: number, txSig: string) {
+  async function persistMetadata(
+    poolAddress: string,
+    depositSol: number,
+    txSig: string,
+    etfMint: string | null,
+  ) {
     setStage('metadata');
     setDeployStep('Saving strategy metadata…');
     const strategyData = {
@@ -494,6 +502,10 @@ export const PfmmDeploymentBlueprint = ({
       tvl: depositSol,
       address: poolAddress,
       protocol: 'pfda-amm-3',
+      // ETF token mint + creator logo so the axis-api metadata endpoint
+      // (keyed by mint) can serve the right Metaplex image.
+      mintAddress: etfMint,
+      logoUrl: info?.logoUrl || null,
     };
     const result = await api.deploy(txSig, strategyData);
     if (!result.success) throw new Error(result.error || 'Deployment metadata save failed');
@@ -522,6 +534,10 @@ export const PfmmDeploymentBlueprint = ({
     // ETF already existed and we have to fetch the on-chain state in step 4.
     let createdEtfMint: PublicKey | null = null;
     let createdEtfVaults: PublicKey[] | null = null;
+    // ETF mint (base58) for off-chain metadata persistence — set in both the
+    // fresh-create and already-exists branches so persistMetadata can key the
+    // logo to the right token.
+    let etfMintB58: string | null = null;
 
     try {
       const m = mintStrings.map((s) => new PublicKey(s)) as [PublicKey, PublicKey, PublicKey];
@@ -548,6 +564,7 @@ export const PfmmDeploymentBlueprint = ({
       );
       try {
         const data = await fetchEtfState(connection, etfStatePda);
+        etfMintB58 = data.etfMint.toBase58();
         pushLog(`ETF already exists at ${truncatePubkey(etfStatePda.toBase58())} — skipping CreateEtf`);
         resume.setAddresses({
           etfStatePda: etfStatePda.toBase58(),
@@ -577,7 +594,10 @@ export const PfmmDeploymentBlueprint = ({
             weightsBps: basketWeightsBpsForEtf,
             ticker: safeSymbol,
             name: strategyName,
-            uri: '',
+            // Off-chain JSON metadata URI keyed by this ETF mint. The
+            // axis-api endpoint serves the creator's uploaded logo (or the
+            // default Axis logo) — wallets/explorers parse this JSON.
+            uri: etfMetadataUri(etfMintBundle.pubkey.toBase58()),
           });
           const createSig = await sendTx(
             connection,
@@ -588,6 +608,7 @@ export const PfmmDeploymentBlueprint = ({
           lastSig = createSig;
           createdEtfMint = etfMintBundle.pubkey;
           createdEtfVaults = vaultBundle.pubkeys;
+          etfMintB58 = etfMintBundle.pubkey.toBase58();
           pushLog(
             `✓ create_etf "${strategyName}" (${basketMintsForEtf.length} legs): ${createSig.slice(0, 12)}…  → ${explorerTx(createSig, config.explorerCluster)}`,
           );
@@ -1042,7 +1063,12 @@ export const PfmmDeploymentBlueprint = ({
       }
 
       // ── 5. Persist backend metadata ──────────────────────────────────────
-      const strategyId = await persistMetadata(poolPda.toBase58(), seedSolNum, lastSig);
+      const strategyId = await persistMetadata(
+        poolPda.toBase58(),
+        seedSolNum,
+        lastSig,
+        etfMintB58,
+      );
       setStage('done');
       setActiveStep(null);
       setDeployStep('Pool ready. Window auctions will clear automatically.');

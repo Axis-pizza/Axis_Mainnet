@@ -38,7 +38,7 @@ import {
   buildJupiterSolSeedPlan,
   buildJupiterBasketSellPlan,
   buildSwapRequest3,
-  fetchEtfState,
+  classifyEtfState,
   fetchVaultBalances,
   expectedWithdrawOutputs,
   findEtfState,
@@ -583,6 +583,10 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   // fall back to Jupiter-only basket buy/sell (basket tokens stay in user wallet).
   const [etfStatePda, setEtfStatePda] = useState<PublicKey | null>(null);
   const [etfStateData, setEtfStateData] = useState<EtfStateData | null>(null);
+  // non-null = the EtfState PDA couldn't be resolved (RPC/decode failure),
+  // so this strategy might be a real ETF. handleTransaction refuses the
+  // legacy Jupiter-into-wallet path while this is set.
+  const [etfResolveError, setEtfResolveError] = useState<string | null>(null);
   const [userEtfBalance, setUserEtfBalance] = useState<bigint>(0n);
 
   const isCreator = useMemo(() => {
@@ -622,6 +626,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     if (!owner || !strategy.name) {
       setEtfStatePda(null);
       setEtfStateData(null);
+      setEtfResolveError(null);
       return;
     }
     let cancelled = false;
@@ -631,16 +636,24 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         const [pda] = findEtfState(AXIS_VAULT_PROGRAM_ID, ownerPk, strategy.name);
         if (cancelled) return;
         setEtfStatePda(pda);
-        try {
-          const data = await fetchEtfState(connection, pda);
-          if (!cancelled) setEtfStateData(data);
-        } catch {
-          if (!cancelled) setEtfStateData(null);
+        const res = await classifyEtfState(connection, pda);
+        if (cancelled) return;
+        if (res.kind === 'present') {
+          setEtfStateData(res.data);
+          setEtfResolveError(null);
+        } else if (res.kind === 'absent') {
+          // Genuine pre-axis-vault / PFMM-only strategy — legacy path is OK.
+          setEtfStateData(null);
+          setEtfResolveError(null);
+        } else {
+          setEtfStateData(null);
+          setEtfResolveError(res.error.message);
         }
       } catch {
         if (!cancelled) {
           setEtfStatePda(null);
           setEtfStateData(null);
+          setEtfResolveError(null);
         }
       }
     })();
@@ -836,6 +849,15 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     if (!basketMints) return showToast('Strategy basket not loaded', 'error');
 
     const useAxisVault = etfStateData !== null && etfStatePda !== null;
+    // The EtfState PDA failed to resolve (RPC/decode), so we can't tell if
+    // this is a real ETF. Refuse the legacy Jupiter-into-wallet path rather
+    // than silently spot-swapping basket tokens for what may be an ETF.
+    if (!useAxisVault && etfResolveError) {
+      return showToast(
+        "Couldn't verify this strategy's ETF state — check your connection and try again",
+        'error',
+      );
+    }
     const isPfmmStrategy = isPfmm;
     // axis-vault deposit/withdraw is independent of the PFMM pool — only block
     // when the relevant program's own pause flag is set.

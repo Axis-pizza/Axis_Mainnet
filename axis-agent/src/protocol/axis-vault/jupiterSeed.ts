@@ -91,39 +91,45 @@ export async function buildJupiterSeedPreview({
   );
   validateSeedInputs(mints, weights, solIn);
 
-  const legLamports = splitWeightedLamports(solIn, weights);
-  // SOL legs: no Jupiter quote — the deposit's wrap step lands wSOL directly
-  // in the user's wSOL ATA (which is the same address as the user's basket
-  // ATA for the SOL mint), so there's nothing to swap. Synthesize a 1:1
-  // passthrough quote so the bottleneck math still works.
-  const quoteResults = await Promise.all(
-    mints.map((mint, i) => {
-      if (mint.equals(SOL_MINT)) {
-        const out = legLamports[i].toString();
-        const passthrough: JupiterQuoteResponse = {
-          inputMint: SOL_MINT.toBase58(),
-          outputMint: mint.toBase58(),
-          inAmount: out,
-          outAmount: out,
-          otherAmountThreshold: out,
-          swapMode: 'ExactIn',
-          slippageBps,
-          priceImpactPct: '0',
-          routePlan: [{ swapInfo: { label: 'wrap' }, percent: 100 }],
-          contextSlot: 0,
-        };
-        return Promise.resolve(passthrough);
-      }
-      return quoteClient.getQuote({
-        inputMint: SOL_MINT,
-        outputMint: mint,
-        amount: legLamports[i],
-        slippageBps,
-        swapMode: 'ExactIn',
-        maxAccounts,
-      });
-    })
+  const quoteRound = (legLamports: bigint[]) =>
+    Promise.all(
+      mints.map((mint, i) =>
+        quoteLegSol(quoteClient, mint, legLamports[i], slippageBps, maxAccounts)
+      )
+    );
+
+  // Round 0: naive weight-proportional split. This is what the program will
+  // pull pro-rata-by-weight on a first deposit, but because every basket
+  // token has a different SOL→token rate (price × decimals), an equal SOL
+  // split makes the lowest-base-unit-yield leg (e.g. 8-decimal high-price
+  // wBTC/wETH) the bottleneck — `depositAmount` collapses to that leg and
+  // the caller is forced to pour in absurd SOL to clear MIN_FIRST_DEPOSIT.
+  const legLamports0 = splitWeightedLamports(solIn, weights);
+  const quotes0 = await quoteRound(legLamports0);
+
+  // Round 1: reallocate the SAME total SOL across legs so every leg's
+  // deposit candidate is equalized — i.e. give a leg SOL ∝ weight / rate,
+  // so the expensive-per-base-unit leg is no longer a bottleneck dragging
+  // the rest. Σ is unchanged, so the wrap step and every downstream
+  // (split/multi-tx) consumer of `legs[].solLamports` / `depositAmount`
+  // keeps working untouched. We only re-quote and only adopt round 1 if it
+  // strictly raises the min candidate, so this can never regress behavior.
+  const legLamports1 = reallocateEqualizingCandidates(
+    solIn,
+    weights,
+    mints,
+    legLamports0,
+    quotes0
   );
+  let legLamports = legLamports0;
+  let quoteResults = quotes0;
+  if (legLamports1 !== legLamports0) {
+    const quotes1 = await quoteRound(legLamports1);
+    if (minDepositCandidate(quotes1, weights) > minDepositCandidate(quotes0, weights)) {
+      legLamports = legLamports1;
+      quoteResults = quotes1;
+    }
+  }
 
   const legs = quoteResults.map((quote, i) => {
     const minOut = BigInt(quote.otherAmountThreshold);
@@ -180,6 +186,115 @@ function splitWeightedLamports(solIn: bigint, weights: number[]): bigint[] {
   const assigned = legs.reduce((sum, lamports) => sum + lamports, 0n);
   legs[legs.length - 1] += solIn - assigned;
   return legs;
+}
+
+/// Quote a single SOL→mint leg. SOL legs need no Jupiter quote — the
+/// deposit's wrap step lands wSOL directly in the user's wSOL ATA (which is
+/// the same address as the user's basket ATA for the SOL mint), so there's
+/// nothing to swap. Synthesize a 1:1 passthrough so the candidate math still
+/// works.
+function quoteLegSol(
+  quoteClient: JupiterQuoteClient,
+  mint: PublicKey,
+  lamports: bigint,
+  slippageBps: number,
+  maxAccounts: number
+): Promise<JupiterQuoteResponse> {
+  if (mint.equals(SOL_MINT)) {
+    const out = lamports.toString();
+    return Promise.resolve({
+      inputMint: SOL_MINT.toBase58(),
+      outputMint: mint.toBase58(),
+      inAmount: out,
+      outAmount: out,
+      otherAmountThreshold: out,
+      swapMode: 'ExactIn',
+      slippageBps,
+      priceImpactPct: '0',
+      routePlan: [{ swapInfo: { label: 'wrap' }, percent: 100 }],
+      contextSlot: 0,
+    });
+  }
+  return quoteClient.getQuote({
+    inputMint: SOL_MINT,
+    outputMint: mint,
+    amount: lamports,
+    slippageBps,
+    swapMode: 'ExactIn',
+    maxAccounts,
+  });
+}
+
+/// min over legs of (minOut · 10_000 / weightBps) — the ETF `amount` the
+/// program could mint on a first deposit given these quotes/weights.
+function minDepositCandidate(
+  quotes: JupiterQuoteResponse[],
+  weights: number[]
+): bigint {
+  let lo: bigint | null = null;
+  for (let i = 0; i < quotes.length; i++) {
+    const c = (BigInt(quotes[i].otherAmountThreshold) * 10_000n) / BigInt(weights[i]);
+    if (lo === null || c < lo) lo = c;
+  }
+  return lo ?? 0n;
+}
+
+/// Reallocate the SAME total `solIn` across legs so every leg's deposit
+/// candidate is equalized, removing the single-leg bottleneck.
+///
+/// candidate_i ≈ rate_i · L_i · 10_000 / weight_i, where rate_i (base units
+/// per lamport) = minOut0_i / L0_i from the round-0 probe. Setting every
+/// candidate equal under Σ L_i = solIn gives L_i ∝ weight_i / rate_i
+/// (= weight_i · L0_i / minOut0_i). Returns the original array unchanged
+/// (same reference, so the caller can skip the re-quote) when reallocation
+/// can't be done safely — any zero/again-degenerate leg, illiquid quote, or
+/// a SOL-only basket.
+function reallocateEqualizingCandidates(
+  solIn: bigint,
+  weights: number[],
+  mints: PublicKey[],
+  legLamports0: bigint[],
+  quotes0: JupiterQuoteResponse[]
+): bigint[] {
+  const n = weights.length;
+  // weightOverRate_i = weight_i / rate_i = weight_i · L0_i / minOut0_i.
+  const woR: number[] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const l0 = Number(legLamports0[i]);
+    const minOut0 = Number(BigInt(quotes0[i].otherAmountThreshold));
+    if (!(l0 > 0) || !(minOut0 > 0)) return legLamports0; // illiquid / degenerate
+    const rate = minOut0 / l0; // base units per lamport
+    if (!(rate > 0) || !isFinite(rate)) return legLamports0;
+    woR[i] = weights[i] / rate;
+    if (!isFinite(woR[i]) || woR[i] <= 0) return legLamports0;
+  }
+  const sum = woR.reduce((a, b) => a + b, 0);
+  if (!(sum > 0) || !isFinite(sum)) return legLamports0;
+
+  const solInNum = Number(solIn);
+  const out: bigint[] = woR.map((x) =>
+    BigInt(Math.max(1, Math.floor((solInNum * x) / sum)))
+  );
+  // Reconcile rounding drift onto the largest leg so Σ === solIn exactly and
+  // no leg goes non-positive.
+  const assigned = out.reduce((a, b) => a + b, 0n);
+  let biggest = 0;
+  for (let i = 1; i < n; i++) if (out[i] > out[biggest]) biggest = i;
+  out[biggest] += solIn - assigned;
+  for (let i = 0; i < n; i++) if (out[i] <= 0n) return legLamports0;
+
+  // No meaningful change (within 0.5%): keep the original reference so the
+  // caller skips a redundant re-quote round.
+  let changed = false;
+  for (let i = 0; i < n; i++) {
+    const d = Number(out[i] - legLamports0[i]);
+    if (Math.abs(d) > Number(legLamports0[i]) * 0.005 + 1) {
+      changed = true;
+      break;
+    }
+  }
+  void mints; // mints reserved for future per-mint rate models
+  return changed ? out : legLamports0;
 }
 
 function extractRouteLabel(quote: JupiterQuoteResponse): string {

@@ -24,6 +24,61 @@ app.post('/chat', async (c) => {
     }
 });
 
+// Per-ETF Metaplex metadata keyed by the token mint. This is what the
+// on-chain `uri` set at CreateEtf points to (etfMetadataUri in the FE).
+// Serves the creator-uploaded logo (persisted inside strategies.config by
+// /deploy) and falls back to the default Axis logo when none was uploaded
+// or the strategy row isn't written yet.
+const mimeForUrl = (u: string): string => {
+  const m = u.toLowerCase().split('?')[0];
+  if (m.endsWith('.png')) return 'image/png';
+  if (m.endsWith('.jpg') || m.endsWith('.jpeg')) return 'image/jpeg';
+  if (m.endsWith('.webp')) return 'image/webp';
+  if (m.endsWith('.gif')) return 'image/gif';
+  return 'image/png';
+};
+
+app.get('/metadata/mint/:mint', async (c) => {
+    const mint = c.req.param('mint');
+    let name = `${mint.slice(0, 4)} ETF`;
+    let symbol = mint.slice(0, 6);
+    let image = LOGO_URL;
+    try {
+      const row = await c.env.axis_main_db
+        .prepare('SELECT name, ticker, config FROM strategies WHERE mint_address = ? LIMIT 1')
+        .bind(mint)
+        .first<{ name: string | null; ticker: string | null; config: string | null }>();
+      if (row) {
+        if (row.name) name = row.name;
+        if (row.ticker) symbol = row.ticker;
+        if (row.config) {
+          try {
+            const cfg = JSON.parse(row.config) as { logoUrl?: string };
+            if (cfg.logoUrl) image = cfg.logoUrl;
+          } catch { /* config not JSON — keep default image */ }
+        }
+      }
+    } catch (e: any) {
+      console.error('[metadata/mint] lookup failed:', e?.message || e);
+    }
+
+    return c.json({
+      name,
+      symbol,
+      description: `Axis Protocol Strategy Token: ${name}`,
+      image,
+      external_url: `${FRONTEND_BASE_URL}/`,
+      attributes: [
+        { trait_type: "Type", value: "ETF Strategy" },
+        { trait_type: "Platform", value: "Axis Protocol" }
+      ],
+      properties: {
+        files: [{ uri: image, type: mimeForUrl(image) }],
+        category: "image",
+      }
+    });
+});
+
 app.get('/metadata/:ticker', (c) => {
     const ticker = c.req.param('ticker');
     const name = c.req.query('name') || `${ticker} ETF`;
