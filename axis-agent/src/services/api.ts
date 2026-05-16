@@ -386,6 +386,10 @@ export const api = {
     tokens: { symbol: string; mint: string; weight: number; logoURI?: string }[];
     address: string;
     mint_address?: string;
+    logoUrl?: string;
+    logo_url?: string;
+    metadataUri?: string;
+    metadata_uri?: string;
     protocol?: string;
     tvl?: number;
     config?: any;

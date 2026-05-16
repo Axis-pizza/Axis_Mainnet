@@ -16,6 +16,7 @@ import {
     getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createTransferInstruction 
 } from '@solana/spl-token';
 import bs58 from 'bs58';
+import { mergeStrategyConfigForStorage } from '../services/strategy/metadata';
 
 const app = new Hono<{ Bindings: Bindings }>();
 const priceService = new PriceService();
@@ -193,8 +194,29 @@ app.get('/strategies/:pubkey', async (c) => {
 app.post('/strategies', async (c) => {
   try {
     const body = await c.req.json();
-    const { owner_pubkey, name, ticker, description, type, tokens, address, config, mint_address, mintAddress } = body;
+    const {
+      owner_pubkey,
+      name,
+      ticker,
+      description,
+      type,
+      tokens,
+      address,
+      config,
+      protocol,
+      mint_address,
+      mintAddress,
+      logoUrl,
+      logo_url,
+      metadataUri,
+      metadata_uri,
+    } = body;
     const resolvedMint = mint_address ?? mintAddress ?? null;
+    const mergedConfig = mergeStrategyConfigForStorage(config, {
+      protocol,
+      logoUrl: logoUrl ?? logo_url,
+      metadataUri: metadataUri ?? metadata_uri,
+    });
 
     if (!owner_pubkey || !name) {
       return c.json({ success: false, error: 'owner_pubkey and name are required' }, 400);
@@ -222,7 +244,7 @@ app.post('/strategies', async (c) => {
           WHERE id = ?`
       ).bind(
         ticker || '', description || '',
-        JSON.stringify(tokens || []), JSON.stringify(config || {}),
+        JSON.stringify(tokens || []), JSON.stringify(mergedConfig),
         resolvedMint, address ?? null,
         existing.id
       ).run();
@@ -238,7 +260,7 @@ app.post('/strategies', async (c) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, 0, 0, ?, ?)
     `).bind(
       id, owner_pubkey, name, ticker || '', description || '', type || 'MANUAL',
-      JSON.stringify(tokens || []), JSON.stringify(config || {}), now,
+      JSON.stringify(tokens || []), JSON.stringify(mergedConfig), now,
       resolvedMint, address ?? null
     ).run();
 
@@ -295,9 +317,11 @@ app.post('/deploy', async (c) => {
       ownerPubkey, name, ticker, description, type, tokens, config, tvl, address, protocol,
       mintAddress: bodyMintAddress, mint_address: bodyMintAddressSnake,
       logoUrl: bodyLogoUrl, logo_url: bodyLogoUrlSnake,
+      metadataUri: bodyMetadataUri, metadata_uri: bodyMetadataUriSnake,
     } = meta;
     const mintAddress = bodyMintAddress ?? bodyMintAddressSnake ?? null;
     const logoUrl = bodyLogoUrl ?? bodyLogoUrlSnake ?? null;
+    const metadataUri = bodyMetadataUri ?? bodyMetadataUriSnake ?? null;
     const depositAmountSOL = tvl || 0;
     const now = Math.floor(Date.now() / 1000);
     const id = body.strategyId || crypto.randomUUID();
@@ -363,11 +387,11 @@ app.post('/deploy', async (c) => {
     // logoUrl rides inside `config` JSON so no schema migration is needed;
     // the /metadata/mint endpoint reads it back to build the token's
     // Metaplex JSON image.
-    const mergedConfig = {
-      ...(config || {}),
-      ...(protocol ? { protocol } : {}),
-      ...(logoUrl ? { logoUrl } : {}),
-    };
+    const mergedConfig = mergeStrategyConfigForStorage(config, {
+      protocol,
+      logoUrl,
+      metadataUri,
+    });
     await c.env.axis_main_db.prepare(`
         INSERT INTO strategies (
           id, owner_pubkey, name, ticker, description, type,
