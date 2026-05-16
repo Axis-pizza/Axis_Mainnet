@@ -6,7 +6,8 @@ import {
 } from '@solana/spl-token';
 import { useConnection, useWallet } from '../../hooks/useWallet';
 import { useAxisVaultWallet } from '../../hooks/useAxisVaultWallet';
-import { api, clearStrategyCache } from '../../services/api';
+import { api, clearStrategyCache, etfMetadataUri } from '../../services/api';
+import { ImageUpload } from '../common/ImageUpload';
 import {
   buildBareMintAccountIxs,
   buildBareTokenAccountIxs,
@@ -48,9 +49,10 @@ export function CreateEtfPanel({
   const [ticker, setTicker] = useState(
     () => `AX${Date.now().toString(36).toUpperCase().slice(-3)}`
   );
-  // v1.1: Metaplex Token Metadata URI (off-chain JSON). Empty allowed —
-  // wallets fall back to the on-chain name/symbol.
+  // v1.1: optional manual Metaplex Token Metadata URI override. If empty, we
+  // generate a per-mint axis-api metadata URI after the ETF mint is allocated.
   const [uri, setUri] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
   const [rows, setRows] = useState<BasketRow[]>([]);
   const [depositBase, setDepositBase] = useState<number>(1_000_000_000);
   const [solSeed, setSolSeed] = useState<number>(0.02);
@@ -107,6 +109,7 @@ export function CreateEtfPanel({
       pushLog(`Treasury: ${treasury.toBase58()}`);
 
       const etfMint = await buildBareMintAccountIxs(connection, publicKey);
+      const metadataUri = uri.trim() || etfMetadataUri(etfMint.pubkey.toBase58());
       const vaults = await buildBareTokenAccountIxs(
         connection,
         publicKey,
@@ -124,7 +127,7 @@ export function CreateEtfPanel({
         weightsBps: rows.map((r) => r.weight),
         ticker,
         name,
-        uri,
+        uri: metadataUri,
       });
       pushLog(`Tx1: alloc ETF mint + ${basketMints.length} vaults + CreateEtf "${name}"`);
       const sig2 = await sendTx(
@@ -159,10 +162,15 @@ export function CreateEtfPanel({
           address: etfState.toBase58(),
           mint_address: etfMint.pubkey.toBase58(),
           protocol: 'axis-vault',
+          logoUrl: logoUrl || undefined,
+          metadataUri,
           tvl: initialTvlSol,
           config: {
             protocol: 'axis-vault',
             etfMint: etfMint.pubkey.toBase58(),
+            etfStatePda: etfState.toBase58(),
+            metadataUri,
+            ...(logoUrl ? { logoUrl } : {}),
             weightsBps: rows.map((r) => r.weight),
           },
         });
@@ -181,6 +189,8 @@ export function CreateEtfPanel({
       const fresh = Date.now().toString(36).toUpperCase();
       setName(`AX${fresh.slice(-6)}`);
       setTicker(`AX${fresh.slice(-3)}`);
+      setUri('');
+      setLogoUrl('');
 
       if (doDepositAfter && (config.jupiterEnabled ? solSeed > 0 : depositBase > 0)) {
         setStage('deposit');
@@ -360,12 +370,12 @@ export function CreateEtfPanel({
 
           <label className="flex flex-col text-xs">
             <span className="mb-1 text-slate-400">
-              Metadata URI (≤200 bytes, optional — off-chain JSON for wallets)
+              Metadata URI override (≤200 bytes, optional)
             </span>
             <input
               value={uri}
               onChange={(e) => setUri(e.target.value)}
-              placeholder="https://example.com/etf-metadata.json"
+              placeholder="Auto: API JSON keyed by ETF mint"
               className={
                 'rounded bg-slate-800 px-2 py-1 font-mono text-slate-100 ' +
                 (uriBytes <= 200
@@ -378,7 +388,27 @@ export function CreateEtfPanel({
                 URI exceeds Metaplex MAX_URI_LENGTH (200 bytes)
               </span>
             )}
+            <span className="mt-1 text-[10px] text-slate-500">
+              Leave blank to use the Axis metadata endpoint so the uploaded logo
+              becomes the ETF token image.
+            </span>
           </label>
+
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 text-xs">
+            <div className="mb-2">
+              <p className="font-medium text-slate-200">ETF token logo</p>
+              <p className="text-slate-500">
+                Optional. Uploaded image is saved in Axis storage and served by
+                the token metadata URI.
+              </p>
+            </div>
+            <ImageUpload
+              walletAddress={publicKey.toBase58()}
+              type="strategy"
+              currentImage={logoUrl}
+              onUploadComplete={setLogoUrl}
+            />
+          </div>
 
           <div>
             <p className="mb-2 text-xs text-slate-400">

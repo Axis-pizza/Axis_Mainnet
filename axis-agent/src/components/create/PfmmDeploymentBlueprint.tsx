@@ -506,10 +506,12 @@ export const PfmmDeploymentBlueprint = ({
       config: {
         protocol: 'pfda-amm-3',
         ...(etfState ? { etfStatePda: etfState } : {}),
+        ...(etfMint ? { metadataUri: etfMetadataUri(etfMint) } : {}),
       },
       // ETF token mint + creator logo so the axis-api metadata endpoint
       // (keyed by mint) can serve the right Metaplex image.
       mintAddress: etfMint,
+      metadataUri: etfMint ? etfMetadataUri(etfMint) : null,
       logoUrl: info?.logoUrl || null,
     };
     const result = await api.deploy(txSig, strategyData);

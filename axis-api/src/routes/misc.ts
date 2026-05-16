@@ -6,6 +6,7 @@ import * as InviteModel from '../models/invite';
 import * as UserModel from '../models/user';
 import * as AuthService from '../services/auth';
 import { runPriceSnapshot } from '../services/snapshot';
+import { readLogoUrlFromConfig } from '../services/strategy/metadata';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -26,9 +27,9 @@ app.post('/chat', async (c) => {
 
 // Per-ETF Metaplex metadata keyed by the token mint. This is what the
 // on-chain `uri` set at CreateEtf points to (etfMetadataUri in the FE).
-// Serves the creator-uploaded logo (persisted inside strategies.config by
-// /deploy) and falls back to the default Axis logo when none was uploaded
-// or the strategy row isn't written yet.
+// Serves the creator-uploaded logo persisted inside strategies.config and
+// falls back to the default Axis logo when none was uploaded or the strategy
+// row isn't written yet.
 const mimeForUrl = (u: string): string => {
   const m = u.toLowerCase().split('?')[0];
   if (m.endsWith('.png')) return 'image/png';
@@ -51,12 +52,7 @@ app.get('/metadata/mint/:mint', async (c) => {
       if (row) {
         if (row.name) name = row.name;
         if (row.ticker) symbol = row.ticker;
-        if (row.config) {
-          try {
-            const cfg = JSON.parse(row.config) as { logoUrl?: string };
-            if (cfg.logoUrl) image = cfg.logoUrl;
-          } catch { /* config not JSON — keep default image */ }
-        }
+        image = readLogoUrlFromConfig(row.config) ?? image;
       }
     } catch (e: any) {
       console.error('[metadata/mint] lookup failed:', e?.message || e);
