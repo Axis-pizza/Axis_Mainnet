@@ -194,7 +194,7 @@ export const PfmmDeploymentBlueprint = ({
   const [seedSolUserEdited, setSeedSolUserEdited] = useState(false);
   // Separate seed for the creator's first ETF position. The actual minimum
   // depends on basket liquidity (the bottleneck leg's SOL→token rate must
-  // produce ≥ MIN_FIRST_DEPOSIT_BASE = 1_000_000 base = 1.0 ETF at 6 decimals).
+  // produce at least the on-chain MIN_FIRST_DEPOSIT_BASE floor).
   // Initial 0.005 is auto-overwritten by the weight-driven default below.
   const [etfSeedSol, setEtfSeedSol] = useState<string>('0.005');
   const [etfSeedSolUserEdited, setEtfSeedSolUserEdited] = useState(false);
@@ -484,6 +484,7 @@ export const PfmmDeploymentBlueprint = ({
     depositSol: number,
     txSig: string,
     etfMint: string | null,
+    etfState: string | null,
   ) {
     setStage('metadata');
     setDeployStep('Saving strategy metadata…');
@@ -502,6 +503,10 @@ export const PfmmDeploymentBlueprint = ({
       tvl: depositSol,
       address: poolAddress,
       protocol: 'pfda-amm-3',
+      config: {
+        protocol: 'pfda-amm-3',
+        ...(etfState ? { etfStatePda: etfState } : {}),
+      },
       // ETF token mint + creator logo so the axis-api metadata endpoint
       // (keyed by mint) can serve the right Metaplex image.
       mintAddress: etfMint,
@@ -1068,6 +1073,7 @@ export const PfmmDeploymentBlueprint = ({
         seedSolNum,
         lastSig,
         etfMintB58,
+        etfStatePda.toBase58(),
       );
       setStage('done');
       setActiveStep(null);

@@ -59,6 +59,15 @@ interface SwipeDiscoverViewProps {
   focusedStrategyId?: string | null;
 }
 
+function strategyEtfMint(strategy: any): string | null {
+  return strategy?.mintAddress || strategy?.mint_address || null;
+}
+
+function strategyEtfStatePda(strategy: any): string | null {
+  const pda = strategy?.config?.etfStatePda;
+  return typeof pda === 'string' && pda.length > 0 ? pda : null;
+}
+
 // --- Components ---
 
 /**
@@ -782,12 +791,31 @@ export const SwipeDiscoverView = ({
     }
     const owner = investTarget.ownerPubkey ?? investTarget.owner;
     const name = investTarget.name;
-    if (!owner || !name) return;
+    const configuredEtfState = strategyEtfStatePda(investTarget);
+    const recordedEtfMint = strategyEtfMint(investTarget);
     let cancelled = false;
     (async () => {
       try {
-        const ownerPk = new PublicKey(owner);
-        const [pda] = findEtfState(AXIS_VAULT_PROGRAM_ID, ownerPk, name);
+        let pda: PublicKey;
+        if (configuredEtfState) {
+          pda = new PublicKey(configuredEtfState);
+        } else {
+          if (!owner || !name) {
+            if (!cancelled) {
+              setInvestEtfState(null);
+              setInvestEtfData(null);
+              setInvestUserEtfBalance(0n);
+              setInvestEtfResolveError(
+                recordedEtfMint
+                  ? 'strategy has an ETF mint but no resolvable ETF state PDA'
+                  : null,
+              );
+            }
+            return;
+          }
+          const ownerPk = new PublicKey(owner);
+          [pda] = findEtfState(AXIS_VAULT_PROGRAM_ID, ownerPk, name);
+        }
         if (cancelled) return;
         setInvestEtfState(pda);
         const res = await classifyEtfState(connection, pda);
@@ -806,10 +834,10 @@ export const SwipeDiscoverView = ({
           }
         } else if (res.kind === 'absent') {
           // Genuine pre-axis-vault / PFMM-only strategy — spot/PFMM path is
-          // legitimate here.
+          // legitimate here unless the backend already recorded an ETF mint.
           setInvestEtfData(null);
           setInvestUserEtfBalance(0n);
-          setInvestEtfResolveError(null);
+          setInvestEtfResolveError(recordedEtfMint ? 'recorded ETF state account is missing' : null);
         } else {
           // Could not determine — keep ETF data null but flag the ambiguity
           // so handleDeposit refuses to spot-swap a possible ETF.
@@ -821,7 +849,8 @@ export const SwipeDiscoverView = ({
         if (!cancelled) {
           setInvestEtfState(null);
           setInvestEtfData(null);
-          setInvestEtfResolveError(null);
+          setInvestUserEtfBalance(0n);
+          setInvestEtfResolveError(recordedEtfMint ? 'invalid ETF state PDA' : null);
         }
       }
     })();
@@ -1164,7 +1193,7 @@ export const SwipeDiscoverView = ({
     // this strategy MIGHT be a real ETF. Refuse to route it down any
     // non-axis-vault path — bouncing to PFMM or spot-swapping basket tokens
     // into the wallet here would silently mis-handle a real ETF deposit.
-    if (!useAxisVault && investEtfResolveError) {
+    if (!useAxisVault && (investEtfResolveError || strategyEtfMint(investTarget))) {
       showToast(
         "Couldn't verify this strategy's ETF state — check your connection and try again",
         'error',

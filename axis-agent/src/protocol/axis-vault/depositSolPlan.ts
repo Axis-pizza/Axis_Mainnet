@@ -34,8 +34,8 @@ import { u64Le } from './ix';
 export const SOLANA_MAX_TX_CU = 1_400_000;
 export const SOLANA_MAX_TX_BYTES = 1232;
 const FALLBACK_PRIORITY_MICRO_LAMPORTS = 50_000;
-/// Mirrors `axis-vault::MIN_FIRST_DEPOSIT = 1_000_000` (= 1.0 ETF at 6 decimals).
-export const MIN_FIRST_DEPOSIT_BASE = 1_000_000n;
+/// Mirrors `axis-vault::MIN_FIRST_DEPOSIT = 10_000` (= 0.01 ETF at 6 decimals).
+export const MIN_FIRST_DEPOSIT_BASE = 10_000n;
 
 export interface DepositSolPlanArgs {
   conn: Connection;
@@ -255,7 +255,7 @@ export async function buildDepositSolPlan(args: DepositSolPlanArgs): Promise<Dep
     const suggestedLamports =
       (args.solIn * MIN_FIRST_DEPOSIT_BASE * 11n) / (seedPreview.depositAmount * 10n);
     throw new Error(
-      `First deposit must yield ≥ ${MIN_FIRST_DEPOSIT_BASE} base units (1.0 ETF). ` +
+      `First deposit must yield ≥ ${MIN_FIRST_DEPOSIT_BASE} base units (0.01 ETF). ` +
         `At ${args.solIn} lamports (${(Number(args.solIn) / 1e9).toFixed(6)} SOL) the bottleneck floor is ` +
         `${seedPreview.depositAmount} base. Increase SOL seed to at least ` +
         `~${suggestedLamports} lamports (≈ ${(Number(suggestedLamports) / 1e9).toFixed(4)} SOL) and retry. ` +
@@ -526,7 +526,7 @@ export async function buildDepositSolMultiTxPlan(
     const suggestedLamports =
       (args.solIn * MIN_FIRST_DEPOSIT_BASE * 11n) / (seedPreview.depositAmount * 10n);
     throw new Error(
-      `First deposit must yield ≥ ${MIN_FIRST_DEPOSIT_BASE} base units (1.0 ETF). ` +
+      `First deposit must yield ≥ ${MIN_FIRST_DEPOSIT_BASE} base units (0.01 ETF). ` +
         `At ${args.solIn} lamports (${(Number(args.solIn) / 1e9).toFixed(6)} SOL) the bottleneck floor is ` +
         `${seedPreview.depositAmount} base. Increase SOL seed to at least ` +
         `~${suggestedLamports} lamports (≈ ${(Number(suggestedLamports) / 1e9).toFixed(4)} SOL) and retry. ` +

@@ -65,6 +65,18 @@ interface StrategyDetailViewProps {
 }
 type TransactionStatus = 'IDLE' | 'SIGNING' | 'CONFIRMING' | 'PROCESSING' | 'SUCCESS' | 'ERROR';
 
+function strategyEtfMint(strategy: Strategy): string | null {
+  const raw = strategy as Strategy & { mintAddress?: string; mint_address?: string };
+  return raw.mintAddress || raw.mint_address || null;
+}
+
+function strategyEtfStatePda(strategy: Strategy): string | null {
+  const cfg = strategy.config as { etfStatePda?: unknown } | undefined;
+  return typeof cfg?.etfStatePda === 'string' && cfg.etfStatePda.length > 0
+    ? cfg.etfStatePda
+    : null;
+}
+
 // --- Icons ---
 const XIcon = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="currentColor">
@@ -623,17 +635,30 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
   // back to the Jupiter-only legacy path (basket tokens in user wallet).
   useEffect(() => {
     const owner = strategy.ownerPubkey ?? strategy.owner;
-    if (!owner || !strategy.name) {
-      setEtfStatePda(null);
-      setEtfStateData(null);
-      setEtfResolveError(null);
-      return;
-    }
+    const configuredEtfState = strategyEtfStatePda(strategy);
+    const recordedEtfMint = strategyEtfMint(strategy);
     let cancelled = false;
     (async () => {
       try {
-        const ownerPk = new PublicKey(owner);
-        const [pda] = findEtfState(AXIS_VAULT_PROGRAM_ID, ownerPk, strategy.name);
+        let pda: PublicKey;
+        if (configuredEtfState) {
+          pda = new PublicKey(configuredEtfState);
+        } else {
+          if (!owner || !strategy.name) {
+            if (!cancelled) {
+              setEtfStatePda(null);
+              setEtfStateData(null);
+              setEtfResolveError(
+                recordedEtfMint
+                  ? 'strategy has an ETF mint but no resolvable ETF state PDA'
+                  : null,
+              );
+            }
+            return;
+          }
+          const ownerPk = new PublicKey(owner);
+          [pda] = findEtfState(AXIS_VAULT_PROGRAM_ID, ownerPk, strategy.name);
+        }
         if (cancelled) return;
         setEtfStatePda(pda);
         const res = await classifyEtfState(connection, pda);
@@ -643,8 +668,10 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
           setEtfResolveError(null);
         } else if (res.kind === 'absent') {
           // Genuine pre-axis-vault / PFMM-only strategy — legacy path is OK.
+          // If the backend already recorded an ETF mint, absence is unsafe:
+          // it likely means an old name-derived PDA mismatch or stale index.
           setEtfStateData(null);
-          setEtfResolveError(null);
+          setEtfResolveError(recordedEtfMint ? 'recorded ETF state account is missing' : null);
         } else {
           setEtfStateData(null);
           setEtfResolveError(res.error.message);
@@ -653,14 +680,14 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
         if (!cancelled) {
           setEtfStatePda(null);
           setEtfStateData(null);
-          setEtfResolveError(null);
+          setEtfResolveError(recordedEtfMint ? 'invalid ETF state PDA' : null);
         }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [strategy.ownerPubkey, strategy.owner, strategy.name, connection]);
+  }, [strategy, strategy.ownerPubkey, strategy.owner, strategy.name, connection]);
 
   // User's ETF token balance (from their ATA on the ETF mint). Only meaningful
   // when etfStateData is resolved (axis-vault path).
@@ -852,7 +879,7 @@ export const StrategyDetailView = ({ initialData, onBack }: StrategyDetailViewPr
     // The EtfState PDA failed to resolve (RPC/decode), so we can't tell if
     // this is a real ETF. Refuse the legacy Jupiter-into-wallet path rather
     // than silently spot-swapping basket tokens for what may be an ETF.
-    if (!useAxisVault && etfResolveError) {
+    if (!useAxisVault && (etfResolveError || strategyEtfMint(strategy))) {
       return showToast(
         "Couldn't verify this strategy's ETF state — check your connection and try again",
         'error',

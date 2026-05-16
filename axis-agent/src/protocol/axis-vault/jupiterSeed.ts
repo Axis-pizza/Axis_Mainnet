@@ -35,6 +35,7 @@ export interface JupiterSeedLegPreview {
 
 export interface JupiterSeedPreview {
   mode: JupiterQuoteMode;
+  allocationMode: 'weighted' | 'equalized';
   solIn: bigint;
   slippageBps: number;
   depositAmount: bigint;
@@ -117,17 +118,24 @@ export async function buildJupiterSeedPreview({
   const legLamports1 = reallocateEqualizingCandidates(
     solIn,
     weights,
-    mints,
     legLamports0,
     quotes0
   );
   let legLamports = legLamports0;
   let quoteResults = quotes0;
+  let allocationMode: JupiterSeedPreview['allocationMode'] = 'weighted';
   if (legLamports1 !== legLamports0) {
-    const quotes1 = await quoteRound(legLamports1);
-    if (minDepositCandidate(quotes1, weights) > minDepositCandidate(quotes0, weights)) {
-      legLamports = legLamports1;
-      quoteResults = quotes1;
+    try {
+      const quotes1 = await quoteRound(legLamports1);
+      if (minDepositCandidate(quotes1, weights) > minDepositCandidate(quotes0, weights)) {
+        legLamports = legLamports1;
+        quoteResults = quotes1;
+        allocationMode = 'equalized';
+      }
+    } catch {
+      // Equalization is an optimization. If the reduced SOL share on a cheap
+      // leg falls below a Jupiter route floor, keep the already-valid weighted
+      // quotes instead of failing the whole deposit preview.
     }
   }
 
@@ -154,6 +162,7 @@ export async function buildJupiterSeedPreview({
 
   return {
     mode: quoteClient.mode,
+    allocationMode,
     solIn,
     slippageBps,
     depositAmount: legs[bottleneckIndex].depositCandidate,
@@ -252,31 +261,27 @@ function minDepositCandidate(
 function reallocateEqualizingCandidates(
   solIn: bigint,
   weights: number[],
-  mints: PublicKey[],
   legLamports0: bigint[],
   quotes0: JupiterQuoteResponse[]
 ): bigint[] {
   const n = weights.length;
-  // weightOverRate_i = weight_i / rate_i = weight_i · L0_i / minOut0_i.
-  const woR: number[] = new Array(n);
+  // Integer fixed-point form of weightOverRate_i:
+  // weight_i / rate_i = weight_i * L0_i / minOut0_i.
+  // Keep this in bigint space so large meme-token raw outputs don't lose
+  // precision through Number.
+  const scale = 1_000_000_000_000n;
+  const ratios: bigint[] = new Array(n);
   for (let i = 0; i < n; i++) {
-    const l0 = Number(legLamports0[i]);
-    const minOut0 = Number(BigInt(quotes0[i].otherAmountThreshold));
-    if (!(l0 > 0) || !(minOut0 > 0)) return legLamports0; // illiquid / degenerate
-    const rate = minOut0 / l0; // base units per lamport
-    if (!(rate > 0) || !isFinite(rate)) return legLamports0;
-    woR[i] = weights[i] / rate;
-    if (!isFinite(woR[i]) || woR[i] <= 0) return legLamports0;
+    const minOut0 = BigInt(quotes0[i].otherAmountThreshold);
+    if (legLamports0[i] <= 0n || minOut0 <= 0n) return legLamports0;
+    const ratio = (BigInt(weights[i]) * legLamports0[i] * scale) / minOut0;
+    if (ratio <= 0n) return legLamports0;
+    ratios[i] = ratio;
   }
-  const sum = woR.reduce((a, b) => a + b, 0);
-  if (!(sum > 0) || !isFinite(sum)) return legLamports0;
+  const ratioSum = ratios.reduce((a, b) => a + b, 0n);
+  if (ratioSum <= 0n) return legLamports0;
 
-  const solInNum = Number(solIn);
-  const out: bigint[] = woR.map((x) =>
-    BigInt(Math.max(1, Math.floor((solInNum * x) / sum)))
-  );
-  // Reconcile rounding drift onto the largest leg so Σ === solIn exactly and
-  // no leg goes non-positive.
+  const out = ratios.map((ratio) => (solIn * ratio) / ratioSum);
   const assigned = out.reduce((a, b) => a + b, 0n);
   let biggest = 0;
   for (let i = 1; i < n; i++) if (out[i] > out[biggest]) biggest = i;
@@ -293,7 +298,6 @@ function reallocateEqualizingCandidates(
       break;
     }
   }
-  void mints; // mints reserved for future per-mint rate models
   return changed ? out : legLamports0;
 }
 
