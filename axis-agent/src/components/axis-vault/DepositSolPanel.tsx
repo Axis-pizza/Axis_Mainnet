@@ -276,7 +276,7 @@ export function DepositSolPanel({
               )}
               {isFirstDeposit && (
                 <p className="mt-2 rounded bg-amber-950/30 px-2 py-1 text-amber-300">
-                  ⚠ ETF empty — first deposit must yield ≥ 1.0 ETF (1_000_000 base units). Plan
+                  ⚠ ETF empty — first deposit must yield ≥ 0.01 ETF (10_000 base units). Plan
                   builder rejects smaller seeds before signing.
                 </p>
               )}

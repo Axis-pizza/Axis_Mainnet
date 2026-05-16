@@ -444,7 +444,7 @@ export function CreateEtfPanel({
                     />
                   </label>
                   <span className="text-[11px] text-slate-500">
-                    First deposit must yield ≥ 1.0 ETF (1_000_000 base units); plan-builder rejects
+                    First deposit must yield ≥ 0.01 ETF (10_000 base units); plan-builder rejects
                     smaller seeds before sending.
                   </span>
                 </>
@@ -452,12 +452,12 @@ export function CreateEtfPanel({
                 doDepositAfter && (
                   <label className="flex items-center gap-1">
                     <span className="text-slate-400">
-                      base amount (≥ 1_000_000; per-leg = amount × weight ÷ 10000):
+                      base amount (≥ 10_000; per-leg = amount × weight ÷ 10000):
                     </span>
                     <input
                       type="number"
-                      min={1_000_000}
-                      step={1_000_000}
+                      min={10_000}
+                      step={10_000}
                       value={depositBase}
                       onChange={(e) => setDepositBase(Number(e.target.value))}
                       className="w-40 rounded bg-slate-800 px-2 py-1 font-mono text-slate-100"
@@ -465,9 +465,9 @@ export function CreateEtfPanel({
                   </label>
                 )
               )}
-              {doDepositAfter && !config.jupiterEnabled && depositBase < 1_000_000 && (
+              {doDepositAfter && !config.jupiterEnabled && depositBase < 10_000 && (
                 <span className="text-xs text-rose-400">
-                  ✗ amount &lt; MIN_FIRST_DEPOSIT (1_000_000) — first Deposit will revert
+                  ✗ amount &lt; MIN_FIRST_DEPOSIT (10_000) — first Deposit will revert
                 </span>
               )}
             </div>
